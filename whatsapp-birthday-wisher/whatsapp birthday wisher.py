@@ -21,7 +21,7 @@ from datetime import datetime
 # ==================== CONFIGURABLE SETTINGS ====================
 # Base directories - Auto-detected
 USER_HOME = os.path.expanduser("~")  # Automatically detect user home directory
-BOTS_DIR = os.path.join(USER_HOME, "bot")  # Main bots directory
+BOTS_DIR = os.path.join(USER_HOME, "bots")  # Main bots directory
 WHATSAPP_BOT_DIR = os.path.join(BOTS_DIR, "whatsapp birthday wisher")  # WhatsApp bot directory
 
 # File paths
