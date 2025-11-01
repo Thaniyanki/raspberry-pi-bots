@@ -5,91 +5,65 @@ echo "------------------------------------------------------------"
 echo "🤖 WHATSAPP BIRTHDAY WISHER INSTALLER (Universal for Raspberry Pi)"
 echo "------------------------------------------------------------"
 
+# === Basic Paths ===
 HOME_DIR="$HOME"
 BOT_DIR="$HOME_DIR/bot"
 BOT_NAME="whatsapp birthday wisher"
 BOT_PATH="$BOT_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
 
-# ✅ Corrected: use RAW GitHub URL instead of blob
-WHATSAPP_BOT_URL="https://raw.githubusercontent.com/Thaniyanki/Raspberry-Pi-Bots/main/whatsapp-birthday-wisher/whatsapp%20birthday%20wisher.py"
-PHONE_NUMBER="9940585709"
+echo "[INFO] Detected OS: $(uname -s) | Architecture: $(uname -m)"
 
-# Detect OS and architecture
-OS=$(uname -s)
-ARCH=$(uname -m)
-echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
-
-# --- STEP 1 : Check if bot folder exists ---
-if [ -d "$BOT_DIR" ]; then
-    echo "[INFO] Found existing 'bot' folder ✅"
-    # --- STEP 2 : Handle whatsapp birthday wisher folder ---
-    if [ -d "$BOT_PATH" ]; then
-        echo "[INFO] Removing old '$BOT_NAME' folder..."
-        rm -rf "$BOT_PATH"
-    fi
-    echo "[INFO] Creating fresh '$BOT_NAME' folder inside bot directory..."
-    mkdir -p "$BOT_PATH"
-else
-    # --- STEP 3 : Create bot folder and structure ---
+# === Step 1: Create Folder Structure ===
+if [ ! -d "$BOT_PATH" ]; then
     echo "[INFO] 'bot' folder not found, creating new structure..."
-    mkdir -p "$BOT_PATH/venv"
-    echo "[OK] Created: $BOT_PATH/venv"
+    mkdir -p "$BOT_PATH"
 fi
 
-# --- STEP 5 : Create or recreate venv and install dependencies ---
-echo "[INFO] Preparing virtual environment..."
-cd "$BOT_PATH"
-
-if [ -d "venv" ]; then
+if [ -d "$VENV_PATH" ]; then
     echo "[INFO] Old venv found, deleting..."
-    rm -rf venv
+    rm -rf "$VENV_PATH"
 fi
 
-mkdir -p venv
-VENV_DIR="$PWD/venv"
-echo "[OK] Folder ready: $VENV_DIR"
+mkdir -p "$VENV_PATH"
+echo "[OK] Folder ready: $VENV_PATH"
 
-# Install system dependencies
+# === Step 2: Install System Dependencies ===
 echo "[INFO] Installing system dependencies..."
-sudo apt-get update -y || true
-sudo apt-get install -y python3 python3-venv python3-pip git curl unzip || true
+sudo apt update -y
+sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential \
+    libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev \
+    libtiff-dev libwebp-dev tk-dev libharfbuzz-dev libfribidi-dev libxcb1-dev
 
-# Create and activate venv
+# === Step 3: Create Python Virtual Environment ===
 echo "[INFO] Creating Python virtual environment..."
-python3 -m venv "$VENV_DIR"
-source "$VENV_DIR/bin/activate"
+python3 -m venv "$VENV_PATH"
+source "$VENV_PATH/bin/activate"
 
-python -m pip install --upgrade pip setuptools wheel
+# === Step 4: Upgrade pip & setuptools ===
+pip install --upgrade pip setuptools wheel
 
+# === Step 5: Install Python Packages ===
 echo "[INFO] Installing Python packages..."
-pip install firebase_admin gspread selenium google-auth google-auth-oauthlib \
+pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client
 
-# Create phone number file
-REPORT_FILE="$VENV_DIR/report number"
-echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file: '$REPORT_FILE'"
-
-# --- STEP 4 : Download whatsapp birthday wisher script ---
+# === Step 6: Download Bot Source Code ===
+echo "[INFO] Downloading latest bot source from GitHub..."
 cd "$BOT_PATH"
-echo "[INFO] Downloading main bot script..."
-curl -L -o "whatsapp birthday wisher.py" "$WHATSAPP_BOT_URL"
-
-if [ -f "whatsapp birthday wisher.py" ]; then
-    echo "[OK] Bot script downloaded successfully."
+if [ -d ".git" ]; then
+    git pull
 else
-    echo "[ERROR] Bot script download failed!"
+    git clone https://github.com/Thaniyanki/raspberry-pi-bots.git temp_repo
+    cp -r temp_repo/whatsapp-birthday-wisher/* "$BOT_PATH" || true
+    rm -rf temp_repo
 fi
 
-echo
+# === Step 7: Completion ===
 echo "------------------------------------------------------------"
-echo "✅ INSTALLATION COMPLETE!"
-echo "📁 Bot Folder: $BOT_PATH"
-echo "📦 Virtual Environment: $VENV_DIR"
-echo "🐍 To activate venv, run:"
-echo "   source \"$VENV_DIR/bin/activate\""
-echo "🚀 To run your bot:"
-echo "   python3 \"whatsapp birthday wisher.py\""
+echo "✅ Installation Complete!"
+echo "📂 Bot Folder: $BOT_PATH"
+echo "💡 To activate manually:"
+echo "    source \"$VENV_PATH/bin/activate\""
+echo "    python3 main.py"
 echo "------------------------------------------------------------"
-echo "[INFO] Detected OS: $OS | Arch: $ARCH"
