@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-#!/usr/bin/env bash
 set -e
 
 echo "------------------------------------------------------------"
@@ -12,7 +11,8 @@ BOT_NAME="whatsapp birthday wisher"
 BOT_PATH="$BOT_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
 
-WHATSAPP_BOT_URL="https://github.com/Thaniyanki/raspberry-pi-bots/blob/main/whatsapp-birthday-wisher/whatsapp%20birthday%20wisher.py"
+# ✅ Corrected: use RAW GitHub URL instead of blob
+WHATSAPP_BOT_URL="https://raw.githubusercontent.com/Thaniyanki/Raspberry-Pi-Bots/main/whatsapp-birthday-wisher/whatsapp%20birthday%20wisher.py"
 PHONE_NUMBER="9940585709"
 
 # Detect OS and architecture
@@ -70,12 +70,6 @@ pip install firebase_admin gspread selenium google-auth google-auth-oauthlib \
 REPORT_FILE="$VENV_DIR/report number"
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
 echo "[OK] Created phone number file: '$REPORT_FILE'"
-
-if [ -f "$VENV_DIR/database access key.json" ]; then
-    echo "[OK] Firebase key extracted."
-else
-    echo "[ERROR] Firebase key missing!"
-fi
 
 # --- STEP 4 : Download whatsapp birthday wisher script ---
 cd "$BOT_PATH"
