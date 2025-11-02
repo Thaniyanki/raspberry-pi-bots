@@ -28,18 +28,18 @@ from urllib3.exceptions import ReadTimeoutError
 # FLEXIBLE CONFIGURATION - AUTO-DETECTED
 # ================================
 # Auto-detect user home directory
-USER_HOME = os.path.expanduser("~")  # Automatically detect user home directory
+USER_HOME = os.path.expanduser("~")
 # Extract username from home directory path
 BASE_USER = os.path.basename(USER_HOME)
 
 # Base directory structure - Auto-detected
 BASE_DIR = os.path.join(USER_HOME, "bots")
-FACEBOOK_BIRTHDAY_DIR = os.path.join(BASE_DIR, "facebook birthday wisher")
+FACEBOOK_BIRTHDAY_DIR = os.path.join(BASE_DIR, "Facebook birthday wisher")
 
 # All file and directory paths - CENTRALIZED
 PATHS = {
     # Firebase
-    "firebase_credentials": os.path.join((FACEBOOK_BIRTHDAY_DIR, "venv", "database access key.json"),
+    "firebase_credentials": os.path.join(FACEBOOK_BIRTHDAY_DIR, "venv", "database access key.json"),
     
     # Google Sheets
     "google_sheets_credentials": os.path.join(FACEBOOK_BIRTHDAY_DIR, "venv", "spread sheet access key.json"),
@@ -337,7 +337,7 @@ def connect_to_google_sheets():
             time.sleep(1)
 
 def update_google_sheet(client):
-    """Delete all today's rows and insert fresh status row"""
+    """Delete all today's rows and insert fresh status row WITHOUT date"""
     while True:
         try:
             print("📊 Updating Google Sheet - clearing today's entries...")
@@ -361,10 +361,10 @@ def update_google_sheet(client):
                 worksheet.delete_rows(row_num)
                 print(f"🗑️ Deleted row {row_num}")
             
-            # Insert fresh new row at the first empty line
+            # Insert fresh new row at the first empty line WITHOUT date in the message
             next_row = len(all_data) - len(today_rows) + 1
             worksheet.insert_row(
-                [current_time_full, '', '', '', '', '', 'No more birthday today'],
+                [current_time_full, '', '', '', '', '', 'No more birthday today'],  # Simple message without date
                 index=next_row
             )
             
@@ -581,11 +581,24 @@ def press_down_arrow_and_enter_message_field():
             time.sleep(1)
 
 def paste_message_and_confirm():
-    """Paste message and confirm delivery"""
+    """Paste message and confirm delivery with date format for WhatsApp"""
     while True:
         try:
+            # Get current date in DD-MM-YYYY format for WhatsApp
+            current_date = datetime.now().strftime("%d-%m-%Y")
+            
+            # Format the message with date for WhatsApp
+            message = f"Facebook birthday bot({current_date})\nNo more birthday today"
+            
             active_element = driver.switch_to.active_element
-            active_element.send_keys("Facebook birthday bot - No more birthday today")
+            
+            # Type the message with proper newline handling
+            lines = message.split('\n')
+            for i, line in enumerate(lines):
+                active_element.send_keys(line)
+                if i < len(lines) - 1:  # Add newline for all but last line
+                    active_element.send_keys(Keys.SHIFT + Keys.ENTER)
+            
             print("✅ Message is typed")
             break
         except Exception as e:
