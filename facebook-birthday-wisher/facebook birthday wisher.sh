@@ -74,8 +74,7 @@ source "$VENV_PATH/bin/activate"
 
 pip install --upgrade pip setuptools wheel
 pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
-    google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client \
-    python-dateutil
+    google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client
 
 # === Step 5: Create Phone Number File ===
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
