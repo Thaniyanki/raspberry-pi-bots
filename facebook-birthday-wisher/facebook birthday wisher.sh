@@ -1,96 +1,114 @@
 #!/usr/bin/env bash
-#!/usr/bin/env bash
 set -e
 
 echo "------------------------------------------------------------"
-echo "📘 FACEBOOK BIRTHDAY WISHER INSTALLER (Universal for Raspberry Pi)"
+echo "🤖 FACEBOOK BIRTHDAY WISHER INSTALLER (Raspberry Pi Universal)"
 echo "------------------------------------------------------------"
 
+# === Variables ===
 HOME_DIR="$HOME"
-BOT_DIR="$HOME_DIR/bot"
-BOT_NAME="facebook birthday wisher"
-BOT_PATH="$BOT_DIR/$BOT_NAME"
+BOTS_DIR="$HOME_DIR/bots"
+BOT_NAME="Facebook birthday wisher"
+BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-
-# ✅ Corrected: use RAW GitHub URL instead of blob
-FACEBOOK_BOT_URL="https://raw.githubusercontent.com/Thaniyanki/Raspberry-Pi-Bots/main/facebook-birthday-wisher/facebook%20birthday%20wisher.py"
+REPORT_FILE="$VENV_PATH/report number"
 PHONE_NUMBER="9940585709"
+GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
+BOT_SUBPATH="facebook-birthday-wisher"
 
-# Detect OS and architecture
 OS=$(uname -s)
 ARCH=$(uname -m)
 echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
 
-# --- STEP 1 : Check if bot folder exists ---
-if [ -d "$BOT_DIR" ]; then
-    echo "[INFO] Found existing 'bot' folder ✅"
-    # --- STEP 2 : Handle facebook birthday wisher folder ---
-    if [ -d "$BOT_PATH" ]; then
-        echo "[INFO] Removing old '$BOT_NAME' folder..."
-        rm -rf "$BOT_PATH"
-    fi
-    echo "[INFO] Creating fresh '$BOT_NAME' folder inside bot directory..."
-    mkdir -p "$BOT_PATH"
-else
-    # --- STEP 3 : Create bot folder and structure ---
-    echo "[INFO] 'bot' folder not found, creating new structure..."
-    mkdir -p "$BOT_PATH/venv"
-    echo "[OK] Created: $BOT_PATH/venv"
+# === Step 1: Folder Setup ===
+mkdir -p "$BOTS_DIR"
+if [ -d "$BOT_PATH" ]; then
+    echo "[INFO] Removing existing bot folder..."
+    rm -rf "$BOT_PATH"
 fi
+mkdir -p "$BOT_PATH"
+echo "[OK] Created bot folder at: $BOT_PATH"
 
-# --- STEP 5 : Create or recreate venv and install dependencies ---
-echo "[INFO] Preparing virtual environment..."
-cd "$BOT_PATH"
-
-if [ -d "venv" ]; then
-    echo "[INFO] Old venv found, deleting..."
-    rm -rf venv
-fi
-
-mkdir -p venv
-VENV_DIR="$PWD/venv"
-echo "[OK] Folder ready: $VENV_DIR"
-
-# Install system dependencies
+# === Step 2: Dependencies ===
 echo "[INFO] Installing system dependencies..."
-sudo apt-get update -y || true
-sudo apt-get install -y python3 python3-venv python3-pip git curl unzip || true
+sudo apt update -y
 
-# Create and activate venv
-echo "[INFO] Creating Python virtual environment..."
-python3 -m venv "$VENV_DIR"
-source "$VENV_DIR/bin/activate"
+sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
+    libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
+    libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
+    libharfbuzz-dev libfribidi-dev libxcb1-dev || true
 
-python -m pip install --upgrade pip setuptools wheel
+# Try installing "t64" versions safely
+for pkg in libasound2t64 libatk-bridge2.0-0t64; do
+    if apt-cache show "$pkg" >/dev/null 2>&1; then
+        sudo apt install -y "$pkg"
+    fi
+done
 
-echo "[INFO] Installing Python packages..."
-pip install firebase_admin gspread selenium google-auth google-auth-oauthlib \
-    google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client
-
-# Create phone number file
-REPORT_FILE="$VENV_DIR/report number"
-echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file: '$REPORT_FILE'"
-
-# --- STEP 4 : Download facebook birthday wisher script ---
-cd "$BOT_PATH"
-echo "[INFO] Downloading main bot script..."
-curl -L -o "facebook birthday wisher.py" "$FACEBOOK_BOT_URL"
-
-if [ -f "facebook birthday wisher.py" ]; then
-    echo "[OK] Bot script downloaded successfully."
+# === Step 3: Chromium & Chromedriver ===
+echo "[INFO] Installing Chromium and Chromedriver..."
+if [[ "$ARCH" == "armv7l" ]]; then
+    echo "[INFO] 32-bit Raspberry Pi detected."
+    sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver
 else
-    echo "[ERROR] Bot script download failed!"
+    echo "[INFO] 64-bit Raspberry Pi detected."
+    sudo apt install -y chromium chromium-driver
 fi
 
-echo
+CHROME_BIN=$(command -v chromium-browser || command -v chromium)
+CHROMEDRIVER_BIN=$(command -v chromedriver || command -v chromium-chromedriver)
+
+if [ -z "$CHROME_BIN" ] || [ -z "$CHROMEDRIVER_BIN" ]; then
+    echo "[ERROR] Chromium or Chromedriver not found after install!"
+    exit 1
+fi
+sudo chmod +x "$CHROMEDRIVER_BIN"
+
+echo "[OK] Chromium: $($CHROME_BIN --version)"
+echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version)"
+
+# === Step 4: Python Virtual Environment ===
+echo "[INFO] Creating Python virtual environment..."
+python3 -m venv "$VENV_PATH"
+source "$VENV_PATH/bin/activate"
+
+pip install --upgrade pip setuptools wheel
+pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
+    google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client \
+    python-dateutil
+
+# === Step 5: Create Phone Number File ===
+echo "$PHONE_NUMBER" > "$REPORT_FILE"
+echo "[OK] Created phone number file: $REPORT_FILE"
+
+# === Step 6: Download Python Script ===
+echo "[INFO] Downloading bot script..."
+cd "$BOT_PATH"
+git clone "$GITHUB_REPO" temp_repo
+cp -r temp_repo/$BOT_SUBPATH/*.py "$BOT_PATH" || true
+rm -rf temp_repo
+find "$BOT_PATH" -type f \( -name "*.sh" -o -name "README.md" \) -delete
+
+# === Step 7: Update Python Paths ===
+PY_FILE="$BOT_PATH/Facebook birthday wisher.py"
+if [ -f "$PY_FILE" ]; then
+    sed -i "s|CHROMEDRIVER_PATH *= *['\"].*['\"]|CHROMEDRIVER_PATH = \"$CHROMEDRIVER_BIN\"|" "$PY_FILE"
+    sed -i "s|CHROME_PROFILE_PATH *= *os.path.join(USER_HOME, .*|CHROME_PROFILE_PATH = os.path.join(USER_HOME, \".config\", \"chromium\")|" "$PY_FILE"
+    echo "[OK] Updated Chrome driver path in script."
+fi
+
+# === Step 8: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ INSTALLATION COMPLETE!"
-echo "📁 Bot Folder: $BOT_PATH"
-echo "📦 Virtual Environment: $VENV_DIR"
-echo "🐍 To activate venv, run:"
-echo "   source \"$VENV_DIR/bin/activate\""
-echo "🚀 To run your bot:"
-echo "   python3 \"facebook birthday wisher.py\""
+echo "📁 Bot Path: $BOT_PATH"
+echo "📂 Virtual Environment: $VENV_PATH"
+echo "📄 Phone number file: $REPORT_FILE"
+echo
+echo "🌐 Chromium: $($CHROME_BIN --version)"
+echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
+echo
+echo "💡 To start manually:"
+echo "  cd \"$BOT_PATH\""
+echo "  source \"$VENV_PATH/bin/activate\""
+echo "  python3 'Facebook birthday wisher.py'"
 echo "------------------------------------------------------------"
-echo "[INFO] Detected OS: $OS | Arch: $ARCH"
