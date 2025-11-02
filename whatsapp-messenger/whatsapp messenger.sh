@@ -14,7 +14,7 @@ VENV_PATH="$BOT_PATH/venv"
 REPORT_FILE="$VENV_PATH/report number"
 PHONE_NUMBER="9940585709"
 GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
-BOT_SUBPATH="whatsapp-birthday-wisher"
+BOT_SUBPATH="whatsapp-messenger"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
