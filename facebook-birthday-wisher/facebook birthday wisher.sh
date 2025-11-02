@@ -8,7 +8,7 @@ echo "------------------------------------------------------------"
 # === Variables ===
 HOME_DIR="$HOME"
 BOTS_DIR="$HOME_DIR/bots"
-BOT_NAME="Facebook birthday wisher"
+BOT_NAME="facebook birthday wisher"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
 REPORT_FILE="$VENV_PATH/report number"
