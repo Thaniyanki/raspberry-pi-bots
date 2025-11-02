@@ -1,4 +1,3 @@
-# Facebook Birthday Wisher Python Script
 # ================================
 # CONFIGURATION SECTION
 # ================================
@@ -25,7 +24,7 @@ import traceback
 from urllib3.exceptions import ReadTimeoutError
 
 # ================================
-# FLEXIBLE CONFIGURATION - AUTO-DETECTED
+# FLEXIBLE CONFIGURATION
 # ================================
 # Auto-detect user home directory
 USER_HOME = os.path.expanduser("~")
