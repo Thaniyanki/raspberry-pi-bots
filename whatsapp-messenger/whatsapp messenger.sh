@@ -11,7 +11,7 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="whatsapp messenger"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-REPORT_FILE="$VENV_PATH/report number"
+REPORT_FILE="$BOT_PATH/report number"
 PHONE_NUMBER="9940585709"
 GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
 BOT_SUBPATH="whatsapp-messenger"
@@ -32,13 +32,19 @@ echo "[OK] Created bot folder at: $BOT_PATH"
 # === Step 2: Dependencies ===
 echo "[INFO] Installing system dependencies..."
 sudo apt update -y
+sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential
 
-sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
-    libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
-    libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
-    libharfbuzz-dev libfribidi-dev libxcb1-dev || true
+# If desktop version (not Lite), install GUI and browser libs
+if command -v startx >/dev/null 2>&1; then
+    echo "[INFO] Desktop environment detected — installing X11 and multimedia libs..."
+    sudo apt install -y x11-utils libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 \
+        libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev \
+        libtiff-dev libwebp-dev tk-dev libharfbuzz-dev libfribidi-dev libxcb1-dev
+else
+    echo "[INFO] Lite environment detected — skipping GUI-related packages."
+fi
 
-# Try installing "t64" versions safely
+# Try installing "t64" variants safely
 for pkg in libasound2t64 libatk-bridge2.0-0t64; do
     if apt-cache show "$pkg" >/dev/null 2>&1; then
         sudo apt install -y "$pkg"
@@ -69,6 +75,10 @@ echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version)"
 
 # === Step 4: Python Virtual Environment ===
 echo "[INFO] Creating Python virtual environment..."
+if [ -d "$VENV_PATH" ]; then
+    echo "[INFO] Removing old virtual environment..."
+    rm -rf "$VENV_PATH"
+fi
 python3 -m venv "$VENV_PATH"
 source "$VENV_PATH/bin/activate"
 
@@ -80,7 +90,7 @@ pip install --no-cache-dir firebase_admin gspread selenium google-auth google-au
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
 echo "[OK] Created phone number file: $REPORT_FILE"
 
-# === Step 6: Download Python Script ===
+# === Step 6: Download Bot Python Script ===
 echo "[INFO] Downloading bot script..."
 cd "$BOT_PATH"
 git clone "$GITHUB_REPO" temp_repo
@@ -112,7 +122,7 @@ mkdir -p "$BOT_PATH/Document/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Audio/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Video/$CURRENT_DATE"
 
-# Create Caption.txt files (except for Audio folder)
+# Create Caption.txt (except Audio)
 echo "Add your caption here" > "$BOT_PATH/Image/$CURRENT_DATE/Caption.txt"
 echo "Add your caption here" > "$BOT_PATH/Document/$CURRENT_DATE/Caption.txt"
 echo "Add your caption here" > "$BOT_PATH/Video/$CURRENT_DATE/Caption.txt"
