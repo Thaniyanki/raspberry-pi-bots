@@ -11,7 +11,7 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="whatsapp messenger"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-REPORT_FILE="$BOT_PATH/report number"
+REPORT_FILE="$VENV_PATH/report number"   # ✅ moved inside venv folder
 PHONE_NUMBER="9940585709"
 GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
 BOT_SUBPATH="whatsapp-messenger"
@@ -86,9 +86,9 @@ pip install --upgrade pip setuptools wheel
 pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client
 
-# === Step 5: Create Phone Number File ===
+# === Step 5: Create Phone Number File inside venv ===
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file: $REPORT_FILE"
+echo "[OK] Created phone number file inside virtual environment: $REPORT_FILE"
 
 # === Step 6: Download Bot Python Script ===
 echo "[INFO] Downloading bot script..."
