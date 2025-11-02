@@ -33,7 +33,7 @@ BASE_USER = os.path.basename(USER_HOME)
 
 # Base directory structure - Auto-detected
 BASE_DIR = os.path.join(USER_HOME, "bots")
-FACEBOOK_BIRTHDAY_DIR = os.path.join(BASE_DIR, "Facebook birthday wisher")
+FACEBOOK_BIRTHDAY_DIR = os.path.join(BASE_DIR, "facebook birthday wisher")
 
 # All file and directory paths - CENTRALIZED
 PATHS = {
