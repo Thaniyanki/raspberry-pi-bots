@@ -116,11 +116,11 @@ mkdir -p "$BOT_PATH/Document"
 mkdir -p "$BOT_PATH/Audio"
 mkdir -p "$BOT_PATH/Video"
 
-# ✅ Create Caption.txt in main folders
-echo "Add your caption here" > "$BOT_PATH/Image/Caption.txt"
-echo "Add your caption here" > "$BOT_PATH/Document/Caption.txt"
-echo "Add your caption here" > "$BOT_PATH/Audio/Caption.txt"
-echo "Add your caption here" > "$BOT_PATH/Video/Caption.txt"
+# ✅ Create empty Caption.txt in main folders
+touch "$BOT_PATH/Image/Caption.txt"
+touch "$BOT_PATH/Document/Caption.txt"
+touch "$BOT_PATH/Audio/Caption.txt"
+touch "$BOT_PATH/Video/Caption.txt"
 
 # Create date subfolders
 mkdir -p "$BOT_PATH/Image/$CURRENT_DATE"
@@ -128,11 +128,11 @@ mkdir -p "$BOT_PATH/Document/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Audio/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Video/$CURRENT_DATE"
 
-# ✅ Create Caption.txt in date subfolders
-echo "Add your caption here" > "$BOT_PATH/Image/$CURRENT_DATE/Caption.txt"
-echo "Add your caption here" > "$BOT_PATH/Document/$CURRENT_DATE/Caption.txt"
-echo "Add your caption here" > "$BOT_PATH/Audio/$CURRENT_DATE/Caption.txt"
-echo "Add your caption here" > "$BOT_PATH/Video/$CURRENT_DATE/Caption.txt"
+# ✅ Create empty Caption.txt in date subfolders
+touch "$BOT_PATH/Image/$CURRENT_DATE/Caption.txt"
+touch "$BOT_PATH/Document/$CURRENT_DATE/Caption.txt"
+touch "$BOT_PATH/Audio/$CURRENT_DATE/Caption.txt"
+touch "$BOT_PATH/Video/$CURRENT_DATE/Caption.txt"
 
 echo "[OK] Created folder structure with date: $CURRENT_DATE"
 
