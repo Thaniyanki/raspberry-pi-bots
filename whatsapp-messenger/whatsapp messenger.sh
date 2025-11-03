@@ -116,15 +116,22 @@ mkdir -p "$BOT_PATH/Document"
 mkdir -p "$BOT_PATH/Audio"
 mkdir -p "$BOT_PATH/Video"
 
+# ✅ Create Caption.txt in main folders
+echo "Add your caption here" > "$BOT_PATH/Image/Caption.txt"
+echo "Add your caption here" > "$BOT_PATH/Document/Caption.txt"
+echo "Add your caption here" > "$BOT_PATH/Audio/Caption.txt"
+echo "Add your caption here" > "$BOT_PATH/Video/Caption.txt"
+
 # Create date subfolders
 mkdir -p "$BOT_PATH/Image/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Document/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Audio/$CURRENT_DATE"
 mkdir -p "$BOT_PATH/Video/$CURRENT_DATE"
 
-# Create Caption.txt (except Audio)
+# ✅ Create Caption.txt in date subfolders
 echo "Add your caption here" > "$BOT_PATH/Image/$CURRENT_DATE/Caption.txt"
 echo "Add your caption here" > "$BOT_PATH/Document/$CURRENT_DATE/Caption.txt"
+echo "Add your caption here" > "$BOT_PATH/Audio/$CURRENT_DATE/Caption.txt"
 echo "Add your caption here" > "$BOT_PATH/Video/$CURRENT_DATE/Caption.txt"
 
 echo "[OK] Created folder structure with date: $CURRENT_DATE"
@@ -137,9 +144,13 @@ echo "📂 Virtual Environment: $VENV_PATH"
 echo "📄 Phone number file: $REPORT_FILE"
 echo
 echo "📁 Folder Structure Created:"
+echo "  ├── Image/Caption.txt"
+echo "  ├── Document/Caption.txt"
+echo "  ├── Audio/Caption.txt"
+echo "  ├── Video/Caption.txt"
 echo "  ├── Image/$CURRENT_DATE/Caption.txt"
 echo "  ├── Document/$CURRENT_DATE/Caption.txt"
-echo "  ├── Audio/$CURRENT_DATE/"
+echo "  ├── Audio/$CURRENT_DATE/Caption.txt"
 echo "  └── Video/$CURRENT_DATE/Caption.txt"
 echo
 echo "🌐 Chromium: $($CHROME_BIN --version)"
