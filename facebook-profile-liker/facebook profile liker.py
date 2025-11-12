@@ -21,35 +21,76 @@ from selenium.webdriver.common.action_chains import ActionChains
 from PIL import Image
 
 # ================================
-# CONFIGURATION - AUTO DETECTED
+# CONFIGURATION SECTION
 # ================================
 
-# Auto-detect Raspberry Pi username and directories
-BASE_USER = os.path.expanduser("~").split('/')[-1]  # Extract username from home path
-USER_HOME = os.path.expanduser("~")  # Full home directory path
+# Auto-detect user home directory
+USER_HOME = os.path.expanduser("~")
+# Extract username from home directory path
+BASE_USER = os.path.basename(USER_HOME)
 
-# Base directories - Auto-detected
+# Base directory structure - Auto-detected
 BASE_DIR = os.path.join(USER_HOME, "bots")
 CURRENT_BOT_DIR = os.path.join(BASE_DIR, "facebook profile liker")
 
-# File paths - Auto-detected
+# All file and directory paths - CENTRALIZED
 PATHS = {
+    # Firebase
     "firebase_credentials": os.path.join(CURRENT_BOT_DIR, "venv", "database access key.json"),
-    "chrome_profile": os.path.join(USER_HOME, ".config", "chromium"),
-    "chromedriver": "/usr/bin/chromedriver",
+    
+    # Google Sheets
+    "google_sheets_credentials": os.path.join(CURRENT_BOT_DIR, "venv", "spread sheet access key.json"),
+    
+    # Data files
     "current_friends_file": os.path.join(CURRENT_BOT_DIR, "Current Friends"),
-    "spreadsheet_key": os.path.join(CURRENT_BOT_DIR, "venv", "spread sheet access key.json"),
     "waiting_for_proceed_file": os.path.join(CURRENT_BOT_DIR, "Waiting for proceed"),
-    "report_number_file": os.path.join(CURRENT_BOT_DIR, "venv", "Report number")
+    "report_number_file": os.path.join(CURRENT_BOT_DIR, "venv", "report number"),
+    
+    # Browser
+    "chrome_profile": os.path.join(USER_HOME, ".config", "chromium"),
+    "chromedriver": "/usr/bin/chromedriver"  # System path
 }
-
-# Global variables
-firebase_initialized = False
-driver = None
 
 # ================================
 # INITIALIZATION FUNCTIONS
 # ================================
+
+def create_required_directories():
+    """Create all required directories if they don't exist"""
+    directories = [
+        os.path.dirname(PATHS["current_friends_file"]),
+        os.path.dirname(PATHS["waiting_for_proceed_file"]),
+        os.path.dirname(PATHS["firebase_credentials"]),
+        os.path.dirname(PATHS["google_sheets_credentials"])
+    ]
+    
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+        print(f"✅ Ensured directory exists: {directory}")
+
+def verify_required_files():
+    """Check if required files exist"""
+    required_files = [
+        PATHS["firebase_credentials"],
+        PATHS["google_sheets_credentials"], 
+        PATHS["report_number_file"]
+    ]
+    
+    for file_path in required_files:
+        if not os.path.exists(file_path):
+            print(f"❌ Required file not found: {file_path}")
+            return False
+    
+    print("✅ All required files verified")
+    return True
+
+# ================================
+# ORIGINAL FUNCTIONS (MODIFIED FOR CUSTOM PATHS)
+# ================================
+
+# Global variables
+firebase_initialized = False
+driver = None
 
 def initialize_firebase():
     """Initialize Firebase connection"""
@@ -635,11 +676,11 @@ def step12_upload_to_google_sheets():
             ]
             
             # Check if credentials file exists
-            if not os.path.exists(PATHS["spreadsheet_key"]):
-                raise Exception(f"Credentials file not found: {PATHS['spreadsheet_key']}")
+            if not os.path.exists(PATHS["google_sheets_credentials"]):
+                raise Exception(f"Credentials file not found: {PATHS['google_sheets_credentials']}")
             
             # Authenticate and create client
-            creds = Credentials.from_service_account_file(PATHS["spreadsheet_key"], scopes=scope)
+            creds = Credentials.from_service_account_file(PATHS["google_sheets_credentials"], scopes=scope)
             client = gspread.authorize(creds)
             return client
         except Exception as e:
@@ -731,12 +772,12 @@ def step12_upload_to_google_sheets():
             if has_valid_link:
                 # Prepare row data with Remark
                 row_data = [
-                    current_datetime,  # Date-Time
-                    serial_number,     # Serial Number
-                    profile_link,      # Profile Link
+                    current_datetime,      # Date-Time
+                    serial_number,         # Serial Number
+                    profile_link,          # Profile Link
                     profile_picture_link,  # Profile Picture Link
-                    raw_picture_id,    # Raw Picture ID
-                    remark             # Remark
+                    raw_picture_id,        # Raw Picture ID
+                    remark                 # Remark
                 ]
                 
                 active_friends.append(row_data)
@@ -920,11 +961,11 @@ def step13_compare_and_create_waiting_file():
             ]
             
             # Check if credentials file exists
-            if not os.path.exists(PATHS["spreadsheet_key"]):
-                raise Exception(f"Credentials file not found: {PATHS['spreadsheet_key']}")
+            if not os.path.exists(PATHS["google_sheets_credentials"]):
+                raise Exception(f"Credentials file not found: {PATHS['google_sheets_credentials']}")
             
             # Authenticate and create client
-            creds = Credentials.from_service_account_file(PATHS["spreadsheet_key"], scopes=scope)
+            creds = Credentials.from_service_account_file(PATHS["google_sheets_credentials"], scopes=scope)
             client = gspread.authorize(creds)
             return client
         except Exception as e:
@@ -2586,10 +2627,10 @@ def step19_upload_to_report_and_whatsapp():
                     "https://www.googleapis.com/auth/drive"
                 ]
                 
-                if not os.path.exists(PATHS["spreadsheet_key"]):
-                    raise Exception(f"Credentials file not found: {PATHS['spreadsheet_key']}")
+                if not os.path.exists(PATHS["google_sheets_credentials"]):
+                    raise Exception(f"Credentials file not found: {PATHS['google_sheets_credentials']}")
                 
-                creds = Credentials.from_service_account_file(PATHS["spreadsheet_key"], scopes=scope)
+                creds = Credentials.from_service_account_file(PATHS["google_sheets_credentials"], scopes=scope)
                 client = gspread.authorize(creds)
                 return client
             except Exception as e:
@@ -3092,6 +3133,14 @@ def main():
     print("=" * 60)
     print("🚀 STARTING FACEBOOK PROFILE LIKER BOT")
     print("=" * 60)
+    
+    # Create required directories first
+    create_required_directories()
+    
+    # Verify required files exist
+    if not verify_required_files():
+        print("❌ Required files missing. Please check configuration.")
+        sys.exit(1)
     
     # Initialize Firebase
     if not initialize_firebase():
