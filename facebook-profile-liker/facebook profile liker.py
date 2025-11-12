@@ -29,12 +29,12 @@ BASE_USER = os.path.expanduser("~").split('/')[-1]  # Extract username from home
 USER_HOME = os.path.expanduser("~")  # Full home directory path
 
 # Base directories - Auto-detected
-BASE_DIR = os.path.join(USER_HOME, "Bots")
-CURRENT_BOT_DIR = os.path.join(BASE_DIR, "Facebook profile liker")
+BASE_DIR = os.path.join(USER_HOME, "bots")
+CURRENT_BOT_DIR = os.path.join(BASE_DIR, "facebook profile liker")
 
 # File paths - Auto-detected
 PATHS = {
-    "firebase_credentials": os.path.join(BASE_DIR, "database access key.json"),
+    "firebase_credentials": os.path.join(CURRENT_BOT_DIR, "venv", "database access key.json"),
     "chrome_profile": os.path.join(USER_HOME, ".config", "chromium"),
     "chromedriver": "/usr/bin/chromedriver",
     "current_friends_file": os.path.join(CURRENT_BOT_DIR, "Current Friends"),
