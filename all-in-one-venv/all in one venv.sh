@@ -2,14 +2,13 @@
 set -e
 
 echo "================================================================"
-echo "🚀 AUTO-DETECT ALL BOTS VENV SETUP (Raspberry Pi Universal)"
+echo "🚀 TRUE AUTO-DETECT ALL BOTS VENV SETUP"
 echo "================================================================"
 
 # === Variables ===
 HOME_DIR="$HOME"
 BOTS_DIR="$HOME_DIR/bots"
 GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots"
-GITHUB_API="https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents"
 GITHUB_RAW="https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
 PHONE_NUMBER="9940585709"
 
@@ -17,55 +16,30 @@ OS=$(uname -s)
 ARCH=$(uname -m)
 echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
 
-# === Check required commands ===
-check_commands() {
-    local commands=("curl" "git" "python3" "pip3")
-    for cmd in "${commands[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
-            echo "[ERROR] Required command not found: $cmd"
-            exit 1
-        fi
-    done
-}
-
-# === Function to get all folders from GitHub repo ===
+# === Function to get ALL folders from GitHub repo ===
 get_all_folders() {
-    echo "[INFO] Scanning GitHub repository for bot folders..."
+    echo "[INFO] Scanning GitHub repository for ALL folders..."
     
-    local response
-    response=$(curl -s -f "$GITHUB_API" || {
-        echo "[ERROR] Failed to fetch repository contents from GitHub API"
-        exit 1
-    })
-    
-    echo "$response" | \
-    grep '"name":' | \
-    grep -v '\.' | \
-    cut -d'"' -f4 | \
-    while read -r folder; do
-        # Skip the all-in-one-venv folder to avoid recursion
-        if [[ "$folder" == "all-in-one-venv" ]]; then
-            continue
-        fi
-        
-        # Check if folder contains any .sh files
-        local folder_content
-        folder_content=$(curl -s -f "$GITHUB_API/$folder" 2>/dev/null || echo "")
-        if echo "$folder_content" | grep -q '\.sh";'; then
-            echo "$folder"
-        fi
-    done
+    # Get the main page of the GitHub repo and extract folder names
+    curl -s "$GITHUB_REPO" | \
+    grep -o 'title="[^"]*"' | \
+    cut -d'"' -f2 | \
+    grep -v '^\.' | \
+    grep -v '^all-in-one-venv$' | \
+    sort -u
 }
 
-# === Function to get .sh files from a folder ===
-get_sh_files_from_folder() {
+# === Function to check if folder has venv.sh ===
+check_folder_has_venv() {
     local folder="$1"
-    local response
-    response=$(curl -s -f "$GITHUB_API/$folder" 2>/dev/null || echo "")
+    local venv_url="$GITHUB_RAW/$folder/venv.sh"
     
-    echo "$response" | \
-    grep '"name".*\.sh"' | \
-    cut -d'"' -f4
+    # Check if venv.sh exists by making a HEAD request
+    if curl -s --head "$venv_url" | head -n1 | grep -q "200"; then
+        echo "true"
+    else
+        echo "false"
+    fi
 }
 
 # === Function to install system dependencies ===
@@ -112,29 +86,9 @@ install_chromium() {
     return 0
 }
 
-# === Function to run a shell script ===
-run_bot_script() {
-    local folder="$1"
-    local script="$2"
-    local script_url="$GITHUB_RAW/$folder/$script"
-    
-    echo ""
-    echo "🔧 RUNNING: $folder/$script"
-    echo "----------------------------------------"
-    
-    # Download and run the script with error handling
-    if curl -sL "$script_url" | bash; then
-        echo "✅ SUCCESS: $folder/$script"
-        return 0
-    else
-        echo "❌ FAILED: $folder/$script"
-        return 1
-    fi
-}
-
 # === Function to setup bot environment ===
 setup_bot_environment() {
-    local folder="$1"
+    local bot_folder="$1"
     local bot_display_name="$2"
     local bot_path="$BOTS_DIR/$bot_display_name"
     local venv_path="$bot_path/venv"
@@ -174,11 +128,64 @@ setup_bot_environment() {
     return 0
 }
 
+# === Function to run bot setup script ===
+run_bot_setup() {
+    local bot_folder="$1"
+    local bot_display_name="$2"
+    
+    echo ""
+    echo "🚀 SETTING UP: $bot_display_name"
+    echo "========================================"
+    
+    # Try to run the venv.sh script for this bot
+    local setup_script_url="$GITHUB_RAW/$bot_folder/venv.sh"
+    
+    # Check if the setup script exists
+    if curl -s --head "$setup_script_url" | head -n1 | grep -q "200"; then
+        echo "[INFO] Found setup script: $setup_script_url"
+        
+        # Setup environment first
+        setup_bot_environment "$bot_folder" "$bot_display_name"
+        
+        # Run the setup script
+        echo "[INFO] Running setup script..."
+        if bash <(curl -sL "$setup_script_url"); then
+            echo "✅ SUCCESS: $bot_display_name"
+            return 0
+        else
+            echo "❌ FAILED: $bot_display_name"
+            return 1
+        fi
+    else
+        echo "[WARNING] No setup script found for $bot_display_name"
+        echo "[INFO] Setting up basic environment only..."
+        setup_bot_environment "$bot_folder" "$bot_display_name"
+        return 0
+    fi
+}
+
+# === Function to create folder structure for WhatsApp Messenger ===
+create_whatsapp_folders() {
+    local bot_path="$BOTS_DIR/whatsapp messenger"
+    
+    if [ -d "$bot_path" ]; then
+        echo "[INFO] Creating folder structure for WhatsApp Messenger..."
+        CURRENT_DATE=$(date +"%d-%m-%Y")
+        
+        # Create main folders
+        mkdir -p "$bot_path/Image" "$bot_path/Document" "$bot_path/Audio" "$bot_path/Video"
+        touch "$bot_path/Image/Caption.txt" "$bot_path/Document/Caption.txt" "$bot_path/Audio/Caption.txt" "$bot_path/Video/Caption.txt"
+        
+        # Create date subfolders
+        mkdir -p "$bot_path/Image/$CURRENT_DATE" "$bot_path/Document/$CURRENT_DATE" "$bot_path/Audio/$CURRENT_DATE" "$bot_path/Video/$CURRENT_DATE"
+        touch "$bot_path/Image/$CURRENT_DATE/Caption.txt" "$bot_path/Document/$CURRENT_DATE/Caption.txt" "$bot_path/Audio/$CURRENT_DATE/Caption.txt" "$bot_path/Video/$CURRENT_DATE/Caption.txt"
+        
+        echo "[OK] Created folder structure with date: $CURRENT_DATE"
+    fi
+}
+
 # === Main Installation Process ===
 main() {
-    # Check required commands
-    check_commands
-    
     # Create bots directory
     mkdir -p "$BOTS_DIR"
     echo "[OK] Created bots directory: $BOTS_DIR"
@@ -189,65 +196,62 @@ main() {
     # Install Chromium (once for all bots)
     install_chromium
 
-    # Get all folders with .sh files
-    echo "[INFO] Discovering bots in repository..."
-    folders_with_sh=$(get_all_folders)
+    # Get ALL folders from GitHub
+    echo "[INFO] Discovering ALL folders in repository..."
+    ALL_FOLDERS=$(get_all_folders)
     
-    if [ -z "$folders_with_sh" ]; then
-        echo "[WARNING] No bot folders found in repository!"
-        echo "[INFO] Please check your GitHub repository structure"
+    if [ -z "$ALL_FOLDERS" ]; then
+        echo "[ERROR] Could not discover any folders from GitHub!"
         exit 1
     fi
 
-    echo "[INFO] Found folders with .sh files:"
-    echo "$folders_with_sh" | while read -r folder; do
+    echo "[INFO] Found folders in repository:"
+    echo "$ALL_FOLDERS" | while read -r folder; do
         echo "   📁 $folder"
     done
 
-    # Process each folder
+    # Check each folder for venv.sh
+    echo ""
+    echo "[INFO] Checking which folders have venv.sh setup scripts..."
+    BOTS_TO_SETUP=""
+    
+    while read -r folder; do
+        if [ "$(check_folder_has_venv "$folder")" = "true" ]; then
+            echo "   ✅ $folder (has venv.sh)"
+            BOTS_TO_SETUP="${BOTS_TO_SETUP}$folder"$'\n'
+        else
+            echo "   ❌ $folder (no venv.sh)"
+        fi
+    done <<< "$ALL_FOLDERS"
+
+    if [ -z "$BOTS_TO_SETUP" ]; then
+        echo "[ERROR] No bots with venv.sh found!"
+        exit 1
+    fi
+
+    echo ""
+    echo "[INFO] Starting setup for bots with venv.sh..."
+    
     local success_count=0
     local total_count=0
     
-    while IFS= read -r folder; do
+    # Process each bot that has venv.sh
+    while read -r bot_folder; do
+        [ -z "$bot_folder" ] && continue
         ((total_count++))
+        
+        # Convert folder name to display name (replace hyphens with spaces)
+        bot_display_name=$(echo "$bot_folder" | sed 's/-/ /g')
+        
+        if run_bot_setup "$bot_folder" "$bot_display_name"; then
+            ((success_count++))
+        fi
+        
         echo ""
-        echo "📦 PROCESSING FOLDER: $folder"
-        echo "========================================"
-        
-        # Get all .sh files in this folder
-        sh_files=$(get_sh_files_from_folder "$folder")
-        
-        if [ -z "$sh_files" ]; then
-            echo "[INFO] No .sh files found in $folder, skipping..."
-            continue
-        fi
+    done <<< "$BOTS_TO_SETUP"
 
-        echo "[INFO] Found .sh files in $folder:"
-        echo "$sh_files" | while read -r script; do
-            echo "   📜 $script"
-        done
-
-        # Convert folder name to display name (remove hyphens)
-        bot_display_name=$(echo "$folder" | sed 's/-/ /g')
-        
-        # Setup environment first
-        if setup_bot_environment "$folder" "$bot_display_name"; then
-            # Run each .sh file
-            while IFS= read -r script; do
-                # Skip scripts that might cause issues
-                if [[ "$script" == *"all in one venv"* ]] || [[ "$script" == *"setup.sh"* ]]; then
-                    echo "[INFO] Skipping script: $script"
-                    continue
-                fi
-                
-                if run_bot_script "$folder" "$script"; then
-                    ((success_count++))
-                fi
-            done <<< "$sh_files"
-        fi
-        
-        echo "✅ COMPLETED FOLDER: $folder"
-    done <<< "$folders_with_sh"
+    # Create special folder structure for WhatsApp Messenger
+    create_whatsapp_folders
 
     # Final Summary
     echo ""
@@ -257,14 +261,19 @@ main() {
     echo "📁 Bots Directory: $BOTS_DIR"
     echo ""
     echo "📊 SUMMARY:"
-    echo "   Total folders processed: $total_count"
-    echo "   Successful scripts: $success_count"
+    echo "   Total folders scanned: $(echo "$ALL_FOLDERS" | wc -l)"
+    echo "   Bots with venv.sh: $total_count"
+    echo "   Successful setups: $success_count"
     echo ""
-    echo "🤖 PROCESSED FOLDERS:"
-    echo "$folders_with_sh" | while read -r folder; do
-        bot_display_name=$(echo "$folder" | sed 's/-/ /g')
+    echo "🤖 AUTO-DETECTED BOTS:"
+    while read -r bot_folder; do
+        [ -z "$bot_folder" ] && continue
+        bot_display_name=$(echo "$bot_folder" | sed 's/-/ /g')
         echo "   ✅ $bot_display_name"
-    done
+    done <<< "$BOTS_TO_SETUP"
+    echo ""
+    echo "🌐 Chromium: $(command -v chromium-browser || command -v chromium | xargs --version)"
+    echo "🔧 Chromedriver: $(command -v chromedriver || command -v chromium-chromedriver | xargs --version)"
     echo ""
     echo "💡 All detected bots are ready!"
     echo "================================================================"
