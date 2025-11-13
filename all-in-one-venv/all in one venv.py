@@ -37,15 +37,24 @@ class AllInOneVenvSetup:
     def print_info(self, message):
         print(f"{self.BLUE}ℹ️  {message}{self.ENDC}")
 
-    def show_progress(self, folder_name, stop_event):
+    def show_progress(self, folder_name, stop_event, attempt=None):
         """Show progress dots while installation is running"""
         dots = 0
+        start_time = time.time()
+        
         while not stop_event.is_set():
             dots = (dots + 1) % 4
             progress = "." * dots + " " * (3 - dots)
-            print(f"\r{self.BLUE}🔄 Installing {folder_name} {progress}{self.ENDC}", end="", flush=True)
+            elapsed = int(time.time() - start_time)
+            
+            if attempt:
+                status = f"🔄 Attempt {attempt}: Installing {folder_name} {progress} ({elapsed}s)"
+            else:
+                status = f"🔄 Installing {folder_name} {progress} ({elapsed}s)"
+                
+            print(f"\r{self.BLUE}{status}{self.ENDC}", end="", flush=True)
             time.sleep(1)
-        print("\r" + " " * 50 + "\r", end="", flush=True)  # Clear line
+        print("\r" + " " * 80 + "\r", end="", flush=True)  # Clear line
 
     def check_and_install_python(self):
         """Check if Python3 is installed and install if missing"""
@@ -90,7 +99,7 @@ class AllInOneVenvSetup:
                 [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '--break-system-packages'],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout for pip upgrade
+                timeout=300
             )
             
             if result.returncode == 0:
@@ -147,99 +156,107 @@ class AllInOneVenvSetup:
         except:
             return False
 
-    def run_venv_script(self, folder_name):
-        """Run the venv.sh script from a folder with LIVE OUTPUT and longer timeout"""
+    def run_venv_script_with_retry(self, folder_name, max_attempts=9999):
+        """Run the venv.sh script with UNLIMITED retries"""
         script_url = f"{self.github_raw}/{folder_name}/venv.sh"
         display_name = folder_name.replace('-', ' ')
         
         self.print_info(f"Setting up: {display_name}")
-        self.print_warning("This may take 15-20 minutes on Raspberry Pi. Please be patient...")
+        self.print_warning("🔄 UNLIMITED RETRY MODE: Will keep trying until successful!")
         
-        # Create a temporary script file to run
-        temp_script = f"/tmp/venv_{folder_name}.sh"
-        
-        try:
-            # Download the script first
-            self.print_info("Downloading script...")
-            response = requests.get(script_url, timeout=30)
-            if response.status_code != 200:
-                self.print_error(f"Failed to download script from: {script_url}")
-                return False
+        attempt = 1
+        while attempt <= max_attempts:
+            self.print_header(f"Attempt {attempt} for: {display_name}")
             
-            # Save to temporary file
-            with open(temp_script, 'w') as f:
-                f.write(response.text)
+            # Create a temporary script file to run
+            temp_script = f"/tmp/venv_{folder_name}.sh"
             
-            # Make it executable
-            subprocess.run(['chmod', '+x', temp_script], check=True)
-            
-            # Set environment variables to help with installation
-            env = os.environ.copy()
-            env['PIP_DEFAULT_TIMEOUT'] = '120'  # 2 minute timeout for pip
-            env['PIP_RETRIES'] = '5'  # More retries
-            env['DEBIAN_FRONTEND'] = 'noninteractive'  # Non-interactive apt
-            
-            self.print_info("Running installation script with LIVE OUTPUT...")
-            self.print_info("You will see all installation progress below:")
-            print("-" * 50)
-            
-            # Start progress indicator
-            stop_progress = threading.Event()
-            progress_thread = threading.Thread(target=self.show_progress, args=(display_name, stop_progress))
-            progress_thread.start()
-            
-            # Run the script with MUCH longer timeout (30 minutes)
-            result = subprocess.run(
-                [temp_script],
-                shell=True,
-                executable="/bin/bash",
-                timeout=1800,  # 30 minute timeout for slow Raspberry Pi
-                env=env
-                # NO capture_output - this shows live output!
-            )
-            
-            # Stop progress indicator
-            stop_progress.set()
-            progress_thread.join()
-            
-            # Clean up temp file
-            if os.path.exists(temp_script):
-                os.remove(temp_script)
-            
-            print("-" * 50)
-            
-            if result.returncode == 0:
-                self.print_success(f"Completed: {display_name}")
-                return True
-            else:
-                self.print_error(f"Failed: {display_name} (exit code: {result.returncode})")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            # Stop progress indicator
-            stop_progress.set()
-            progress_thread.join()
-            
-            self.print_error(f"Timeout: {display_name} took too long to complete")
-            self.print_warning("This is normal on Raspberry Pi. Try running the bot individually later.")
-            return False
-        except Exception as e:
-            # Stop progress indicator if it exists
             try:
+                # Download the script first
+                self.print_info("Downloading script...")
+                response = requests.get(script_url, timeout=30)
+                if response.status_code != 200:
+                    self.print_error(f"Failed to download script from: {script_url}")
+                    attempt += 1
+                    time.sleep(10)
+                    continue
+                
+                # Save to temporary file
+                with open(temp_script, 'w') as f:
+                    f.write(response.text)
+                
+                # Make it executable
+                subprocess.run(['chmod', '+x', temp_script], check=True)
+                
+                # Set environment variables to help with installation
+                env = os.environ.copy()
+                env['PIP_DEFAULT_TIMEOUT'] = '300'
+                env['PIP_RETRIES'] = '10'
+                env['DEBIAN_FRONTEND'] = 'noninteractive'
+                
+                self.print_info("Running installation script with LIVE OUTPUT...")
+                self.print_info("You will see all installation progress below:")
+                print("-" * 50)
+                
+                # Start progress indicator
+                stop_progress = threading.Event()
+                progress_thread = threading.Thread(
+                    target=self.show_progress, 
+                    args=(display_name, stop_progress, attempt)
+                )
+                progress_thread.start()
+                
+                # Run the script with NO TIMEOUT
+                result = subprocess.run(
+                    [temp_script],
+                    shell=True,
+                    executable="/bin/bash",
+                    env=env
+                )
+                
+                # Stop progress indicator
                 stop_progress.set()
                 progress_thread.join()
-            except:
-                pass
                 
-            self.print_error(f"Error running {display_name}: {e}")
-            return False
+                # Clean up temp file
+                if os.path.exists(temp_script):
+                    os.remove(temp_script)
+                
+                print("-" * 50)
+                
+                if result.returncode == 0:
+                    self.print_success(f"🎉 SUCCESS on attempt {attempt}: {display_name}")
+                    return True
+                else:
+                    self.print_error(f"❌ Failed on attempt {attempt}: {display_name} (exit code: {result.returncode})")
+                    self.print_warning(f"🔄 Retrying in 30 seconds... (Attempt {attempt + 1})")
+                    
+            except subprocess.TimeoutExpired:
+                stop_progress.set()
+                progress_thread.join()
+                self.print_error(f"⏰ Timeout on attempt {attempt}: {display_name}")
+                self.print_warning(f"🔄 Retrying in 30 seconds... (Attempt {attempt + 1})")
+                
+            except Exception as e:
+                try:
+                    stop_progress.set()
+                    progress_thread.join()
+                except:
+                    pass
+                self.print_error(f"💥 Error on attempt {attempt}: {e}")
+                self.print_warning(f"🔄 Retrying in 30 seconds... (Attempt {attempt + 1})")
+            
+            time.sleep(30)
+            attempt += 1
+        
+        self.print_error(f"🚨 MAXIMUM ATTEMPTS REACHED: Failed to install {display_name} after {max_attempts} attempts")
+        return False
 
     def fix_ssl_issues(self):
         """Try to fix common SSL issues on Raspberry Pi"""
         self.print_info("Attempting to fix SSL issues...")
         
         try:
-            # Update CA certificates
             subprocess.run(['sudo', 'apt-get', 'update'], capture_output=True, timeout=300)
             subprocess.run(['sudo', 'apt-get', 'install', '--reinstall', 'ca-certificates', '-y'], 
                          capture_output=True, timeout=300)
@@ -253,28 +270,24 @@ class AllInOneVenvSetup:
     def main(self):
         """Main setup process"""
         self.print_header("🚀 AUTO-RUN ALL VENV.SH SCRIPTS FROM GITHUB")
-        self.print_warning("Note: This will take 1-2 hours on Raspberry Pi. Be patient!")
+        self.print_warning("♾️  UNLIMITED RETRY MODE: Will keep trying until all bots are installed!")
+        self.print_warning("⏰ This may take several hours on Raspberry Pi. Please be patient!")
         
-        # Step 1: Check and install Python3 if needed
         if not self.check_and_install_python():
             self.print_error("Cannot continue without Python3!")
             sys.exit(1)
         
-        # Step 2: Fix pip issues
         self.fix_pip_issues()
         
-        # Step 3: Check if we need to fix SSL issues
         self.print_info("Checking for SSL issues...")
         self.fix_ssl_issues()
         
-        # Step 4: Get all folders from GitHub
         all_folders = self.get_all_folders_from_github()
         
         if not all_folders:
             self.print_error("No folders found in repository!")
             return
         
-        # Find folders that have venv.sh
         folders_with_venv = []
         
         self.print_info("Checking for venv.sh files in all folders...")
@@ -293,22 +306,19 @@ class AllInOneVenvSetup:
         
         self.print_info(f"Found {len(folders_with_venv)} bots with venv.sh")
         
-        # Run all venv.sh scripts
         success_count = 0
         
         for i, folder in enumerate(folders_with_venv, 1):
             display_name = folder.replace('-', ' ')
             self.print_header(f"Bot {i}/{len(folders_with_venv)}: {display_name}")
             
-            if self.run_venv_script(folder):
+            if self.run_venv_script_with_retry(folder):
                 success_count += 1
             
-            # Add delay between scripts
             if i < len(folders_with_venv):
                 self.print_info("Waiting 15 seconds before next bot...")
                 time.sleep(15)
         
-        # Final summary
         self.print_header("🎉 ALL VENV.SH SCRIPTS EXECUTION COMPLETED!")
         self.print_info(f"Total bots with venv.sh: {len(folders_with_venv)}")
         self.print_info(f"Successful setups: {success_count}")
@@ -323,9 +333,9 @@ class AllInOneVenvSetup:
         if success_count == len(folders_with_venv):
             self.print_success("🎊 All bots installed successfully!")
         elif success_count > 0:
-            self.print_warning("Some bots installed successfully, but some failed (this is normal on Raspberry Pi)")
+            self.print_warning("Some bots installed successfully, but some failed")
         else:
-            self.print_error("All bots failed to install! Try running them individually.")
+            self.print_error("All bots failed to install!")
 
 if __name__ == "__main__":
     setup = AllInOneVenvSetup()
