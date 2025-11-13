@@ -62,30 +62,24 @@ class AllInOneVenvSetup:
             self.print_warning(f"Failed to fetch from GitHub API: {e}")
             return []
 
-    def get_sh_files_from_folder(self, folder_name):
-        """Get all .sh files from a folder"""
-        api_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{folder_name}"
+    def check_venv_sh_exists(self, folder_name):
+        """Check if venv.sh exists in a folder"""
+        venv_url = f"{self.github_raw}/{folder_name}/venv.sh"
         
         try:
-            response = requests.get(api_url, timeout=10)
-            if response.status_code == 200:
-                contents = response.json()
-                sh_files = []
-                
-                for item in contents:
-                    if item['type'] == 'file' and item['name'].endswith('.sh'):
-                        sh_files.append(item['name'])
-                
-                return sh_files
-            return []
+            response = requests.head(venv_url, timeout=5)
+            return response.status_code == 200
         except:
-            return []
+            return False
 
-    def run_sh_script(self, folder_name, script_name):
-        """Run a .sh script from GitHub"""
-        script_url = f"{self.github_raw}/{folder_name}/{script_name}"
+    def run_venv_script(self, folder_name):
+        """Run the venv.sh script from a folder"""
+        script_url = f"{self.github_raw}/{folder_name}/venv.sh"
         
-        self.print_info(f"Running: {folder_name}/{script_name}")
+        # Convert folder name to display name
+        display_name = folder_name.replace('-', ' ')
+        
+        self.print_info(f"Setting up: {display_name}")
         
         # Create the bash command
         bash_command = f'bash <(curl -sL "{script_url}")'
@@ -102,21 +96,21 @@ class AllInOneVenvSetup:
             )
             
             if result.returncode == 0:
-                self.print_success(f"Completed: {folder_name}/{script_name}")
+                self.print_success(f"Completed: {display_name}")
                 return True
             else:
-                self.print_error(f"Failed: {folder_name}/{script_name}")
+                self.print_error(f"Failed: {display_name}")
                 if result.stderr:
                     self.print_error(f"Error: {result.stderr}")
                 return False
                 
         except Exception as e:
-            self.print_error(f"Error running {folder_name}/{script_name}: {e}")
+            self.print_error(f"Error running {display_name}: {e}")
             return False
 
     def main(self):
         """Main setup process"""
-        self.print_header("🚀 AUTO-RUN ALL .SH SCRIPTS FROM GITHUB")
+        self.print_header("🚀 AUTO-RUN ALL VENV.SH SCRIPTS FROM GITHUB")
         
         # Get all folders from GitHub
         all_folders = self.get_all_folders_from_github()
@@ -125,45 +119,55 @@ class AllInOneVenvSetup:
             self.print_error("No folders found in repository!")
             return
         
-        # Find all .sh files in each folder
-        all_sh_scripts = []
+        # Find folders that have venv.sh
+        folders_with_venv = []
         
-        self.print_info("Scanning for .sh files in all folders...")
+        self.print_info("Checking for venv.sh files in all folders...")
         for folder in all_folders:
-            sh_files = self.get_sh_files_from_folder(folder)
-            for sh_file in sh_files:
-                all_sh_scripts.append((folder, sh_file))
-                self.print_success(f"  📁 {folder}/{sh_file}")
+            if self.check_venv_sh_exists(folder):
+                folders_with_venv.append(folder)
+                display_name = folder.replace('-', ' ')
+                self.print_success(f"  ✅ {display_name} (has venv.sh)")
+            else:
+                display_name = folder.replace('-', ' ')
+                self.print_warning(f"  ❌ {display_name} (no venv.sh)")
         
-        if not all_sh_scripts:
-            self.print_error("No .sh files found in any folder!")
+        if not folders_with_venv:
+            self.print_error("No venv.sh files found in any folder!")
             return
         
-        self.print_info(f"Found {len(all_sh_scripts)} .sh scripts to run")
+        self.print_info(f"Found {len(folders_with_venv)} bots with venv.sh")
         
-        # Run all .sh scripts
+        # Run all venv.sh scripts
         success_count = 0
         
-        for i, (folder, script) in enumerate(all_sh_scripts, 1):
-            self.print_header(f"Script {i}/{len(all_sh_scripts)}: {folder}/{script}")
+        for i, folder in enumerate(folders_with_venv, 1):
+            display_name = folder.replace('-', ' ')
+            self.print_header(f"Bot {i}/{len(folders_with_venv)}: {display_name}")
             
-            if self.run_sh_script(folder, script):
+            if self.run_venv_script(folder):
                 success_count += 1
             
             # Add delay between scripts
-            if i < len(all_sh_scripts):
-                self.print_info("Waiting 3 seconds before next script...")
+            if i < len(folders_with_venv):
+                self.print_info("Waiting 3 seconds before next bot...")
                 time.sleep(3)
         
         # Final summary
-        self.print_header("🎉 ALL SCRIPTS EXECUTION COMPLETED!")
-        self.print_info(f"Successful: {success_count}/{len(all_sh_scripts)}")
-        self.print_info(f"Failed: {len(all_sh_scripts) - success_count}/{len(all_sh_scripts)}")
+        self.print_header("🎉 ALL VENV.SH SCRIPTS EXECUTION COMPLETED!")
+        self.print_info(f"Total bots with venv.sh: {len(folders_with_venv)}")
+        self.print_info(f"Successful setups: {success_count}")
+        self.print_info(f"Failed setups: {len(folders_with_venv) - success_count}")
         
-        if success_count == len(all_sh_scripts):
-            self.print_success("🎊 All scripts executed successfully!")
+        self.print_info("Installed Bots:")
+        for folder in folders_with_venv:
+            display_name = folder.replace('-', ' ')
+            self.print_success(f"  ✅ {display_name}")
+        
+        if success_count == len(folders_with_venv):
+            self.print_success("🎊 All bots installed successfully!")
         else:
-            self.print_warning("Some scripts failed, check above for errors")
+            self.print_warning("Some bots failed to install, check above for errors")
 
 if __name__ == "__main__":
     setup = AllInOneVenvSetup()
