@@ -73,7 +73,7 @@ class AllInOneVenvSetup:
             return False
 
     def run_venv_script(self, folder_name):
-        """Run the venv.sh script from a folder with better error handling"""
+        """Run the venv.sh script from a folder with LIVE OUTPUT"""
         script_url = f"{self.github_raw}/{folder_name}/venv.sh"
         display_name = folder_name.replace('-', ' ')
         
@@ -102,41 +102,31 @@ class AllInOneVenvSetup:
             env['PIP_DEFAULT_TIMEOUT'] = '60'
             env['PIP_RETRIES'] = '3'
             
-            self.print_info("Running installation script (this may take several minutes)...")
+            self.print_info("Running installation script with LIVE OUTPUT...")
+            self.print_info("You will see all installation progress below:")
+            print("-" * 50)
             
-            # Run the script with improved environment
+            # Run the script with LIVE OUTPUT (no capture)
             result = subprocess.run(
                 [temp_script],
                 shell=True,
                 executable="/bin/bash",
-                capture_output=True,
-                text=True,
                 timeout=600,  # 10 minute timeout
                 env=env
+                # NO capture_output - this shows live output!
             )
             
             # Clean up temp file
             if os.path.exists(temp_script):
                 os.remove(temp_script)
             
+            print("-" * 50)
+            
             if result.returncode == 0:
                 self.print_success(f"Completed: {display_name}")
                 return True
             else:
                 self.print_error(f"Failed: {display_name} (exit code: {result.returncode})")
-                if result.stdout:
-                    self.print_info(f"Output: {result.stdout[-500:]}")  # Last 500 chars
-                if result.stderr:
-                    # Filter out common warnings
-                    error_lines = []
-                    for line in result.stderr.split('\n'):
-                        if any(warning in line for warning in ['WARNING:', 'Retrying', 'apt does not have']):
-                            continue
-                        if line.strip():
-                            error_lines.append(line)
-                    
-                    if error_lines:
-                        self.print_error(f"Errors: {' '.join(error_lines[-3:])}")  # Last 3 errors
                 return False
                 
         except subprocess.TimeoutExpired:
