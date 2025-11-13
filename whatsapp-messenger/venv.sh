@@ -7,8 +7,8 @@ echo "------------------------------------------------------------"
 
 # === Variables ===
 HOME_DIR="$HOME"
-BOTS_DIR="$HOME_DIR/bots"  # ✅ lowercase 'bots'
-BOT_NAME="whatsapp messenger"  # ✅ kept original name with space
+BOTS_DIR="$HOME_DIR/bots"
+BOT_NAME="whatsapp messenger"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
 REPORT_FILE="$VENV_PATH/report number"
