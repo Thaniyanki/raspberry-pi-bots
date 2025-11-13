@@ -36,6 +36,66 @@ class AllInOneVenvSetup:
     def print_info(self, message):
         print(f"{self.BLUE}ℹ️  {message}{self.ENDC}")
 
+    def check_and_install_python(self):
+        """Check if Python3 is installed and install if missing"""
+        self.print_info("Checking Python3 installation...")
+        
+        try:
+            # Check if python3 is available
+            result = subprocess.run(['python3', '--version'], capture_output=True, text=True)
+            if result.returncode == 0:
+                self.print_success(f"Python3 is installed: {result.stdout.strip()}")
+                return True
+        except:
+            pass
+        
+        # Python3 not found, install it
+        self.print_warning("Python3 not found! Installing...")
+        try:
+            self.print_info("Updating package list...")
+            subprocess.run(['sudo', 'apt', 'update'], check=True, capture_output=True)
+            
+            self.print_info("Installing Python3 and pip...")
+            subprocess.run(['sudo', 'apt', 'install', '-y', 'python3', 'python3-pip', 'python3-venv'], 
+                         check=True, capture_output=True)
+            
+            self.print_success("Python3 installed successfully!")
+            return True
+        except subprocess.CalledProcessError as e:
+            self.print_error(f"Failed to install Python3: {e}")
+            return False
+
+    def fix_pip_issues(self):
+        """Fix pip externally-managed-environment issue"""
+        self.print_info("Fixing pip installation issues...")
+        
+        try:
+            # Install python3-full for complete Python environment
+            subprocess.run(['sudo', 'apt', 'install', '-y', 'python3-full'], 
+                         capture_output=True, check=True)
+            
+            # Upgrade pip with break-system-packages flag
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '--break-system-packages'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                self.print_success("Pip upgraded successfully")
+                return True
+            else:
+                # Try alternative approach
+                self.print_warning("Trying alternative pip upgrade...")
+                subprocess.run(['sudo', 'apt', 'install', '-y', 'python3-pip'], 
+                             capture_output=True, check=True)
+                self.print_success("Pip issues resolved")
+                return True
+                
+        except Exception as e:
+            self.print_warning(f"Could not fix pip issues: {e}")
+            return False
+
     def get_all_folders_from_github(self):
         """Get all folders from GitHub repository using GitHub API"""
         self.print_info("Scanning GitHub repository for ALL folders...")
@@ -146,11 +206,6 @@ class AllInOneVenvSetup:
             subprocess.run(['sudo', 'apt-get', 'install', '--reinstall', 'ca-certificates', '-y'], 
                          capture_output=True)
             subprocess.run(['sudo', 'update-ca-certificates', '--fresh'], capture_output=True)
-            
-            # Update pip and set trusted hosts
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], 
-                         capture_output=True)
-            
             self.print_success("SSL fixes applied")
             return True
         except Exception as e:
@@ -161,11 +216,19 @@ class AllInOneVenvSetup:
         """Main setup process"""
         self.print_header("🚀 AUTO-RUN ALL VENV.SH SCRIPTS FROM GITHUB")
         
-        # Check if we need to fix SSL issues
+        # Step 1: Check and install Python3 if needed
+        if not self.check_and_install_python():
+            self.print_error("Cannot continue without Python3!")
+            sys.exit(1)
+        
+        # Step 2: Fix pip issues
+        self.fix_pip_issues()
+        
+        # Step 3: Check if we need to fix SSL issues
         self.print_info("Checking for SSL issues...")
         self.fix_ssl_issues()
         
-        # Get all folders from GitHub
+        # Step 4: Get all folders from GitHub
         all_folders = self.get_all_folders_from_github()
         
         if not all_folders:
