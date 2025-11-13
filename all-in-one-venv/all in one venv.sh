@@ -1,270 +1,307 @@
-#!/usr/bin/env bash
-set -e
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import requests
+import time
+from datetime import datetime
 
-echo "================================================================"
-echo "🚀 TRUE AUTO-DETECT ALL BOTS VENV SETUP"
-echo "================================================================"
+class AllInOneVenvSetup:
+    def __init__(self):
+        self.home_dir = os.path.expanduser("~")
+        self.bots_dir = os.path.join(self.home_dir, "bots")
+        self.github_repo = "https://github.com/Thaniyanki/raspberry-pi-bots"
+        self.github_raw = "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
+        self.phone_number = "9940585709"
+        
+        # Colors for terminal output
+        self.GREEN = '\033[92m'
+        self.RED = '\033[91m'
+        self.YELLOW = '\033[93m'
+        self.BLUE = '\033[94m'
+        self.ENDC = '\033[0m'
+        self.BOLD = '\033[1m'
 
-# === Variables ===
-HOME_DIR="$HOME"
-BOTS_DIR="$HOME_DIR/bots"
-GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots"
-GITHUB_RAW="https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
-PHONE_NUMBER="9940585709"
+    def print_header(self, message):
+        print(f"\n{self.BOLD}{self.BLUE}{'='*60}{self.ENDC}")
+        print(f"{self.BOLD}{self.BLUE}{message}{self.ENDC}")
+        print(f"{self.BOLD}{self.BLUE}{'='*60}{self.ENDC}")
 
-OS=$(uname -s)
-ARCH=$(uname -m)
-echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
+    def print_success(self, message):
+        print(f"{self.GREEN}✅ {message}{self.ENDC}")
 
-# === Predefined bot list as fallback ===
-PREDEFINED_BOTS=(
-    "whatsapp-messenger"
-    "whatsapp-birthday-wisher"
-    "facebook-birthday-wisher" 
-    "facebook-profile-liker"
-)
+    def print_error(self, message):
+        print(f"{self.RED}❌ {message}{self.ENDC}")
 
-# === Function to get folders using simple approach ===
-get_all_folders_simple() {
-    echo "[INFO] Using predefined bot list (GitHub scan failed)"
-    for bot in "${PREDEFINED_BOTS[@]}"; do
-        echo "$bot"
-    done
-}
+    def print_warning(self, message):
+        print(f"{self.YELLOW}⚠️  {message}{self.ENDC}")
 
-# === Function to check if folder has venv.sh ===
-check_folder_has_venv() {
-    local folder="$1"
-    local venv_url="$GITHUB_RAW/$folder/venv.sh"
-    
-    # Check if venv.sh exists by making a HEAD request
-    if curl -s --head "$venv_url" | head -n1 | grep -q "200"; then
-        echo "true"
-    else
-        echo "false"
-    fi
-}
+    def print_info(self, message):
+        print(f"{self.BLUE}ℹ️  {message}{self.ENDC}")
 
-# === Function to install system dependencies ===
-install_system_deps() {
-    echo "[INFO] Installing system dependencies..."
-    sudo apt update -y
-    
-    sudo apt install -y python3 python3-venv python3-pip git curl wget unzip build-essential x11-utils \
-        libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
-        libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
-        libharfbuzz-dev libfribidi-dev libxcb1-dev || true
+    def run_command(self, command, shell=False):
+        """Run a shell command and return success status"""
+        try:
+            if shell:
+                result = subprocess.run(command, shell=True, check=True, 
+                                      capture_output=True, text=True)
+            else:
+                result = subprocess.run(command, check=True, 
+                                      capture_output=True, text=True)
+            return True, result.stdout
+        except subprocess.CalledProcessError as e:
+            return False, e.stderr
 
-    # Try installing "t64" versions safely
-    for pkg in libasound2t64 libatk-bridge2.0-0t64; do
-        if apt-cache show "$pkg" >/dev/null 2>&1; then
-            sudo apt install -y "$pkg" || true
-        fi
-    done
-}
+    def install_system_dependencies(self):
+        """Install system dependencies"""
+        self.print_info("Installing system dependencies...")
+        
+        dependencies = [
+            "python3", "python3-venv", "python3-pip", "git", "curl", "wget", 
+            "unzip", "build-essential", "x11-utils", "libnss3", "libxkbcommon0",
+            "libdrm2", "libgbm1", "libxshmfence1", "libjpeg-dev", "zlib1g-dev",
+            "libfreetype6-dev", "liblcms2-dev", "libopenjp2-7-dev", "libtiff-dev",
+            "libwebp-dev", "tk-dev", "libharfbuzz-dev", "libfribidi-dev", "libxcb1-dev"
+        ]
+        
+        # Update package list
+        success, output = self.run_command("sudo apt update -y", shell=True)
+        if not success:
+            self.print_warning("Failed to update package list")
+        
+        # Install dependencies
+        for dep in dependencies:
+            success, output = self.run_command(f"sudo apt install -y {dep}", shell=True)
+            if success:
+                self.print_success(f"Installed {dep}")
+            else:
+                self.print_warning(f"Failed to install {dep}")
 
-# === Function to install Chromium ===
-install_chromium() {
-    echo "[INFO] Installing Chromium and Chromedriver..."
-    if [[ "$ARCH" == "armv7l" ]]; then
-        echo "[INFO] 32-bit Raspberry Pi detected."
-        sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver || true
-    else
-        echo "[INFO] 64-bit Raspberry Pi detected."
-        sudo apt install -y chromium chromium-driver || true
-    fi
+    def install_chromium(self):
+        """Install Chromium and Chromedriver"""
+        self.print_info("Installing Chromium and Chromedriver...")
+        
+        arch = os.uname().machine
+        if "armv7" in arch:
+            self.print_info("32-bit Raspberry Pi detected")
+            success, output = self.run_command(
+                "sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver", 
+                shell=True
+            )
+        else:
+            self.print_info("64-bit Raspberry Pi detected")
+            success, output = self.run_command("sudo apt install -y chromium chromium-driver", shell=True)
+        
+        if success:
+            self.print_success("Chromium installed successfully")
+        else:
+            self.print_warning("Chromium installation had issues")
 
-    CHROME_BIN=$(command -v chromium-browser || command -v chromium || echo "")
-    CHROMEDRIVER_BIN=$(command -v chromedriver || command -v chromium-chromedriver || echo "")
+    def get_all_folders_from_github(self):
+        """Get all folders from GitHub repository using GitHub API"""
+        self.print_info("Scanning GitHub repository for bot folders...")
+        
+        api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents"
+        
+        try:
+            response = requests.get(api_url, timeout=10)
+            if response.status_code == 200:
+                contents = response.json()
+                folders = []
+                
+                for item in contents:
+                    if item['type'] == 'dir' and item['name'] != 'all-in-one-venv':
+                        folders.append(item['name'])
+                
+                self.print_success(f"Found {len(folders)} folders in repository")
+                return folders
+            else:
+                self.print_warning(f"GitHub API returned status {response.status_code}")
+                return []
+                
+        except Exception as e:
+            self.print_warning(f"Failed to fetch from GitHub API: {e}")
+            return []
 
-    if [ -z "$CHROME_BIN" ] || [ -z "$CHROMEDRIVER_BIN" ]; then
-        echo "[WARNING] Chromium or Chromedriver not found after install!"
-        echo "[INFO] Continuing without Chromium (some bots may not work)"
-        return 1
-    fi
-    sudo chmod +x "$CHROMEDRIVER_BIN"
+    def check_folder_has_venv_sh(self, folder_name):
+        """Check if a folder has venv.sh file"""
+        venv_url = f"{self.github_raw}/{folder_name}/venv.sh"
+        
+        try:
+            response = requests.head(venv_url, timeout=5)
+            return response.status_code == 200
+        except:
+            return False
 
-    echo "[OK] Chromium: $($CHROME_BIN --version || echo "Not available")"
-    echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version || echo "Not available")"
-    return 0
-}
-
-# === Function to setup bot environment ===
-setup_bot_environment() {
-    local bot_folder="$1"
-    local bot_display_name="$2"
-    local bot_path="$BOTS_DIR/$bot_display_name"
-    local venv_path="$bot_path/venv"
-    local report_file="$venv_path/report number"
-
-    echo ""
-    echo "🔧 SETTING UP ENVIRONMENT: $bot_display_name"
-    echo "----------------------------------------"
-
-    # Create bot folder
-    mkdir -p "$bot_path"
-    
-    # Create virtual environment if it doesn't exist
-    if [ ! -d "$venv_path" ]; then
-        if python3 -m venv "$venv_path"; then
-            source "$venv_path/bin/activate"
+    def run_venv_script(self, folder_name, display_name):
+        """Run the venv.sh script for a bot"""
+        self.print_info(f"Setting up: {display_name}")
+        
+        venv_url = f"{self.github_raw}/{folder_name}/venv.sh"
+        
+        try:
+            # Download and run the venv.sh script
+            result = subprocess.run(
+                f"bash <(curl -sL '{venv_url}')",
+                shell=True,
+                executable="/bin/bash",
+                capture_output=True,
+                text=True
+            )
             
-            # Install Python dependencies
-            pip install --upgrade pip setuptools wheel
-            pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
-                google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
+            if result.returncode == 0:
+                self.print_success(f"Completed: {display_name}")
+                return True
+            else:
+                self.print_error(f"Failed: {display_name} - {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.print_error(f"Error running venv.sh for {display_name}: {e}")
+            return False
+
+    def setup_bot_environment(self, folder_name, display_name):
+        """Setup basic environment for a bot"""
+        bot_path = os.path.join(self.bots_dir, display_name)
+        venv_path = os.path.join(bot_path, "venv")
+        report_file = os.path.join(venv_path, "report number")
+        
+        self.print_info(f"Creating environment for: {display_name}")
+        
+        # Create bot directory
+        os.makedirs(bot_path, exist_ok=True)
+        
+        # Create virtual environment
+        if not os.path.exists(venv_path):
+            success, output = self.run_command([
+                "python3", "-m", "venv", venv_path
+            ])
             
-            # Create phone number file
-            echo "$PHONE_NUMBER" > "$report_file"
-            echo "[OK] Created phone number file: $report_file"
+            if success:
+                # Install Python dependencies
+                pip_commands = [
+                    f"source {os.path.join(venv_path, 'bin/activate')} && pip install --upgrade pip setuptools wheel",
+                    f"source {os.path.join(venv_path, 'bin/activate')} && pip install firebase_admin gspread selenium google-auth google-auth-oauthlib google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil"
+                ]
+                
+                for cmd in pip_commands:
+                    self.run_command(cmd, shell=True)
+                
+                # Create phone number file
+                with open(report_file, 'w') as f:
+                    f.write(self.phone_number)
+                
+                self.print_success(f"Environment created for {display_name}")
+            else:
+                self.print_error(f"Failed to create venv for {display_name}")
+                return False
+        
+        return True
+
+    def create_whatsapp_folders(self):
+        """Create folder structure for WhatsApp Messenger"""
+        bot_path = os.path.join(self.bots_dir, "whatsapp messenger")
+        
+        if os.path.exists(bot_path):
+            self.print_info("Creating folder structure for WhatsApp Messenger...")
             
-            deactivate
-        else
-            echo "[ERROR] Failed to create virtual environment for $bot_display_name"
-            return 1
-        fi
-    else
-        echo "[INFO] Virtual environment already exists, skipping..."
-    fi
+            current_date = datetime.now().strftime("%d-%m-%Y")
+            folders = ["Image", "Document", "Audio", "Video"]
+            
+            for folder in folders:
+                # Main folders
+                main_folder = os.path.join(bot_path, folder)
+                os.makedirs(main_folder, exist_ok=True)
+                open(os.path.join(main_folder, "Caption.txt"), 'a').close()
+                
+                # Date subfolders
+                date_folder = os.path.join(main_folder, current_date)
+                os.makedirs(date_folder, exist_ok=True)
+                open(os.path.join(date_folder, "Caption.txt"), 'a').close()
+            
+            self.print_success(f"Created folder structure with date: {current_date}")
 
-    echo "✅ ENVIRONMENT READY: $bot_display_name"
-    return 0
-}
-
-# === Function to run bot setup script ===
-run_bot_setup() {
-    local bot_folder="$1"
-    local bot_display_name="$2"
-    
-    echo ""
-    echo "🚀 SETTING UP: $bot_display_name"
-    echo "========================================"
-    
-    # Try to run the venv.sh script for this bot
-    local setup_script_url="$GITHUB_RAW/$bot_folder/venv.sh"
-    
-    echo "[INFO] Running setup script: $setup_script_url"
-    
-    # Setup environment first
-    if setup_bot_environment "$bot_folder" "$bot_display_name"; then
-        # Run the setup script
-        if bash <(curl -sL "$setup_script_url"); then
-            echo "✅ SUCCESS: $bot_display_name"
-            return 0
-        else
-            echo "❌ FAILED: $bot_display_name"
-            return 1
-        fi
-    else
-        echo "❌ FAILED: Could not setup environment for $bot_display_name"
-        return 1
-    fi
-}
-
-# === Function to create folder structure for WhatsApp Messenger ===
-create_whatsapp_folders() {
-    local bot_path="$BOTS_DIR/whatsapp messenger"
-    
-    if [ -d "$bot_path" ]; then
-        echo "[INFO] Creating folder structure for WhatsApp Messenger..."
-        CURRENT_DATE=$(date +"%d-%m-%Y")
+    def main(self):
+        """Main setup process"""
+        self.print_header("🚀 ALL BOTS VENV SETUP (Python Version)")
         
-        # Create main folders
-        mkdir -p "$bot_path/Image" "$bot_path/Document" "$bot_path/Audio" "$bot_path/Video"
-        touch "$bot_path/Image/Caption.txt" "$bot_path/Document/Caption.txt" "$bot_path/Audio/Caption.txt" "$bot_path/Video/Caption.txt"
+        # Detect system info
+        os_info = f"{os.uname().sysname} | {os.uname().machine}"
+        self.print_info(f"Detected: {os_info}")
         
-        # Create date subfolders
-        mkdir -p "$bot_path/Image/$CURRENT_DATE" "$bot_path/Document/$CURRENT_DATE" "$bot_path/Audio/$CURRENT_DATE" "$bot_path/Video/$CURRENT_DATE"
-        touch "$bot_path/Image/$CURRENT_DATE/Caption.txt" "$bot_path/Document/$CURRENT_DATE/Caption.txt" "$bot_path/Audio/$CURRENT_DATE/Caption.txt" "$bot_path/Video/$CURRENT_DATE/Caption.txt"
+        # Create bots directory
+        os.makedirs(self.bots_dir, exist_ok=True)
+        self.print_success(f"Bots directory: {self.bots_dir}")
         
-        echo "[OK] Created folder structure with date: $CURRENT_DATE"
-    fi
-}
-
-# === Main Installation Process ===
-main() {
-    # Create bots directory
-    mkdir -p "$BOTS_DIR"
-    echo "[OK] Created bots directory: $BOTS_DIR"
-
-    # Install system dependencies (once for all bots)
-    install_system_deps
-    
-    # Install Chromium (once for all bots)
-    install_chromium
-
-    # Get folders (using simple approach)
-    echo "[INFO] Getting bot folders..."
-    ALL_FOLDERS=$(get_all_folders_simple)
-    
-    # Check which folders have venv.sh
-    echo ""
-    echo "[INFO] Checking which bots have venv.sh setup scripts..."
-    BOTS_TO_SETUP=""
-    
-    while read -r folder; do
-        if [ "$(check_folder_has_venv "$folder")" = "true" ]; then
-            echo "   ✅ $folder (has venv.sh)"
-            BOTS_TO_SETUP="${BOTS_TO_SETUP}$folder"$'\n'
-        else
-            echo "   ❌ $folder (no venv.sh)"
-        fi
-    done <<< "$ALL_FOLDERS"
-
-    if [ -z "$BOTS_TO_SETUP" ]; then
-        echo "[ERROR] No bots with venv.sh found!"
-        exit 1
-    fi
-
-    echo ""
-    echo "[INFO] Starting setup for bots with venv.sh..."
-    
-    local success_count=0
-    local total_count=0
-    
-    # Process each bot that has venv.sh
-    while read -r bot_folder; do
-        [ -z "$bot_folder" ] && continue
-        ((total_count++))
+        # Install system dependencies
+        self.install_system_dependencies()
         
-        # Convert folder name to display name (replace hyphens with spaces)
-        bot_display_name=$(echo "$bot_folder" | sed 's/-/ /g')
+        # Install Chromium
+        self.install_chromium()
         
-        if run_bot_setup "$bot_folder" "$bot_display_name"; then
-            ((success_count++))
-        fi
+        # Get all folders from GitHub
+        all_folders = self.get_all_folders_from_github()
         
-        echo ""
-        sleep 2  # Small delay between bots
-    done <<< "$BOTS_TO_SETUP"
+        if not all_folders:
+            self.print_warning("Using fallback bot list")
+            all_folders = [
+                "whatsapp-messenger",
+                "whatsapp-birthday-wisher", 
+                "facebook-birthday-wisher",
+                "facebook-profile-liker"
+            ]
+        
+        # Find folders with venv.sh
+        bots_with_venv = []
+        self.print_info("Checking for venv.sh files...")
+        
+        for folder in all_folders:
+            if self.check_folder_has_venv_sh(folder):
+                bots_with_venv.append(folder)
+                self.print_success(f"  ✅ {folder} (has venv.sh)")
+            else:
+                self.print_warning(f"  ❌ {folder} (no venv.sh)")
+        
+        if not bots_with_venv:
+            self.print_error("No bots with venv.sh found!")
+            return
+        
+        # Setup each bot
+        self.print_info(f"Starting setup for {len(bots_with_venv)} bots...")
+        success_count = 0
+        
+        for i, bot_folder in enumerate(bots_with_venv, 1):
+            # Convert folder name to display name
+            display_name = bot_folder.replace('-', ' ')
+            
+            self.print_header(f"Bot {i}/{len(bots_with_venv)}: {display_name}")
+            
+            # Setup basic environment
+            if self.setup_bot_environment(bot_folder, display_name):
+                # Run the venv.sh script
+                if self.run_venv_script(bot_folder, display_name):
+                    success_count += 1
+            
+            # Add delay between bots
+            if i < len(bots_with_venv):
+                self.print_info("Waiting 3 seconds before next bot...")
+                time.sleep(3)
+        
+        # Create WhatsApp folder structure
+        self.create_whatsapp_folders()
+        
+        # Final summary
+        self.print_header("🎉 SETUP COMPLETED!")
+        self.print_success(f"Bots Directory: {self.bots_dir}")
+        self.print_info(f"Successful setups: {success_count}/{len(bots_with_venv)}")
+        
+        self.print_info("Installed Bots:")
+        for bot_folder in bots_with_venv:
+            display_name = bot_folder.replace('-', ' ')
+            self.print_success(f"  ✅ {display_name}")
+        
+        self.print_success("All bots are ready for scheduler integration!")
 
-    # Create special folder structure for WhatsApp Messenger
-    create_whatsapp_folders
-
-    # Final Summary
-    echo ""
-    echo "================================================================"
-    echo "🎉 AUTO-DETECT SETUP COMPLETED!"
-    echo "================================================================"
-    echo "📁 Bots Directory: $BOTS_DIR"
-    echo ""
-    echo "📊 SUMMARY:"
-    echo "   Total bots found: $total_count"
-    echo "   Successful setups: $success_count"
-    echo ""
-    echo "🤖 INSTALLED BOTS:"
-    while read -r bot_folder; do
-        [ -z "$bot_folder" ] && continue
-        bot_display_name=$(echo "$bot_folder" | sed 's/-/ /g')
-        echo "   ✅ $bot_display_name"
-    done <<< "$BOTS_TO_SETUP"
-    echo ""
-    echo "🌐 Chromium: $(command -v chromium-browser || command -v chromium | xargs --version)"
-    echo "🔧 Chromedriver: $(command -v chromedriver || command -v chromium-chromedriver | xargs --version)"
-    echo ""
-    echo "💡 All detected bots are ready!"
-    echo "================================================================"
-}
-
-# Run main function
-main "$@"
+if __name__ == "__main__":
+    setup = AllInOneVenvSetup()
+    setup.main()
