@@ -90,7 +90,7 @@ def verify_required_files():
     return True
 
 # ================================
-# ORIGINAL FUNCTIONS (UNMODIFIED LOGIC)
+# ENHANCED FUNCTIONS WITH CLICK INTERCEPTION HANDLING
 # ================================
 
 # Firebase initialization
@@ -149,21 +149,57 @@ def fetch_color_from_firebase(color_name, platform="Facebook"):
             time.sleep(1)
 
 def search_and_click_element(xpath, success_message, refresh_threshold=120, restart_on_fail=False, xpath_name=None, main_flow_vars=None):
-    """Search and click element with refresh logic"""
+    """Search and click element with refresh logic and click interception handling"""
     start_time = time.time()
     refresh_count = 0
     
     while True:
         try:
-            element = driver.find_element("xpath", xpath)
+            # Wait for element to be clickable with explicit wait
+            element = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(("xpath", xpath))
+            )
             element.click()
             print(success_message)
             return True
             
-        except NoSuchElementException:
+        except Exception as e:
             current_time = time.time()
             elapsed = current_time - start_time
+            
+            # Handle click interception with multiple strategies
+            if "element click intercepted" in str(e).lower() or "not clickable" in str(e).lower():
+                print("🔄 Element click intercepted - trying alternative click methods...")
                 
+                # Strategy 1: JavaScript click
+                try:
+                    element = driver.find_element("xpath", xpath)
+                    driver.execute_script("arguments[0].click();", element)
+                    print(f"✅ {success_message} (via JavaScript)")
+                    return True
+                except Exception as js_e:
+                    print(f"❌ JavaScript click failed: {str(js_e)}")
+                
+                # Strategy 2: Enter key
+                try:
+                    element = driver.find_element("xpath", xpath)
+                    element.send_keys(Keys.ENTER)
+                    print(f"✅ {success_message} (via Enter key)")
+                    return True
+                except Exception as enter_e:
+                    print(f"❌ Enter key method failed: {str(enter_e)}")
+                
+                # Strategy 3: Action chains
+                try:
+                    from selenium.webdriver.common.action_chains import ActionChains
+                    element = driver.find_element("xpath", xpath)
+                    actions = ActionChains(driver)
+                    actions.move_to_element(element).click().perform()
+                    print(f"✅ {success_message} (via ActionChains)")
+                    return True
+                except Exception as action_e:
+                    print(f"❌ ActionChains method failed: {str(action_e)}")
+            
             if elapsed >= refresh_threshold:
                 if restart_on_fail and xpath_name == "Xpath002":
                     print("🔄 Xpath002 not found - restarting entire process from Attempt #1")
@@ -184,6 +220,45 @@ def search_and_click_element(xpath, success_message, refresh_threshold=120, rest
         except Exception as e:
             print(f"❌ Error during search: {str(e)}")
             return False
+
+def click_birthday_event_with_retry(xpath002, max_retries=5):
+    """Special handling for birthday event click with multiple strategies"""
+    for attempt in range(max_retries):
+        try:
+            # Wait for element to be clickable
+            element = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(("xpath", xpath002))
+            )
+            element.click()
+            print("✅ Entered birthday event page")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Click attempt {attempt + 1} failed: {str(e)}")
+            
+            if attempt < max_retries - 1:
+                # Try JavaScript click
+                try:
+                    element = driver.find_element("xpath", xpath002)
+                    driver.execute_script("arguments[0].click();", element)
+                    print("✅ Entered birthday event page (via JavaScript)")
+                    return True
+                except Exception:
+                    pass
+                
+                # Try Enter key
+                try:
+                    element = driver.find_element("xpath", xpath002)
+                    element.send_keys(Keys.ENTER)
+                    print("✅ Entered birthday event page (via Enter key)")
+                    return True
+                except Exception:
+                    pass
+                
+                print(f"🔄 Retrying in 2 seconds... ({attempt + 1}/{max_retries})")
+                time.sleep(2)
+    
+    return False
 
 def check_element_availability(xpath, success_message, timeout=120):
     """Check if element is available (without clicking)"""
@@ -385,7 +460,9 @@ def search_and_click_whatsapp_xpath001(whatsapp_xpath001):
     
     while True:
         try:
-            element = driver.find_element("xpath", whatsapp_xpath001)
+            element = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(("xpath", whatsapp_xpath001))
+            )
             element.click()
             print("✅ WhatsApp Xpath001 is clicked ready to search phone number")
             return True
@@ -441,7 +518,7 @@ def search_and_click_whatsapp_xpath001(whatsapp_xpath001):
                             # Try clicking Xpath001 again now that loading is done
                             try:
                                 element = driver.find_element("xpath", whatsapp_xpath001)
-                                element.click()
+                                driver.execute_script("arguments[0].click();", element)
                                 print("✅ WhatsApp Xpath001 is clicked ready to search phone number")
                                 return True
                             except NoSuchElementException:
@@ -806,7 +883,7 @@ def whatsapp_retry_flow():
         print("🔄 WhatsApp Xpath003 is still present - restarting flow")
 
 # ================================
-# FACEBOOK BIRTHDAY FUNCTIONS (UNCHANGED)
+# FACEBOOK BIRTHDAY FUNCTIONS
 # ================================
 
 def modify_and_search_xpath004(original_xpath=None):
@@ -2415,6 +2492,10 @@ def handle_xpath005_absence(current_person_details, person_index):
         print("\nStep 54: Continuing to Step 19 with next person")
         return "step19"
 
+# ================================
+# MAIN FLOW WITH ENHANCED CLICK HANDLING
+# ================================
+
 def main_flow():
     """Main execution with improved error handling and retry logic"""
     # Create required directories first
@@ -2468,16 +2549,12 @@ def main_flow():
                     print("❌ Failed to paste birthdays keyword")
                     continue
                 
-                # Step 3: Click birthday event page - MODIFIED SECTION
+                # Step 3: Click birthday event page - WITH ENHANCED CLICK HANDLING
                 xpath002 = fetch_xpath_from_firebase("Xpath002")
-                if not xpath002 or not search_and_click_element(
-                    xpath002, 
-                    "✅ Entered birthday event page", 
-                    restart_on_fail=True, 
-                    xpath_name="Xpath002",
-                    main_flow_vars=flow_vars  # Pass the flow variables dictionary
-                ):
+                if not xpath002 or not click_birthday_event_with_retry(xpath002):
                     print("❌ Failed to enter birthday page - restarting from Attempt #1")
+                    close_chrome()
+                    flow_vars['reset_attempt'] = True
                     continue
                 
                 # Step 4: Check for birthdays
@@ -2769,4 +2846,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n🛑 Process interrupted by user")
     finally:
-        pass
+        close_chrome()
