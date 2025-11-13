@@ -17,18 +17,41 @@ OS=$(uname -s)
 ARCH=$(uname -m)
 echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
 
+# === Check required commands ===
+check_commands() {
+    local commands=("curl" "git" "python3" "pip3")
+    for cmd in "${commands[@]}"; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "[ERROR] Required command not found: $cmd"
+            exit 1
+        fi
+    done
+}
+
 # === Function to get all folders from GitHub repo ===
 get_all_folders() {
     echo "[INFO] Scanning GitHub repository for bot folders..."
     
-    # Use GitHub API to get repository contents
-    curl -s "$GITHUB_API" | \
+    local response
+    response=$(curl -s -f "$GITHUB_API" || {
+        echo "[ERROR] Failed to fetch repository contents from GitHub API"
+        exit 1
+    })
+    
+    echo "$response" | \
     grep '"name":' | \
     grep -v '\.' | \
     cut -d'"' -f4 | \
-    while read folder; do
+    while read -r folder; do
+        # Skip the all-in-one-venv folder to avoid recursion
+        if [[ "$folder" == "all-in-one-venv" ]]; then
+            continue
+        fi
+        
         # Check if folder contains any .sh files
-        if curl -s "$GITHUB_API/$folder" | grep -q '\.sh";'; then
+        local folder_content
+        folder_content=$(curl -s -f "$GITHUB_API/$folder" 2>/dev/null || echo "")
+        if echo "$folder_content" | grep -q '\.sh";'; then
             echo "$folder"
         fi
     done
@@ -37,7 +60,10 @@ get_all_folders() {
 # === Function to get .sh files from a folder ===
 get_sh_files_from_folder() {
     local folder="$1"
-    curl -s "$GITHUB_API/$folder" | \
+    local response
+    response=$(curl -s -f "$GITHUB_API/$folder" 2>/dev/null || echo "")
+    
+    echo "$response" | \
     grep '"name".*\.sh"' | \
     cut -d'"' -f4
 }
@@ -47,7 +73,7 @@ install_system_deps() {
     echo "[INFO] Installing system dependencies..."
     sudo apt update -y
     
-    sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
+    sudo apt install -y python3 python3-venv python3-pip git curl wget unzip build-essential x11-utils \
         libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
         libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
         libharfbuzz-dev libfribidi-dev libxcb1-dev || true
@@ -55,7 +81,7 @@ install_system_deps() {
     # Try installing "t64" versions safely
     for pkg in libasound2t64 libatk-bridge2.0-0t64; do
         if apt-cache show "$pkg" >/dev/null 2>&1; then
-            sudo apt install -y "$pkg"
+            sudo apt install -y "$pkg" || true
         fi
     done
 }
@@ -65,23 +91,25 @@ install_chromium() {
     echo "[INFO] Installing Chromium and Chromedriver..."
     if [[ "$ARCH" == "armv7l" ]]; then
         echo "[INFO] 32-bit Raspberry Pi detected."
-        sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver
+        sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver || true
     else
         echo "[INFO] 64-bit Raspberry Pi detected."
-        sudo apt install -y chromium chromium-driver
+        sudo apt install -y chromium chromium-driver || true
     fi
 
-    CHROME_BIN=$(command -v chromium-browser || command -v chromium)
-    CHROMEDRIVER_BIN=$(command -v chromedriver || command -v chromium-chromedriver)
+    CHROME_BIN=$(command -v chromium-browser || command -v chromium || echo "")
+    CHROMEDRIVER_BIN=$(command -v chromedriver || command -v chromium-chromedriver || echo "")
 
     if [ -z "$CHROME_BIN" ] || [ -z "$CHROMEDRIVER_BIN" ]; then
-        echo "[ERROR] Chromium or Chromedriver not found after install!"
-        exit 1
+        echo "[WARNING] Chromium or Chromedriver not found after install!"
+        echo "[INFO] Continuing without Chromium (some bots may not work)"
+        return 1
     fi
     sudo chmod +x "$CHROMEDRIVER_BIN"
 
-    echo "[OK] Chromium: $($CHROME_BIN --version)"
-    echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version)"
+    echo "[OK] Chromium: $($CHROME_BIN --version || echo "Not available")"
+    echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version || echo "Not available")"
+    return 0
 }
 
 # === Function to run a shell script ===
@@ -94,8 +122,8 @@ run_bot_script() {
     echo "🔧 RUNNING: $folder/$script"
     echo "----------------------------------------"
     
-    # Download and run the script
-    if bash <(curl -sL "$script_url"); then
+    # Download and run the script with error handling
+    if curl -sL "$script_url" | bash; then
         echo "✅ SUCCESS: $folder/$script"
         return 0
     else
@@ -121,28 +149,36 @@ setup_bot_environment() {
     
     # Create virtual environment if it doesn't exist
     if [ ! -d "$venv_path" ]; then
-        python3 -m venv "$venv_path"
-        source "$venv_path/bin/activate"
-        
-        # Install Python dependencies
-        pip install --upgrade pip setuptools wheel
-        pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
-            google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
-        
-        # Create phone number file
-        echo "$PHONE_NUMBER" > "$report_file"
-        echo "[OK] Created phone number file: $report_file"
-        
-        deactivate
+        if python3 -m venv "$venv_path"; then
+            source "$venv_path/bin/activate"
+            
+            # Install Python dependencies
+            pip install --upgrade pip setuptools wheel
+            pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
+                google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
+            
+            # Create phone number file
+            echo "$PHONE_NUMBER" > "$report_file"
+            echo "[OK] Created phone number file: $report_file"
+            
+            deactivate
+        else
+            echo "[ERROR] Failed to create virtual environment for $bot_display_name"
+            return 1
+        fi
     else
         echo "[INFO] Virtual environment already exists, skipping..."
     fi
 
     echo "✅ ENVIRONMENT READY: $bot_display_name"
+    return 0
 }
 
 # === Main Installation Process ===
 main() {
+    # Check required commands
+    check_commands
+    
     # Create bots directory
     mkdir -p "$BOTS_DIR"
     echo "[OK] Created bots directory: $BOTS_DIR"
@@ -159,16 +195,21 @@ main() {
     
     if [ -z "$folders_with_sh" ]; then
         echo "[WARNING] No bot folders found in repository!"
+        echo "[INFO] Please check your GitHub repository structure"
         exit 1
     fi
 
     echo "[INFO] Found folders with .sh files:"
-    echo "$folders_with_sh" | while read folder; do
+    echo "$folders_with_sh" | while read -r folder; do
         echo "   📁 $folder"
     done
 
     # Process each folder
-    echo "$folders_with_sh" | while read folder; do
+    local success_count=0
+    local total_count=0
+    
+    while IFS= read -r folder; do
+        ((total_count++))
         echo ""
         echo "📦 PROCESSING FOLDER: $folder"
         echo "========================================"
@@ -182,7 +223,7 @@ main() {
         fi
 
         echo "[INFO] Found .sh files in $folder:"
-        echo "$sh_files" | while read script; do
+        echo "$sh_files" | while read -r script; do
             echo "   📜 $script"
         done
 
@@ -190,21 +231,23 @@ main() {
         bot_display_name=$(echo "$folder" | sed 's/-/ /g')
         
         # Setup environment first
-        setup_bot_environment "$folder" "$bot_display_name"
-        
-        # Run each .sh file
-        echo "$sh_files" | while read script; do
-            # Skip this all-in-one script to avoid infinite loop
-            if [[ "$script" == "all in one venv.sh" ]]; then
-                echo "[INFO] Skipping all-in-one script to avoid recursion"
-                continue
-            fi
-            
-            run_bot_script "$folder" "$script"
-        done
+        if setup_bot_environment "$folder" "$bot_display_name"; then
+            # Run each .sh file
+            while IFS= read -r script; do
+                # Skip scripts that might cause issues
+                if [[ "$script" == *"all in one venv"* ]] || [[ "$script" == *"setup.sh"* ]]; then
+                    echo "[INFO] Skipping script: $script"
+                    continue
+                fi
+                
+                if run_bot_script "$folder" "$script"; then
+                    ((success_count++))
+                fi
+            done <<< "$sh_files"
+        fi
         
         echo "✅ COMPLETED FOLDER: $folder"
-    done
+    done <<< "$folders_with_sh"
 
     # Final Summary
     echo ""
@@ -213,14 +256,15 @@ main() {
     echo "================================================================"
     echo "📁 Bots Directory: $BOTS_DIR"
     echo ""
+    echo "📊 SUMMARY:"
+    echo "   Total folders processed: $total_count"
+    echo "   Successful scripts: $success_count"
+    echo ""
     echo "🤖 PROCESSED FOLDERS:"
-    echo "$folders_with_sh" | while read folder; do
+    echo "$folders_with_sh" | while read -r folder; do
         bot_display_name=$(echo "$folder" | sed 's/-/ /g')
         echo "   ✅ $bot_display_name"
     done
-    echo ""
-    echo "🌐 Chromium: $(command -v chromium-browser || command -v chromium | xargs --version)"
-    echo "🔧 Chromedriver: $(command -v chromedriver || command -v chromium-chromedriver | xargs --version)"
     echo ""
     echo "💡 All detected bots are ready!"
     echo "================================================================"
