@@ -16,17 +16,20 @@ OS=$(uname -s)
 ARCH=$(uname -m)
 echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
 
-# === Function to get ALL folders from GitHub repo ===
-get_all_folders() {
-    echo "[INFO] Scanning GitHub repository for ALL folders..."
-    
-    # Get the main page of the GitHub repo and extract folder names
-    curl -s "$GITHUB_REPO" | \
-    grep -o 'title="[^"]*"' | \
-    cut -d'"' -f2 | \
-    grep -v '^\.' | \
-    grep -v '^all-in-one-venv$' | \
-    sort -u
+# === Predefined bot list as fallback ===
+PREDEFINED_BOTS=(
+    "whatsapp-messenger"
+    "whatsapp-birthday-wisher"
+    "facebook-birthday-wisher" 
+    "facebook-profile-liker"
+)
+
+# === Function to get folders using simple approach ===
+get_all_folders_simple() {
+    echo "[INFO] Using predefined bot list (GitHub scan failed)"
+    for bot in "${PREDEFINED_BOTS[@]}"; do
+        echo "$bot"
+    done
 }
 
 # === Function to check if folder has venv.sh ===
@@ -140,15 +143,11 @@ run_bot_setup() {
     # Try to run the venv.sh script for this bot
     local setup_script_url="$GITHUB_RAW/$bot_folder/venv.sh"
     
-    # Check if the setup script exists
-    if curl -s --head "$setup_script_url" | head -n1 | grep -q "200"; then
-        echo "[INFO] Found setup script: $setup_script_url"
-        
-        # Setup environment first
-        setup_bot_environment "$bot_folder" "$bot_display_name"
-        
+    echo "[INFO] Running setup script: $setup_script_url"
+    
+    # Setup environment first
+    if setup_bot_environment "$bot_folder" "$bot_display_name"; then
         # Run the setup script
-        echo "[INFO] Running setup script..."
         if bash <(curl -sL "$setup_script_url"); then
             echo "✅ SUCCESS: $bot_display_name"
             return 0
@@ -157,10 +156,8 @@ run_bot_setup() {
             return 1
         fi
     else
-        echo "[WARNING] No setup script found for $bot_display_name"
-        echo "[INFO] Setting up basic environment only..."
-        setup_bot_environment "$bot_folder" "$bot_display_name"
-        return 0
+        echo "❌ FAILED: Could not setup environment for $bot_display_name"
+        return 1
     fi
 }
 
@@ -196,23 +193,13 @@ main() {
     # Install Chromium (once for all bots)
     install_chromium
 
-    # Get ALL folders from GitHub
-    echo "[INFO] Discovering ALL folders in repository..."
-    ALL_FOLDERS=$(get_all_folders)
+    # Get folders (using simple approach)
+    echo "[INFO] Getting bot folders..."
+    ALL_FOLDERS=$(get_all_folders_simple)
     
-    if [ -z "$ALL_FOLDERS" ]; then
-        echo "[ERROR] Could not discover any folders from GitHub!"
-        exit 1
-    fi
-
-    echo "[INFO] Found folders in repository:"
-    echo "$ALL_FOLDERS" | while read -r folder; do
-        echo "   📁 $folder"
-    done
-
-    # Check each folder for venv.sh
+    # Check which folders have venv.sh
     echo ""
-    echo "[INFO] Checking which folders have venv.sh setup scripts..."
+    echo "[INFO] Checking which bots have venv.sh setup scripts..."
     BOTS_TO_SETUP=""
     
     while read -r folder; do
@@ -248,6 +235,7 @@ main() {
         fi
         
         echo ""
+        sleep 2  # Small delay between bots
     done <<< "$BOTS_TO_SETUP"
 
     # Create special folder structure for WhatsApp Messenger
@@ -261,11 +249,10 @@ main() {
     echo "📁 Bots Directory: $BOTS_DIR"
     echo ""
     echo "📊 SUMMARY:"
-    echo "   Total folders scanned: $(echo "$ALL_FOLDERS" | wc -l)"
-    echo "   Bots with venv.sh: $total_count"
+    echo "   Total bots found: $total_count"
     echo "   Successful setups: $success_count"
     echo ""
-    echo "🤖 AUTO-DETECTED BOTS:"
+    echo "🤖 INSTALLED BOTS:"
     while read -r bot_folder; do
         [ -z "$bot_folder" ] && continue
         bot_display_name=$(echo "$bot_folder" | sed 's/-/ /g')
