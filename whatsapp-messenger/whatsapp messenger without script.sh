@@ -7,8 +7,8 @@ echo "------------------------------------------------------------"
 
 # === Variables ===
 HOME_DIR="$HOME"
-BOTS_DIR="$HOME_DIR/Bots"  # Changed to match your structure
-BOT_NAME="whatsapp-messenger"
+BOTS_DIR="$HOME_DIR/bots"  # ✅ lowercase 'bots'
+BOT_NAME="whatsapp-messenger"  # ✅ changed to hyphenated name
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
 REPORT_FILE="$VENV_PATH/report number"
@@ -90,23 +90,10 @@ pip install --no-cache-dir firebase_admin gspread selenium google-auth google-au
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
 echo "[OK] Created phone number file inside virtual environment: $REPORT_FILE"
 
-# === Step 6: Download Bot Python Script ===
-echo "[INFO] Downloading bot script..."
-cd "$BOT_PATH"
-git clone "$GITHUB_REPO" temp_repo
-cp -r temp_repo/$BOT_SUBPATH/*.py "$BOT_PATH" || true
-rm -rf temp_repo
-find "$BOT_PATH" -type f \( -name "*.sh" -o -name "README.md" \) -delete
+# === Step 6: REMOVED - No Python script download ===
+echo "[INFO] Skipping Python script download (will be handled by scheduler)"
 
-# === Step 7: Update Python Paths ===
-PY_FILE="$BOT_PATH/whatsapp messenger.py"
-if [ -f "$PY_FILE" ]; then
-    sed -i "s|CHROMEDRIVER_PATH *= *['\"].*['\"]|CHROMEDRIVER_PATH = \"$CHROMEDRIVER_BIN\"|" "$PY_FILE"
-    sed -i "s|CHROME_PROFILE_PATH *= *os.path.join(USER_HOME, .*|CHROME_PROFILE_PATH = os.path.join(USER_HOME, \".config\", \"chromium\")|" "$PY_FILE"
-    echo "[OK] Updated Chrome driver path in script."
-fi
-
-# === Step 8: Create Folder Structure ===
+# === Step 7: Create Folder Structure ===
 echo "[INFO] Creating folder structure..."
 CURRENT_DATE=$(date +"%d-%m-%Y")
 
@@ -136,7 +123,7 @@ touch "$BOT_PATH/Video/$CURRENT_DATE/Caption.txt"
 
 echo "[OK] Created folder structure with date: $CURRENT_DATE"
 
-# === Step 9: Summary ===
+# === Step 8: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
@@ -157,4 +144,5 @@ echo "🌐 Chromium: $($CHROME_BIN --version)"
 echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
 echo
 echo "💡 Ready for scheduler integration!"
+echo "📝 Python script will be downloaded separately by scheduler"
 echo "------------------------------------------------------------"
