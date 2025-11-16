@@ -214,12 +214,12 @@ class BotManager:
             else:
                 print(f"  ✅ {folder} - venv folder exists")
         
-        # Setup missing venvs
+        # Setup missing venvs using venv.sh from GitHub
         if bots_needing_venv:
-            print(f"\nSetting up venv for {len(bots_needing_venv)} bot(s)...")
+            print(f"\nSetting up venv for {len(bots_needing_venv)} bot(s) using venv.sh...")
             for bot_folder in bots_needing_venv:
                 print(f"\n  Setting up venv for: {bot_folder}")
-                success = self.run_bot_setup_command_live(bot_folder)
+                success = self.run_venv_sh_for_existing_bot(bot_folder)
                 if success:
                     print(f"    ✅ Successfully set up venv for {bot_folder}")
                 else:
@@ -229,10 +229,10 @@ class BotManager:
         
         return len(bots_needing_venv) == 0
     
-    def run_bot_setup_command_live(self, folder_name: str) -> bool:
-        """Run the setup command for a bot that's missing venv - using curl | bash format"""
+    def run_venv_sh_for_existing_bot(self, folder_name: str) -> bool:
+        """Run venv.sh for an existing bot that's missing venv folder"""
         try:
-            # Get the GitHub folder name (with hyphens)
+            # Convert local folder name to GitHub folder name (with hyphens)
             github_folder_name = folder_name.replace(' ', '-')
             
             # Create the venv.sh URL
@@ -242,25 +242,37 @@ class BotManager:
             print(f"    Running command: {command}")
             print("    " + "=" * 60)
             
-            # Execute the command with live output using curl | bash format
+            # Execute the command with live output
             result = subprocess.run(
                 ['bash', '-c', command],
-                timeout=600  # 10 minute timeout for setup
+                timeout=600  # 10 minute timeout for venv setup
             )
             
             print("    " + "=" * 60)
             if result.returncode == 0:
-                print(f"    ✅ venv setup completed successfully for {folder_name}")
-                return True
+                print(f"    ✅ venv.sh executed successfully for {folder_name}")
+                
+                # Verify venv was created
+                current_dir = os.getcwd()
+                parent_dir = os.path.dirname(current_dir)
+                folder_path = os.path.join(parent_dir, folder_name)
+                venv_path = os.path.join(folder_path, 'venv')
+                
+                if os.path.exists(venv_path):
+                    print(f"    ✅ venv folder verified for {folder_name}")
+                    return True
+                else:
+                    print(f"    ⚠️  Command succeeded but venv folder not found for {folder_name}")
+                    return False
             else:
-                print(f"    ❌ venv setup failed for {folder_name} (return code: {result.returncode})")
+                print(f"    ❌ venv.sh failed for {folder_name} (return code: {result.returncode})")
                 return False
                 
         except subprocess.TimeoutExpired:
-            print(f"    ⏰ venv setup timed out for {folder_name}")
+            print(f"    ⏰ venv.sh command timed out for {folder_name}")
             return False
         except Exception as e:
-            print(f"    ❌ Error running venv setup for {folder_name}: {e}")
+            print(f"    ❌ Error running venv.sh for {folder_name}: {e}")
             return False
     
     def step7_main_scheduler(self):
