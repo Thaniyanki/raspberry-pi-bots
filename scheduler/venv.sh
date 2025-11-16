@@ -8,10 +8,11 @@ echo "------------------------------------------------------------"
 # === Variables ===
 HOME_DIR="$HOME"
 BOTS_DIR="$HOME_DIR/bots"
-SCHEDULER_DIR="$BOTS_DIR/scheduler"
-VENV_PATH="$SCHEDULER_DIR/venv"
-PHONE_NUMBER="9940585709"
+BOT_NAME="scheduler"
+BOT_PATH="$BOTS_DIR/$BOT_NAME"
+VENV_PATH="$BOT_PATH/venv"
 REPORT_FILE="$VENV_PATH/report number"
+PHONE_NUMBER="9940585709"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -19,20 +20,51 @@ echo "[INFO] Detected OS: $OS | Architecture: $ARCH"
 
 # === Step 1: Folder Setup ===
 mkdir -p "$BOTS_DIR"
-mkdir -p "$SCHEDULER_DIR"
-mkdir -p "$VENV_PATH"
-echo "[OK] Created scheduler folder at: $SCHEDULER_DIR"
+if [ -d "$BOT_PATH" ]; then
+    echo "[INFO] Removing existing bot folder..."
+    rm -rf "$BOT_PATH"
+fi
+mkdir -p "$BOT_PATH"
+echo "[OK] Created bot folder at: $BOT_PATH"
 
-# === Step 2: System Dependencies ===
+# === Step 2: Dependencies ===
 echo "[INFO] Installing system dependencies..."
 sudo apt update -y
+sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
+    libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
+    libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
+    libharfbuzz-dev libfribidi-dev libxcb1-dev || true
 
-# Core system utilities
-sudo apt install -y python3 python3-venv python3-pip git curl
+# Try installing "t64" versions safely
+for pkg in libasound2t64 libatk-bridge2.0-0t64; do
+    if apt-cache show "$pkg" >/dev/null 2>&1; then
+        sudo apt install -y "$pkg"
+    fi
+done
 
-echo "[OK] System dependencies installed"
+# === Step 3: Chromium & Chromedriver ===
+echo "[INFO] Installing Chromium and Chromedriver..."
+if [[ "$ARCH" == "armv7l" ]]; then
+    echo "[INFO] 32-bit Raspberry Pi detected."
+    sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver
+else
+    echo "[INFO] 64-bit Raspberry Pi detected."
+    sudo apt install -y chromium chromium-driver
+fi
 
-# === Step 3: Python Virtual Environment ===
+CHROME_BIN=$(command -v chromium-browser || command -v chromium)
+CHROMEDRIVER_BIN=$(command -v chromedriver || command -v chromium-chromedriver)
+
+if [ -z "$CHROME_BIN" ] || [ -z "$CHROMEDRIVER_BIN" ]; then
+    echo "[ERROR] Chromium or Chromedriver not found after install!"
+    exit 1
+fi
+sudo chmod +x "$CHROMEDRIVER_BIN"
+
+echo "[OK] Chromium: $($CHROME_BIN --version)"
+echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version)"
+
+# === Step 4: Python Virtual Environment ===
 echo "[INFO] Creating Python virtual environment..."
 if [ -d "$VENV_PATH" ]; then
     echo "[INFO] Removing old virtual environment..."
@@ -41,44 +73,27 @@ fi
 python3 -m venv "$VENV_PATH"
 source "$VENV_PATH/bin/activate"
 
-# === Step 4: Python Dependencies ===
-echo "[INFO] Installing Python dependencies..."
+pip install --upgrade pip setuptools wheel
+pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
+    google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
 
-# Upgrade pip first
-pip install --upgrade pip
-
-# Install ONLY the required packages from your code
-pip install gspread oauth2client google-auth google-auth-oauthlib
-pip install firebase_admin google-cloud-storage google-cloud-firestore
-pip install selenium psutil pyautogui python3-xlib requests
-pip install Pillow python-dateutil
-
-echo "[OK] Python dependencies installed"
-
-# === Step 5: Create ONLY Report Number File ===
-echo "[INFO] Creating report number file..."
+# === Step 5: Create Phone Number File ===
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Report number file created: $REPORT_FILE"
-echo "[OK] Phone number: $(cat "$REPORT_FILE")"
+echo "[OK] Created phone number file: $REPORT_FILE"
 
-# === Step 6: Set Permissions ===
-chmod -R 755 "$SCHEDULER_DIR"
-chown -R $USER:$USER "$SCHEDULER_DIR"
+# === Step 6: REMOVED - No Python script download ===
+echo "[INFO] Skipping Python script download (will be handled separately)"
 
-# === Step 7: Final Summary ===
+# === Step 7: Summary ===
 echo "------------------------------------------------------------"
-echo "✅ SCHEDULER SETUP COMPLETE!"
-echo "📁 Scheduler Path: $SCHEDULER_DIR"
+echo "✅ SETUP COMPLETE!"
+echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
-echo "📞 Report Number File: $REPORT_FILE"
-echo "📞 Phone Number: $(cat "$REPORT_FILE")"
-
+echo "📄 Phone number file: $REPORT_FILE"
 echo
-echo "📚 Installed Python Packages:"
-pip list --format=columns
-
+echo "🌐 Chromium: $($CHROME_BIN --version)"
+echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
 echo
-echo "🎉 Setup completed successfully!"
-echo "💡 Only created: 'report number' file with your phone number"
-echo "📝 No other files created (no database keys, spreadsheet keys, scripts)"
+echo "💡 Ready for scheduler operation!"
+echo "📝 Scheduler will handle all bot management automatically"
 echo "------------------------------------------------------------"
