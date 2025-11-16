@@ -60,43 +60,67 @@ class BotManager:
         """Normalize folder names by removing hyphens and spaces for comparison"""
         return folder_name.replace('-', ' ').replace('_', ' ').lower().strip()
     
+    def is_bot_folder(self, folder_name: str) -> bool:
+        """Check if a folder is actually a bot (exclude utility folders)"""
+        non_bot_folders = [
+            'all-in-one-venv',
+            'venv',
+            'env',
+            'virtualenv',
+            'tmp',
+            'temp',
+            'backup',
+            'archive',
+            'test',
+            'tests',
+            'docs',
+            'documentation'
+        ]
+        
+        normalized_name = self.normalize_folder_name(folder_name)
+        return normalized_name not in [self.normalize_folder_name(nb) for nb in non_bot_folders]
+    
     def step5_compare_folders(self, raspberry_folders: List[str], github_folders: List[str]) -> List[str]:
         """Step 5: Compare folders and find missing ones"""
-        # Normalize all folder names for comparison
-        normalized_raspberry = {self.normalize_folder_name(folder): folder for folder in raspberry_folders}
-        normalized_github = {self.normalize_folder_name(folder): folder for folder in github_folders}
+        # Filter out non-bot folders
+        raspberry_bots = [f for f in raspberry_folders if self.is_bot_folder(f)]
+        github_bots = [f for f in github_folders if self.is_bot_folder(f)]
         
-        print("Step 5 - Comparing folders:")
-        print("Raspberry Pi (normalized):")
+        # Normalize all folder names for comparison
+        normalized_raspberry = {self.normalize_folder_name(folder): folder for folder in raspberry_bots}
+        normalized_github = {self.normalize_folder_name(folder): folder for folder in github_bots}
+        
+        print("Step 5 - Comparing BOT folders:")
+        print("Raspberry Pi BOTS (normalized):")
         for norm_name, orig_name in normalized_raspberry.items():
             print(f"  - {orig_name} -> {norm_name}")
         
-        print("GitHub (normalized):")
+        print("GitHub BOTS (normalized):")
         for norm_name, orig_name in normalized_github.items():
             print(f"  - {orig_name} -> {norm_name}")
         
-        # Find missing folders (in GitHub but not in Raspberry Pi)
-        missing_folders = []
+        # Find missing bot folders (in GitHub but not in Raspberry Pi)
+        missing_bots = []
         for github_norm, github_orig in normalized_github.items():
             if github_norm not in normalized_raspberry:
-                missing_folders.append(github_orig)
-                print(f"  Missing: {github_orig} (normalized: {github_norm})")
+                missing_bots.append(github_orig)
+                print(f"  Missing BOT: {github_orig} (normalized: {github_norm})")
         
-        if not missing_folders:
-            print("  No missing folders found - both contain same bots")
+        if not missing_bots:
+            print("  No missing bots found - both contain same bots")
         
-        return missing_folders
+        return missing_bots
     
     def step6_check_venv_and_update(self, missing_folders: List[str]) -> bool:
         """Step 6: Check for venv.sh and update missing bots"""
         if not missing_folders:
-            print("Step 6 - No missing folders, continuing to Step 7")
+            print("Step 6 - No missing bots, continuing to Step 7")
             return True
         
-        print("Step 6 - Processing missing folders:")
+        print("Step 6 - Processing missing bots:")
         
         for folder in missing_folders:
-            print(f"  Checking folder: {folder}")
+            print(f"  Checking bot: {folder}")
             
             # Check if venv.sh exists in the GitHub folder
             venv_sh_exists = self.check_venv_sh_in_github_folder(folder)
@@ -172,35 +196,11 @@ class BotManager:
         print("Step 7 - Main scheduler execution")
         print("All steps completed successfully!")
         
-        # Add your main scheduler logic here
-        # This is where you would implement the core functionality
-        # of your scheduler after ensuring all bots are updated
-        
-        # Example: Run each bot's main script
+        # Run all available bots
         self.run_all_bots()
     
-    def run_all_bots(self):
-        """Run all available bots"""
-        print("Running all available bots...")
-        
-        raspberry_folders = self.step3_get_raspberry_folders()
-        
-        for folder in raspberry_folders:
-            # Skip venv folder itself
-            if folder == 'venv':
-                continue
-                
-            print(f"Checking bot: {folder}")
-            
-            # Look for main Python files in the folder
-            main_scripts = self.find_main_scripts(folder)
-            
-            for script in main_scripts:
-                print(f"  Running script: {script}")
-                self.run_python_script(folder, script)
-    
     def find_main_scripts(self, folder_name: str) -> List[str]:
-        """Find main Python scripts in a folder"""
+        """Find main Python scripts in a folder with improved detection"""
         try:
             current_dir = os.getcwd()
             parent_dir = os.path.dirname(current_dir)
@@ -209,21 +209,66 @@ class BotManager:
             if not os.path.exists(folder_path):
                 return []
             
-            scripts = []
-            for file in os.listdir(folder_path):
-                if file.endswith('.py') and not file.startswith('__'):
-                    # Check for common main script patterns
-                    if any(pattern in file.lower() for pattern in ['main', 'bot', 'scheduler', 'run', 'app']):
-                        scripts.append(file)
+            all_python_files = [f for f in os.listdir(folder_path) if f.endswith('.py') and not f.startswith('__')]
             
-            # If no obvious main scripts found, return all Python files
-            if not scripts:
-                scripts = [f for f in os.listdir(folder_path) if f.endswith('.py') and not f.startswith('__')]
+            if not all_python_files:
+                return []
             
-            return scripts
+            # Priority 1: Look for obvious main files
+            main_files = []
+            for file in all_python_files:
+                lower_file = file.lower()
+                if any(pattern in lower_file for pattern in ['main', 'bot', 'scheduler', 'run', 'app', 'start']):
+                    main_files.append(file)
+            
+            if main_files:
+                return main_files
+            
+            # Priority 2: If no obvious main files, check file content for main function
+            for file in all_python_files:
+                try:
+                    file_path = os.path.join(folder_path, file)
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if 'if __name__ == "__main__"' in content or 'def main()' in content:
+                            main_files.append(file)
+                except:
+                    continue
+            
+            if main_files:
+                return main_files
+            
+            # Priority 3: Return all Python files if no main detected
+            return all_python_files[:1]  # Return first Python file only
+            
         except Exception as e:
             print(f"Error finding scripts in {folder_name}: {e}")
             return []
+    
+    def run_all_bots(self):
+        """Run all available bots with improved detection"""
+        print("Running all available bots...")
+        
+        raspberry_folders = self.step3_get_raspberry_folders()
+        
+        for folder in raspberry_folders:
+            # Skip non-bot folders
+            if not self.is_bot_folder(folder):
+                print(f"\nSkipping non-bot folder: {folder}")
+                continue
+                
+            print(f"\nChecking bot: {folder}")
+            
+            # Look for main Python files in the folder
+            main_scripts = self.find_main_scripts(folder)
+            
+            if not main_scripts:
+                print(f"  No Python scripts found in {folder}")
+                continue
+                
+            for script in main_scripts:
+                print(f"  Running script: {script}")
+                self.run_python_script(folder, script)
     
     def run_python_script(self, folder_name: str, script_name: str):
         """Run a Python script from a specific folder"""
@@ -244,6 +289,8 @@ class BotManager:
             if os.path.exists(venv_path):
                 python_cmd = os.path.join(venv_path, 'bin', 'python3')
                 print(f"    Using venv Python: {python_cmd}")
+            else:
+                print(f"    Using system Python")
             
             # Run the Python script
             result = subprocess.run(
@@ -255,18 +302,18 @@ class BotManager:
             )
             
             if result.returncode == 0:
-                print(f"    Script {script_name} executed successfully")
-                if result.stdout:
-                    print(f"    Output: {result.stdout[:200]}...")  # First 200 chars
+                print(f"    ✅ Script {script_name} executed successfully")
+                if result.stdout.strip():
+                    print(f"    Output: {result.stdout.strip()}")
             else:
-                print(f"    Script {script_name} failed")
-                if result.stderr:
-                    print(f"    Error: {result.stderr[:200]}...")  # First 200 chars
+                print(f"    ❌ Script {script_name} failed")
+                if result.stderr.strip():
+                    print(f"    Error: {result.stderr.strip()}")
                     
         except subprocess.TimeoutExpired:
-            print(f"    Script {script_name} timed out")
+            print(f"    ⏰ Script {script_name} timed out")
         except Exception as e:
-            print(f"    Error running script {script_name}: {e}")
+            print(f"    ❌ Error running script {script_name}: {e}")
     
     def run_all_steps(self):
         """Execute all steps in sequence"""
@@ -288,10 +335,10 @@ class BotManager:
         
         # Step 6: Check venv.sh and update
         if missing_folders:
-            print("Missing folders found, proceeding with Step 6...")
+            print("Missing bots found, proceeding with Step 6...")
             self.step6_check_venv_and_update(missing_folders)
         else:
-            print("No missing folders found, proceeding to Step 7...")
+            print("No missing bots found, proceeding to Step 7...")
         
         # Step 7: Main scheduler
         self.step7_main_scheduler()
