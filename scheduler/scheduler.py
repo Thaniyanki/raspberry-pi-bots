@@ -230,63 +230,37 @@ class BotManager:
         return len(bots_needing_venv) == 0
     
     def run_bot_setup_command_live(self, folder_name: str) -> bool:
-        """Run the setup command for a bot that's missing venv - with PROPER LIVE output"""
+        """Run the setup command for a bot that's missing venv - using curl | bash format"""
         try:
-            # Map folder names to their setup script names
-            setup_scripts = {
-                'facebook birthday wisher': 'facebook birthday wisher.sh',
-                'facebook profile liker': 'facebook profile liker.sh', 
-                'whatsapp birthday wisher': 'whatsapp birthday wisher.sh',
-                'whatsapp messenger': 'whatsapp messenger.sh',
-                'scheduler': 'scheduler.sh'
-            }
-            
             # Get the GitHub folder name (with hyphens)
             github_folder_name = folder_name.replace(' ', '-')
-            setup_script_name = setup_scripts.get(folder_name, f"{folder_name}.sh")
             
-            # URL encode spaces in the script name
-            encoded_script_name = setup_script_name.replace(' ', '%20')
+            # Create the venv.sh URL
+            venv_sh_url = f"{self.raw_content_base}/{github_folder_name}/venv.sh"
             
-            # Create the command URL
-            command_url = f"{self.raw_content_base}/{github_folder_name}/{encoded_script_name}"
-            
-            print(f"    Downloading and running: {command_url}")
+            command = f'curl -s "{venv_sh_url}" | bash'
+            print(f"    Running command: {command}")
             print("    " + "=" * 60)
             
-            # Method 1: Download first, then execute with live output
-            temp_script = f"/tmp/setup_{github_folder_name}.sh"
-            
-            # Download the script
-            download_cmd = f'curl -s "{command_url}" -o {temp_script}'
-            subprocess.run(download_cmd, shell=True, check=True)
-            
-            # Make it executable
-            subprocess.run(f'chmod +x {temp_script}', shell=True, check=True)
-            
-            # Run with live output
+            # Execute the command with live output using curl | bash format
             result = subprocess.run(
-                ['bash', temp_script],
+                ['bash', '-c', command],
                 timeout=600  # 10 minute timeout for setup
             )
             
-            # Clean up
-            if os.path.exists(temp_script):
-                os.remove(temp_script)
-                
             print("    " + "=" * 60)
             if result.returncode == 0:
-                print(f"    ✅ Setup completed successfully for {folder_name}")
+                print(f"    ✅ venv setup completed successfully for {folder_name}")
                 return True
             else:
-                print(f"    ❌ Setup failed for {folder_name} (return code: {result.returncode})")
+                print(f"    ❌ venv setup failed for {folder_name} (return code: {result.returncode})")
                 return False
                 
         except subprocess.TimeoutExpired:
-            print(f"    ⏰ Setup command timed out for {folder_name}")
+            print(f"    ⏰ venv setup timed out for {folder_name}")
             return False
         except Exception as e:
-            print(f"    ❌ Error running setup command for {folder_name}: {e}")
+            print(f"    ❌ Error running venv setup for {folder_name}: {e}")
             return False
     
     def step7_main_scheduler(self):
