@@ -30,41 +30,9 @@ echo "[OK] Created bot folder at: $BOT_PATH"
 # === Step 2: Dependencies ===
 echo "[INFO] Installing system dependencies..."
 sudo apt update -y
-sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
-    libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
-    libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
-    libharfbuzz-dev libfribidi-dev libxcb1-dev || true
+sudo apt install -y python3 python3-venv python3-pip git curl
 
-# Try installing "t64" versions safely
-for pkg in libasound2t64 libatk-bridge2.0-0t64; do
-    if apt-cache show "$pkg" >/dev/null 2>&1; then
-        sudo apt install -y "$pkg"
-    fi
-done
-
-# === Step 3: Chromium & Chromedriver ===
-echo "[INFO] Installing Chromium and Chromedriver..."
-if [[ "$ARCH" == "armv7l" ]]; then
-    echo "[INFO] 32-bit Raspberry Pi detected."
-    sudo apt install -y chromium chromium-driver || sudo apt install -y chromium-browser chromium-chromedriver
-else
-    echo "[INFO] 64-bit Raspberry Pi detected."
-    sudo apt install -y chromium chromium-driver
-fi
-
-CHROME_BIN=$(command -v chromium-browser || command -v chromium)
-CHROMEDRIVER_BIN=$(command -v chromedriver || command -v chromium-chromedriver)
-
-if [ -z "$CHROME_BIN" ] || [ -z "$CHROMEDRIVER_BIN" ]; then
-    echo "[ERROR] Chromium or Chromedriver not found after install!"
-    exit 1
-fi
-sudo chmod +x "$CHROMEDRIVER_BIN"
-
-echo "[OK] Chromium: $($CHROME_BIN --version)"
-echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version)"
-
-# === Step 4: Python Virtual Environment ===
+# === Step 3: Python Virtual Environment ===
 echo "[INFO] Creating Python virtual environment..."
 if [ -d "$VENV_PATH" ]; then
     echo "[INFO] Removing old virtual environment..."
@@ -74,26 +42,42 @@ python3 -m venv "$VENV_PATH"
 source "$VENV_PATH/bin/activate"
 
 pip install --upgrade pip setuptools wheel
-pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
-    google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
+
+# === Step 4: Install EXACT Python Dependencies from Your Code ===
+echo "[INFO] Installing Python dependencies from scheduler code..."
+
+# Core Python standard library (already available)
+echo "[OK] Python standard libraries: os, time, json, subprocess, shutil, re, sys, pathlib"
+
+# Google Sheets API (from your try/except block)
+pip install gspread oauth2client
+
+# Additional dependencies used in your code
+pip install firebase_admin google-auth google-auth-oauthlib \
+    google-cloud-storage google-cloud-firestore psutil \
+    pyautogui python3-xlib requests Pillow python-dateutil
+
+echo "[OK] All Python dependencies installed"
 
 # === Step 5: Create Phone Number File ===
 echo "$PHONE_NUMBER" > "$REPORT_FILE"
 echo "[OK] Created phone number file: $REPORT_FILE"
 
-# === Step 6: REMOVED - No Python script download ===
-echo "[INFO] Skipping Python script download (will be handled separately)"
-
-# === Step 7: Summary ===
+# === Step 6: Summary ===
 echo "------------------------------------------------------------"
-echo "✅ SETUP COMPLETE!"
+echo "✅ SCHEDULER SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
 echo "📄 Phone number file: $REPORT_FILE"
 echo
-echo "🌐 Chromium: $($CHROME_BIN --version)"
-echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
+echo "🐍 Python Dependencies Installed:"
+echo "   ✅ gspread, oauth2client (Google Sheets API)"
+echo "   ✅ firebase_admin, google-cloud-* (Firebase)"
+echo "   ✅ selenium (Web automation)"
+echo "   ✅ psutil, pyautogui, python3-xlib (System control)"
+echo "   ✅ requests, Pillow (HTTP & Image processing)"
+echo "   ✅ python-dateutil (Date utilities)"
 echo
 echo "💡 Ready for scheduler operation!"
-echo "📝 Scheduler will handle all bot management automatically"
+echo "📝 The scheduler will handle all bot management automatically"
 echo "------------------------------------------------------------"
