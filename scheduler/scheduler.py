@@ -171,10 +171,9 @@ class BotManager:
             command = f'curl -s "{venv_sh_url}" | bash'
             print(f"    Running command: {command}")
             
-            # Execute the command with live output
+            # Execute the command with live output - NO TIMEOUT
             result = subprocess.run(
-                ['bash', '-c', command],
-                timeout=300  # 5 minute timeout
+                ['bash', '-c', command]
             )
             
             if result.returncode == 0:
@@ -184,9 +183,6 @@ class BotManager:
                 print(f"    ❌ venv.sh failed for {folder_name} (return code: {result.returncode})")
                 return False
                 
-        except subprocess.TimeoutExpired:
-            print(f"    ⏰ Command timed out for {folder_name}")
-            return False
         except Exception as e:
             print(f"    ❌ Error running venv.sh for {folder_name}: {e}")
             return False
@@ -242,10 +238,9 @@ class BotManager:
             print(f"    Running command: {command}")
             print("    " + "=" * 60)
             
-            # Execute the command with live output
+            # Execute the command with live output - NO TIMEOUT
             result = subprocess.run(
-                ['bash', '-c', command],
-                timeout=600  # 10 minute timeout for venv setup
+                ['bash', '-c', command]
             )
             
             print("    " + "=" * 60)
@@ -268,9 +263,6 @@ class BotManager:
                 print(f"    ❌ venv.sh failed for {folder_name} (return code: {result.returncode})")
                 return False
                 
-        except subprocess.TimeoutExpired:
-            print(f"    ⏰ venv.sh command timed out for {folder_name}")
-            return False
         except Exception as e:
             print(f"    ❌ Error running venv.sh for {folder_name}: {e}")
             return False
