@@ -1,4 +1,3 @@
-# scheduler Python Script
 import os
 import subprocess
 import requests
@@ -16,10 +15,13 @@ class BotManager:
         """Step 3: Get folder list from Raspberry Pi local directory"""
         try:
             current_dir = os.getcwd()
+            parent_dir = os.path.dirname(current_dir)  # Go up one level to bots folder
+            
             folders = []
             
-            for item in os.listdir(current_dir):
-                if os.path.isdir(item):
+            for item in os.listdir(parent_dir):
+                item_path = os.path.join(parent_dir, item)
+                if os.path.isdir(item_path):
                     folders.append(item)
             
             print("Step 3 - Raspberry Pi folders:")
@@ -86,7 +88,7 @@ class BotManager:
         return missing_folders
     
     def step6_check_venv_and_update(self, missing_folders: List[str]) -> bool:
-        """Step 6: Check for venv and update missing bots"""
+        """Step 6: Check for venv.sh and update missing bots"""
         if not missing_folders:
             print("Step 6 - No missing folders, continuing to Step 7")
             return True
@@ -96,26 +98,26 @@ class BotManager:
         for folder in missing_folders:
             print(f"  Checking folder: {folder}")
             
-            # Check if venv exists in the GitHub folder
-            venv_exists = self.check_venv_in_github_folder(folder)
+            # Check if venv.sh exists in the GitHub folder
+            venv_sh_exists = self.check_venv_sh_in_github_folder(folder)
             
-            if not venv_exists:
-                print(f"    No venv found in {folder}, continuing to Step 7")
+            if not venv_sh_exists:
+                print(f"    No venv.sh found in {folder}, continuing to Step 7")
                 continue
             
-            print(f"    Venv found in {folder}, preparing to update...")
+            print(f"    venv.sh found in {folder}, preparing to update...")
             
             # Prepare and run the update command
-            success = self.run_update_command(folder)
+            success = self.run_venv_sh_command(folder)
             if success:
-                print(f"    Successfully updated {folder}")
+                print(f"    Successfully created venv for {folder}")
             else:
-                print(f"    Failed to update {folder}")
+                print(f"    Failed to create venv for {folder}")
         
         return True
     
-    def check_venv_in_github_folder(self, folder_name: str) -> bool:
-        """Check if venv directory exists in GitHub folder"""
+    def check_venv_sh_in_github_folder(self, folder_name: str) -> bool:
+        """Check if venv.sh file exists in GitHub folder"""
         try:
             url = f"{self.github_api_base}/contents/{folder_name}"
             response = requests.get(url)
@@ -124,28 +126,21 @@ class BotManager:
             contents = response.json()
             
             for item in contents:
-                if item['type'] == 'dir' and 'venv' in item['name'].lower():
+                if item['type'] == 'file' and item['name'].lower() == 'venv.sh':
                     return True
             
             return False
         except Exception as e:
-            print(f"    Error checking venv for {folder_name}: {e}")
+            print(f"    Error checking venv.sh for {folder_name}: {e}")
             return False
     
-    def run_update_command(self, folder_name: str) -> bool:
-        """Run the update command for a specific folder"""
+    def run_venv_sh_command(self, folder_name: str) -> bool:
+        """Run the venv.sh command for a specific folder"""
         try:
-            # Create the script URL - handle spaces in folder names
-            script_folder = folder_name.replace(' ', '%20')
-            script_url = f"{self.raw_content_base}/{script_folder}/{script_folder}.sh"
+            # Create the venv.sh URL
+            venv_sh_url = f"{self.raw_content_base}/{folder_name}/venv.sh"
             
-            # Alternative URL pattern if above doesn't work
-            if ' ' in folder_name:
-                # Try with hyphens instead of spaces
-                hyphenated_name = folder_name.replace(' ', '-')
-                script_url = f"{self.raw_content_base}/{folder_name}/{hyphenated_name}.sh"
-            
-            command = f'bash <(curl -s "{script_url}")'
+            command = f'bash <(curl -s "{venv_sh_url}")'
             print(f"    Running command: {command}")
             
             # Execute the command
@@ -157,11 +152,11 @@ class BotManager:
             )
             
             if result.returncode == 0:
-                print(f"    Command executed successfully for {folder_name}")
+                print(f"    venv.sh executed successfully for {folder_name}")
                 print(f"    Output: {result.stdout}")
                 return True
             else:
-                print(f"    Command failed for {folder_name}")
+                print(f"    venv.sh failed for {folder_name}")
                 print(f"    Error: {result.stderr}")
                 return False
                 
@@ -169,7 +164,7 @@ class BotManager:
             print(f"    Command timed out for {folder_name}")
             return False
         except Exception as e:
-            print(f"    Error running command for {folder_name}: {e}")
+            print(f"    Error running venv.sh for {folder_name}: {e}")
             return False
     
     def step7_main_scheduler(self):
@@ -191,6 +186,10 @@ class BotManager:
         raspberry_folders = self.step3_get_raspberry_folders()
         
         for folder in raspberry_folders:
+            # Skip venv folder itself
+            if folder == 'venv':
+                continue
+                
             print(f"Checking bot: {folder}")
             
             # Look for main Python files in the folder
@@ -203,16 +202,18 @@ class BotManager:
     def find_main_scripts(self, folder_name: str) -> List[str]:
         """Find main Python scripts in a folder"""
         try:
-            scripts = []
-            folder_path = os.path.join(os.getcwd(), folder_name)
+            current_dir = os.getcwd()
+            parent_dir = os.path.dirname(current_dir)
+            folder_path = os.path.join(parent_dir, folder_name)
             
             if not os.path.exists(folder_path):
                 return []
             
+            scripts = []
             for file in os.listdir(folder_path):
                 if file.endswith('.py') and not file.startswith('__'):
                     # Check for common main script patterns
-                    if any(pattern in file.lower() for pattern in ['main', 'bot', 'scheduler', 'run']):
+                    if any(pattern in file.lower() for pattern in ['main', 'bot', 'scheduler', 'run', 'app']):
                         scripts.append(file)
             
             # If no obvious main scripts found, return all Python files
@@ -227,18 +228,29 @@ class BotManager:
     def run_python_script(self, folder_name: str, script_name: str):
         """Run a Python script from a specific folder"""
         try:
-            script_path = os.path.join(folder_name, script_name)
+            current_dir = os.getcwd()
+            parent_dir = os.path.dirname(current_dir)
+            folder_path = os.path.join(parent_dir, folder_name)
+            script_path = os.path.join(folder_path, script_name)
             
             if not os.path.exists(script_path):
                 print(f"    Script not found: {script_path}")
                 return
             
+            # Check if venv exists in the folder
+            venv_path = os.path.join(folder_path, 'venv')
+            python_cmd = 'python3'
+            
+            if os.path.exists(venv_path):
+                python_cmd = os.path.join(venv_path, 'bin', 'python3')
+                print(f"    Using venv Python: {python_cmd}")
+            
             # Run the Python script
             result = subprocess.run(
-                ['python3', script_path],
+                [python_cmd, script_name],
                 capture_output=True,
                 text=True,
-                cwd=folder_name,
+                cwd=folder_path,
                 timeout=600  # 10 minute timeout per script
             )
             
@@ -274,7 +286,7 @@ class BotManager:
         # Step 5: Compare folders
         missing_folders = self.step5_compare_folders(raspberry_folders, github_folders)
         
-        # Step 6: Check venv and update
+        # Step 6: Check venv.sh and update
         if missing_folders:
             print("Missing folders found, proceeding with Step 6...")
             self.step6_check_venv_and_update(missing_folders)
