@@ -168,7 +168,7 @@ class BotManager:
             # Create the venv.sh URL
             venv_sh_url = f"{self.raw_content_base}/{folder_name}/venv.sh"
             
-            command = f'bash <(curl -s "{venv_sh_url}")'
+            command = f'curl -s "{venv_sh_url}" | bash'
             print(f"    Running command: {command}")
             
             # Execute the command with live output
@@ -219,7 +219,7 @@ class BotManager:
             print(f"\nSetting up venv for {len(bots_needing_venv)} bot(s)...")
             for bot_folder in bots_needing_venv:
                 print(f"\n  Setting up venv for: {bot_folder}")
-                success = self.run_bot_setup_command(bot_folder)
+                success = self.run_bot_setup_command_live(bot_folder)
                 if success:
                     print(f"    ✅ Successfully set up venv for {bot_folder}")
                 else:
@@ -229,8 +229,8 @@ class BotManager:
         
         return len(bots_needing_venv) == 0
     
-    def run_bot_setup_command(self, folder_name: str) -> bool:
-        """Run the setup command for a bot that's missing venv - with LIVE output"""
+    def run_bot_setup_command_live(self, folder_name: str) -> bool:
+        """Run the setup command for a bot that's missing venv - with PROPER LIVE output"""
         try:
             # Map folder names to their setup script names
             setup_scripts = {
@@ -251,17 +251,30 @@ class BotManager:
             # Create the command URL
             command_url = f"{self.raw_content_base}/{github_folder_name}/{encoded_script_name}"
             
-            command = f'bash <(curl -s "{command_url}")'
-            print(f"    Running command: {command}")
-            print("    " + "=" * 50)
+            print(f"    Downloading and running: {command_url}")
+            print("    " + "=" * 60)
             
-            # Execute the command with LIVE output (no capture)
+            # Method 1: Download first, then execute with live output
+            temp_script = f"/tmp/setup_{github_folder_name}.sh"
+            
+            # Download the script
+            download_cmd = f'curl -s "{command_url}" -o {temp_script}'
+            subprocess.run(download_cmd, shell=True, check=True)
+            
+            # Make it executable
+            subprocess.run(f'chmod +x {temp_script}', shell=True, check=True)
+            
+            # Run with live output
             result = subprocess.run(
-                ['bash', '-c', command],
+                ['bash', temp_script],
                 timeout=600  # 10 minute timeout for setup
             )
             
-            print("    " + "=" * 50)
+            # Clean up
+            if os.path.exists(temp_script):
+                os.remove(temp_script)
+                
+            print("    " + "=" * 60)
             if result.returncode == 0:
                 print(f"    ✅ Setup completed successfully for {folder_name}")
                 return True
