@@ -195,23 +195,121 @@ class BotManager:
             print(f"    Error running venv.sh for {folder_name}: {e}")
             return False
     
-    def step7_main_scheduler(self):
-        """Step 7: Main scheduler logic - Just confirmation"""
-        print("Step 7 - Main scheduler execution")
-        print("All bots are synchronized and ready!")
-        print("Each bot will handle its own execution schedule.")
+    def check_and_setup_missing_venvs(self):
+        """Check each bot for missing venv and setup if needed"""
+        print("Checking for missing venv folders in existing bots...")
         
-        # Since bots handle their own execution, we just confirm everything is ready
-        print("\nBot Status Summary:")
+        current_dir = os.getcwd()
+        parent_dir = os.path.dirname(current_dir)
         raspberry_folders = self.step3_get_raspberry_folders()
-        bot_count = 0
+        
+        bots_needing_venv = []
         
         for folder in sorted(raspberry_folders):
-            if self.is_bot_folder(folder):
-                bot_count += 1
-                print(f"  ✅ {folder} - Ready")
+            if not self.is_bot_folder(folder):
+                continue
+                
+            folder_path = os.path.join(parent_dir, folder)
+            venv_path = os.path.join(folder_path, 'venv')
+            
+            if not os.path.exists(venv_path):
+                bots_needing_venv.append(folder)
+                print(f"  ❌ {folder} - venv folder missing")
+            else:
+                print(f"  ✅ {folder} - venv folder exists")
         
-        print(f"\nTotal bots ready: {bot_count}")
+        # Setup missing venvs
+        if bots_needing_venv:
+            print(f"\nSetting up venv for {len(bots_needing_venv)} bot(s)...")
+            for bot_folder in bots_needing_venv:
+                print(f"\n  Setting up venv for: {bot_folder}")
+                success = self.run_bot_setup_command(bot_folder)
+                if success:
+                    print(f"    ✅ Successfully set up venv for {bot_folder}")
+                else:
+                    print(f"    ❌ Failed to set up venv for {bot_folder}")
+        else:
+            print("\nAll bots have venv folders - no setup needed")
+        
+        return len(bots_needing_venv) == 0
+    
+    def run_bot_setup_command(self, folder_name: str) -> bool:
+        """Run the setup command for a bot that's missing venv"""
+        try:
+            # Map folder names to their setup script names
+            setup_scripts = {
+                'facebook birthday wisher': 'facebook birthday wisher.sh',
+                'facebook profile liker': 'facebook profile liker.sh', 
+                'whatsapp birthday wisher': 'whatsapp birthday wisher.sh',
+                'whatsapp messenger': 'whatsapp messenger.sh',
+                'scheduler': 'scheduler.sh'
+            }
+            
+            # Get the GitHub folder name (with hyphens)
+            github_folder_name = folder_name.replace(' ', '-')
+            setup_script_name = setup_scripts.get(folder_name, f"{folder_name}.sh")
+            
+            # URL encode spaces in the script name
+            encoded_script_name = setup_script_name.replace(' ', '%20')
+            
+            # Create the command URL
+            command_url = f"{self.raw_content_base}/{github_folder_name}/{encoded_script_name}"
+            
+            command = f'bash <(curl -s "{command_url}")'
+            print(f"    Running command: {command}")
+            
+            # Execute the command
+            result = subprocess.run(
+                ['bash', '-c', command],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                print(f"    Setup completed successfully for {folder_name}")
+                if result.stdout.strip():
+                    print(f"    Output: {result.stdout.strip()}")
+                return True
+            else:
+                print(f"    Setup failed for {folder_name}")
+                if result.stderr.strip():
+                    print(f"    Error: {result.stderr.strip()}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            print(f"    Setup command timed out for {folder_name}")
+            return False
+        except Exception as e:
+            print(f"    Error running setup command for {folder_name}: {e}")
+            return False
+    
+    def step7_main_scheduler(self):
+        """Step 7: Main scheduler logic"""
+        print("Step 7 - Main scheduler execution")
+        print("All bots are synchronized and ready!")
+        
+        # Final status check
+        print("\nFinal Bot Status:")
+        current_dir = os.getcwd()
+        parent_dir = os.path.dirname(current_dir)
+        raspberry_folders = self.step3_get_raspberry_folders()
+        
+        ready_bots = 0
+        for folder in sorted(raspberry_folders):
+            if not self.is_bot_folder(folder):
+                continue
+                
+            folder_path = os.path.join(parent_dir, folder)
+            venv_path = os.path.join(folder_path, 'venv')
+            
+            if os.path.exists(venv_path):
+                print(f"  ✅ {folder} - Ready with venv")
+                ready_bots += 1
+            else:
+                print(f"  ❌ {folder} - Missing venv")
+        
+        print(f"\nTotal bots ready: {ready_bots}")
     
     def run_all_steps(self):
         """Execute all steps in sequence"""
@@ -231,14 +329,19 @@ class BotManager:
         # Step 5: Compare folders
         missing_folders = self.step5_compare_folders(raspberry_folders, github_folders)
         
-        # Step 6: Check venv.sh and update
+        # Step 6: Check venv.sh and update missing bots
         if missing_folders:
             print("Missing bots found, proceeding with Step 6...")
             self.step6_check_venv_and_update(missing_folders)
         else:
             print("No missing bots found, proceeding to Step 7...")
         
+        # NEW: Check and setup missing venvs for existing bots
+        print("\n" + "=" * 30)
+        all_venvs_ready = self.check_and_setup_missing_venvs()
+        
         # Step 7: Main scheduler
+        print("\n" + "=" * 30)
         self.step7_main_scheduler()
         
         print("=" * 50)
