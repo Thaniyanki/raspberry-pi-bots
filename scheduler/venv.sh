@@ -1,4 +1,3 @@
-
 #!/usr/bin/env bash
 set -e
 
@@ -11,7 +10,8 @@ HOME_DIR="$HOME"
 BOTS_DIR="$HOME_DIR/bots"
 SCHEDULER_DIR="$BOTS_DIR/scheduler"
 VENV_PATH="$SCHEDULER_DIR/venv"
-GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
+PHONE_NUMBER="9940585709"  # Change this to your desired phone number
+PHONE_FILE="$VENV_PATH/phone_number.txt"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -87,88 +87,24 @@ pip install --no-cache-dir beautifulsoup4 lxml html5lib
 
 echo "[OK] Python dependencies installed"
 
-# === Step 5: Create Essential Directory Structure ===
-echo "[INFO] Setting up directory structure..."
+# === Step 5: Create Phone Number File ===
+echo "[INFO] Creating phone number file..."
+echo "$PHONE_NUMBER" > "$PHONE_FILE"
+echo "[OK] Phone number file created: $PHONE_FILE"
+echo "[OK] Phone number: $(cat "$PHONE_FILE")"
 
-# Create required file paths (empty for now - will be populated by scheduler)
-touch "$VENV_PATH/database access key.json"
-touch "$VENV_PATH/spread sheet access key.json" 
-touch "$VENV_PATH/report number"
-
-echo "[OK] Directory structure created"
-
-# === Step 6: Download Scheduler Script ===
-echo "[INFO] Downloading scheduler script..."
-SCHEDULER_SCRIPT_URL="https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/scheduler/scheduler.py"
-SCHEDULER_SCRIPT_PATH="$SCHEDULER_DIR/scheduler.py"
-
-if curl -f -s "$SCHEDULER_SCRIPT_URL" -o "$SCHEDULER_SCRIPT_PATH"; then
-    chmod +x "$SCHEDULER_SCRIPT_PATH"
-    echo "[OK] Scheduler script downloaded: $SCHEDULER_SCRIPT_PATH"
-else
-    echo "[WARNING] Could not download scheduler script from GitHub"
-    echo "[INFO] Creating minimal scheduler script..."
-    cat > "$SCHEDULER_SCRIPT_PATH" << 'EOF'
-#!/usr/bin/env python3
-import os
-import sys
-
-# Add venv to path
-venv_path = os.path.join(os.path.dirname(__file__), 'venv')
-if os.path.exists(venv_path):
-    sys.path.insert(0, venv_path)
-
-# Import and run main scheduler
-try:
-    from scheduler_main import main
-    if __name__ == "__main__":
-        main()
-except ImportError:
-    print("Scheduler main module not found yet")
-    print("Run this script again after the full scheduler is downloaded")
-EOF
-    chmod +x "$SCHEDULER_SCRIPT_PATH"
-    echo "[OK] Created placeholder scheduler script"
-fi
-
-# === Step 7: Create Startup Script ===
-STARTUP_SCRIPT="$SCHEDULER_DIR/start_scheduler.sh"
-cat > "$STARTUP_SCRIPT" << 'EOF'
-#!/usr/bin/env bash
-set -e
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_PATH="$SCRIPT_DIR/venv"
-
-echo "🤖 Starting Scheduler Bot..."
-
-# Activate virtual environment
-if [ -f "$VENV_PATH/bin/activate" ]; then
-    source "$VENV_PATH/bin/activate"
-    echo "✅ Virtual environment activated"
-else
-    echo "❌ Virtual environment not found at: $VENV_PATH"
-    exit 1
-fi
-
-# Run scheduler
-cd "$SCRIPT_DIR"
-python3 scheduler.py "$@"
-EOF
-
-chmod +x "$STARTUP_SCRIPT"
-echo "[OK] Created startup script: $STARTUP_SCRIPT"
-
-# === Step 8: Set Permissions ===
+# === Step 6: Set Permissions ===
 echo "[INFO] Setting permissions..."
 chmod -R 755 "$SCHEDULER_DIR"
 chown -R $USER:$USER "$SCHEDULER_DIR"
 
-# === Step 9: Summary ===
+# === Step 7: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ SCHEDULER SETUP COMPLETE!"
 echo "📁 Scheduler Path: $SCHEDULER_DIR"
 echo "📂 Virtual Environment: $VENV_PATH"
+echo "📞 Phone Number: $(cat "$PHONE_FILE")"
+echo "📞 Phone File: $PHONE_FILE"
 echo "🐍 Python Version: $(python3 --version)"
 echo "📦 PIP Version: $(pip --version | cut -d' ' -f2)"
 
@@ -178,24 +114,35 @@ echo "📚 Installed Python Packages:"
 pip list --format=columns | grep -E "(gspread|oauth2client|selenium|firebase|google|requests)"
 
 echo
-echo "🚀 Quick Start:"
-echo "   cd $SCHEDULER_DIR"
-echo "   ./start_scheduler.sh"
+echo "💡 Setup Summary:"
+echo "   ✅ Created directory structure"
+echo "   ✅ Installed system dependencies" 
+echo "   ✅ Created Python virtual environment"
+echo "   ✅ Installed all required Python packages"
+echo "   ✅ Created phone number file: $PHONE_FILE"
+echo "   ✅ Set proper permissions"
 echo
-echo "💡 Next Steps:"
-echo "   1. Add 'database access key.json' to $VENV_PATH/"
-echo "   2. Add 'spread sheet access key.json' to $VENV_PATH/" 
-echo "   3. Add phone number to 'report number' file in $VENV_PATH/"
-echo "   4. Run ./start_scheduler.sh to begin monitoring"
+echo "🚀 Ready for scheduler integration!"
+echo "📝 The scheduler will handle the rest automatically"
 echo "------------------------------------------------------------"
 
-# === Step 10: First Run Check ===
+# === Step 8: Verification ===
 echo
-echo "[INFO] Testing basic setup..."
-cd "$SCHEDULER_DIR"
-if ./start_scheduler.sh --help 2>/dev/null || timeout 10s ./start_scheduler.sh; then
-    echo "✅ Basic test successful - scheduler is ready!"
+echo "[INFO] Verifying setup..."
+if [ -f "$PHONE_FILE" ] && [ -s "$PHONE_FILE" ]; then
+    echo "✅ Phone number file verified: $(cat "$PHONE_FILE")"
 else
-    echo "⚠️  Scheduler started but may need configuration files"
-    echo "💡 Add the required access key files to begin full operation"
+    echo "❌ Phone number file missing or empty"
+    exit 1
 fi
+
+if [ -d "$VENV_PATH" ] && [ -f "$VENV_PATH/bin/activate" ]; then
+    echo "✅ Virtual environment verified"
+else
+    echo "❌ Virtual environment setup failed"
+    exit 1
+fi
+
+echo "✅ All verifications passed!"
+echo
+echo "🎉 Scheduler setup completed successfully!"
