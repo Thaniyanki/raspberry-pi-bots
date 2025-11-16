@@ -196,156 +196,22 @@ class BotManager:
             return False
     
     def step7_main_scheduler(self):
-        """Step 7: Main scheduler logic"""
+        """Step 7: Main scheduler logic - Just confirmation"""
         print("Step 7 - Main scheduler execution")
-        print("All steps completed successfully!")
+        print("All bots are synchronized and ready!")
+        print("Each bot will handle its own execution schedule.")
         
-        # Run all available bots
-        self.run_all_bots()
-    
-    def find_main_scripts_recursive(self, folder_name: str) -> List[str]:
-        """Find main Python scripts recursively in all subdirectories"""
-        try:
-            current_dir = os.getcwd()
-            parent_dir = os.path.dirname(current_dir)
-            folder_path = os.path.join(parent_dir, folder_name)
-            
-            if not os.path.exists(folder_path):
-                return []
-            
-            python_files = []
-            
-            # Walk through all subdirectories
-            for root, dirs, files in os.walk(folder_path):
-                # Skip venv directories
-                if 'venv' in root.split(os.sep):
-                    continue
-                    
-                for file in files:
-                    if file.endswith('.py') and not file.startswith('__'):
-                        full_path = os.path.join(root, file)
-                        relative_path = os.path.relpath(full_path, folder_path)
-                        python_files.append(relative_path)
-            
-            if not python_files:
-                return []
-            
-            # Priority 1: Look for obvious main files
-            main_files = []
-            for file_path in python_files:
-                file_name = os.path.basename(file_path)
-                lower_file = file_name.lower()
-                if any(pattern in lower_file for pattern in ['main', 'bot', 'scheduler', 'run', 'app', 'start']):
-                    main_files.append(file_path)
-            
-            if main_files:
-                return main_files
-            
-            # Priority 2: Check for main function in files (limit to first few to avoid performance issues)
-            for file_path in python_files[:10]:  # Check first 10 files only
-                try:
-                    full_path = os.path.join(folder_path, file_path)
-                    with open(full_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        if 'if __name__ == "__main__"' in content or 'def main()' in content:
-                            main_files.append(file_path)
-                except:
-                    continue
-            
-            if main_files:
-                return main_files
-            
-            # Priority 3: Return root-level Python files first
-            root_files = [f for f in python_files if os.path.dirname(f) == '.']
-            if root_files:
-                return root_files[:1]  # Return first root-level Python file
-            
-            # Priority 4: Return any Python file
-            return python_files[:1]  # Return first Python file found
-            
-        except Exception as e:
-            print(f"Error finding scripts in {folder_name}: {e}")
-            return []
-    
-    def run_all_bots(self):
-        """Run all available bots with improved detection"""
-        print("Running all available bots...")
-        
+        # Since bots handle their own execution, we just confirm everything is ready
+        print("\nBot Status Summary:")
         raspberry_folders = self.step3_get_raspberry_folders()
+        bot_count = 0
         
         for folder in sorted(raspberry_folders):
-            # Skip non-bot folders
-            if not self.is_bot_folder(folder):
-                print(f"\nSkipping non-bot folder: {folder}")
-                continue
-                
-            print(f"\nChecking bot: {folder}")
-            
-            # Look for main Python files recursively in the folder
-            main_scripts = self.find_main_scripts_recursive(folder)
-            
-            if not main_scripts:
-                print(f"  No Python scripts found in {folder}")
-                continue
-                
-            for script in main_scripts:
-                print(f"  Running script: {script}")
-                self.run_python_script(folder, script)
-    
-    def run_python_script(self, folder_name: str, script_path: str):
-        """Run a Python script from a specific folder"""
-        try:
-            current_dir = os.getcwd()
-            parent_dir = os.path.dirname(current_dir)
-            folder_path = os.path.join(parent_dir, folder_name)
-            full_script_path = os.path.join(folder_path, script_path)
-            script_dir = os.path.dirname(full_script_path)
-            
-            if not os.path.exists(full_script_path):
-                print(f"    Script not found: {full_script_path}")
-                return
-            
-            # Check if venv exists in the folder
-            venv_path = os.path.join(folder_path, 'venv')
-            python_cmd = 'python3'
-            
-            if os.path.exists(venv_path):
-                python_cmd = os.path.join(venv_path, 'bin', 'python3')
-                print(f"    Using venv Python: {python_cmd}")
-            else:
-                print(f"    Using system Python")
-            
-            # Run the Python script
-            result = subprocess.run(
-                [python_cmd, script_path],
-                capture_output=True,
-                text=True,
-                cwd=folder_path,  # Run from bot root directory
-                timeout=600  # 10 minute timeout per script
-            )
-            
-            if result.returncode == 0:
-                print(f"    ✅ Script {script_path} executed successfully")
-                if result.stdout.strip():
-                    # Show only first few lines of output
-                    output_lines = result.stdout.strip().split('\n')
-                    for line in output_lines[:3]:  # Show first 3 lines
-                        print(f"      {line}")
-                    if len(output_lines) > 3:
-                        print(f"      ... and {len(output_lines) - 3} more lines")
-            else:
-                print(f"    ❌ Script {script_path} failed")
-                if result.stderr.strip():
-                    error_lines = result.stderr.strip().split('\n')
-                    for line in error_lines[:3]:  # Show first 3 lines
-                        print(f"      {line}")
-                    if len(error_lines) > 3:
-                        print(f"      ... and {len(error_lines) - 3} more lines")
-                    
-        except subprocess.TimeoutExpired:
-            print(f"    ⏰ Script {script_path} timed out")
-        except Exception as e:
-            print(f"    ❌ Error running script {script_path}: {e}")
+            if self.is_bot_folder(folder):
+                bot_count += 1
+                print(f"  ✅ {folder} - Ready")
+        
+        print(f"\nTotal bots ready: {bot_count}")
     
     def run_all_steps(self):
         """Execute all steps in sequence"""
