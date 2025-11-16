@@ -171,28 +171,24 @@ class BotManager:
             command = f'bash <(curl -s "{venv_sh_url}")'
             print(f"    Running command: {command}")
             
-            # Execute the command
+            # Execute the command with live output
             result = subprocess.run(
                 ['bash', '-c', command],
-                capture_output=True,
-                text=True,
                 timeout=300  # 5 minute timeout
             )
             
             if result.returncode == 0:
-                print(f"    venv.sh executed successfully for {folder_name}")
-                print(f"    Output: {result.stdout}")
+                print(f"    ✅ venv.sh executed successfully for {folder_name}")
                 return True
             else:
-                print(f"    venv.sh failed for {folder_name}")
-                print(f"    Error: {result.stderr}")
+                print(f"    ❌ venv.sh failed for {folder_name} (return code: {result.returncode})")
                 return False
                 
         except subprocess.TimeoutExpired:
-            print(f"    Command timed out for {folder_name}")
+            print(f"    ⏰ Command timed out for {folder_name}")
             return False
         except Exception as e:
-            print(f"    Error running venv.sh for {folder_name}: {e}")
+            print(f"    ❌ Error running venv.sh for {folder_name}: {e}")
             return False
     
     def check_and_setup_missing_venvs(self):
@@ -234,7 +230,7 @@ class BotManager:
         return len(bots_needing_venv) == 0
     
     def run_bot_setup_command(self, folder_name: str) -> bool:
-        """Run the setup command for a bot that's missing venv"""
+        """Run the setup command for a bot that's missing venv - with LIVE output"""
         try:
             # Map folder names to their setup script names
             setup_scripts = {
@@ -257,31 +253,27 @@ class BotManager:
             
             command = f'bash <(curl -s "{command_url}")'
             print(f"    Running command: {command}")
+            print("    " + "=" * 50)
             
-            # Execute the command
+            # Execute the command with LIVE output (no capture)
             result = subprocess.run(
                 ['bash', '-c', command],
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
+                timeout=600  # 10 minute timeout for setup
             )
             
+            print("    " + "=" * 50)
             if result.returncode == 0:
-                print(f"    Setup completed successfully for {folder_name}")
-                if result.stdout.strip():
-                    print(f"    Output: {result.stdout.strip()}")
+                print(f"    ✅ Setup completed successfully for {folder_name}")
                 return True
             else:
-                print(f"    Setup failed for {folder_name}")
-                if result.stderr.strip():
-                    print(f"    Error: {result.stderr.strip()}")
+                print(f"    ❌ Setup failed for {folder_name} (return code: {result.returncode})")
                 return False
                 
         except subprocess.TimeoutExpired:
-            print(f"    Setup command timed out for {folder_name}")
+            print(f"    ⏰ Setup command timed out for {folder_name}")
             return False
         except Exception as e:
-            print(f"    Error running setup command for {folder_name}: {e}")
+            print(f"    ❌ Error running setup command for {folder_name}: {e}")
             return False
     
     def step7_main_scheduler(self):
@@ -337,11 +329,11 @@ class BotManager:
             print("No missing bots found, proceeding to Step 7...")
         
         # NEW: Check and setup missing venvs for existing bots
-        print("\n" + "=" * 30)
+        print("\n" + "=" * 50)
         all_venvs_ready = self.check_and_setup_missing_venvs()
         
         # Step 7: Main scheduler
-        print("\n" + "=" * 30)
+        print("\n" + "=" * 50)
         self.step7_main_scheduler()
         
         print("=" * 50)
