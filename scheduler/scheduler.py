@@ -23,16 +23,19 @@ class BotScheduler:
         """Run the curl command to setup bots"""
         print("Setting up bots using curl command...")
         try:
-            result = subprocess.run([
-                'curl', '-sL', 
-                'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/all-in-one-venv/all%20in%20one%20venv.py'
-            ], capture_output=True, text=True)
+            # Run curl and pipe directly to python3 as a separate process
+            result = subprocess.run(
+                'curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/all-in-one-venv/all%20in%20one%20venv.py" | python3',
+                shell=True,
+                capture_output=True,
+                text=True
+            )
             
             if result.returncode == 0:
-                exec(result.stdout)
                 print("Bots setup completed successfully")
             else:
                 print(f"Error running setup: {result.stderr}")
+                
         except Exception as e:
             print(f"Error executing setup: {e}")
             
