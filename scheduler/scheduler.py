@@ -8,6 +8,8 @@ import os
 import sys
 import subprocess
 import time
+import select
+import threading
 from pathlib import Path
 
 class BotScheduler:
@@ -117,36 +119,104 @@ class BotScheduler:
             else:
                 print(f"Warning: No venv folder found in {folder.name}")
     
-    def get_user_input_with_fallback(self, prompt):
-        """Get user input with fallback to direct terminal input when piped"""
-        try:
-            # Try to read directly from terminal if possible
-            if sys.stdin.isatty():
-                # Normal input when running directly
-                print(prompt, end='', flush=True)
-                return input().strip()
-            else:
-                # We're in a pipe, try to open terminal directly
-                print(prompt, end='', flush=True)
-                # On Unix systems, we can read from /dev/tty
-                with open('/dev/tty', 'r') as tty:
-                    return tty.readline().strip()
-        except Exception as e:
-            # Fallback to regular input
+    def input_with_timeout(self, prompt, timeout=10):
+        """Get user input with timeout"""
+        print(prompt, end='', flush=True)
+        
+        # For piped input (curl | python3), we need to handle differently
+        if not sys.stdin.isatty():
             try:
+                # Try to read from /dev/tty for direct terminal access
+                import termios
+                import tty
+                
+                fd = os.open('/dev/tty', os.O_RDWR)
+                try:
+                    old_settings = termios.tcgetattr(fd)
+                    try:
+                        tty.setraw(fd)
+                        
+                        # Start timer
+                        start_time = time.time()
+                        input_chars = []
+                        
+                        while time.time() - start_time < timeout:
+                            # Check if input is available
+                            if select.select([fd], [], [], 0.1)[0]:
+                                char = os.read(fd, 1).decode('utf-8')
+                                if char == '\r' or char == '\n':  # Enter pressed
+                                    break
+                                elif char == '\x03':  # Ctrl+C
+                                    raise KeyboardInterrupt
+                                else:
+                                    input_chars.append(char)
+                                    print(char, end='', flush=True)
+                        
+                        result = ''.join(input_chars).strip()
+                        print()  # New line after input
+                        return result
+                        
+                    finally:
+                        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                finally:
+                    os.close(fd)
+            except:
+                # Fallback for systems without /dev/tty access
+                pass
+        
+        # Standard timeout input for terminal
+        try:
+            if sys.platform != "win32":
+                # Unix-like systems
+                import select
                 print(prompt, end='', flush=True)
-                return input().strip()
+                rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+                if rlist:
+                    return sys.stdin.readline().strip()
+                else:
+                    print("\nTimeout reached. Continuing...")
+                    return ""
+            else:
+                # Windows
+                import msvcrt
+                import time
+                
+                print(prompt, end='', flush=True)
+                start_time = time.time()
+                input_chars = []
+                
+                while time.time() - start_time < timeout:
+                    if msvcrt.kbhit():
+                        char = msvcrt.getwch()
+                        if char == '\r':  # Enter key
+                            break
+                        elif char == '\x03':  # Ctrl+C
+                            raise KeyboardInterrupt
+                        else:
+                            input_chars.append(char)
+                            print(char, end='', flush=True)
+                    time.sleep(0.1)
+                
+                if input_chars:
+                    return ''.join(input_chars)
+                else:
+                    print("\nTimeout reached. Continuing...")
+                    return ""
+        except:
+            # Ultimate fallback - simple input without timeout
+            try:
+                return input(prompt).strip()
             except:
                 return ""
     
     def handle_report_numbers(self, bot_folders):
-        """Handle report number creation/modification"""
+        """Handle report number creation/modification with timeout"""
         all_have_report_numbers = self.check_report_numbers_exist(bot_folders)
         
         if not all_have_report_numbers:
             # Some folders don't have report numbers
             print("Some bots are missing report numbers in their venv folders.")
-            report_number = self.get_user_input_with_fallback("Enter the report number: ")
+            report_number = self.input_with_timeout("Enter the report number: ", timeout=30)
             if report_number:
                 self.create_report_numbers(bot_folders, report_number)
                 print(f"Report number '{report_number}' set for all bots in their venv folders.")
@@ -157,23 +227,19 @@ class BotScheduler:
         # All folders have report numbers
         print("Report number already available in all bots folder's venv folders.")
         
-        # Try to get user response with timeout logic
-        response = ""
-        try:
-            response = self.get_user_input_with_fallback("Do you want to modify? y/n: ").lower()
-        except:
-            pass
+        # Ask if user wants to modify with 10-second timeout
+        response = self.input_with_timeout("Do you want to modify? y/n: ", timeout=10)
         
-        if response == 'y':
+        if response.lower() == 'y':
             self.delete_all_report_numbers(bot_folders)
-            new_report_number = self.get_user_input_with_fallback("Enter the report number: ")
+            new_report_number = self.input_with_timeout("Enter the report number: ", timeout=30)
             if new_report_number:
                 self.create_report_numbers(bot_folders, new_report_number)
                 print(f"Report number updated to '{new_report_number}' in all venv folders")
-        elif response == 'n':
+        elif response.lower() == 'n':
             print("Continuing with existing report numbers...")
         else:
-            print("No valid response received. Continuing with existing report numbers...")
+            print("No valid response received within 10 seconds. Continuing with existing report numbers...")
     
     def list_bot_folders(self, bot_folders):
         """List all available bot folders with venv status"""
@@ -223,6 +289,14 @@ class BotScheduler:
         
         return all_set
     
+    def run_step2(self):
+        """Placeholder for Step 2 implementation"""
+        print("\n" + "=" * 50)
+        print("STEP 2: Bot Scheduling and Management")
+        print("=" * 50)
+        print("Step 2 functionality will be implemented here...")
+        # Add your Step 2 logic here
+    
     def run(self):
         """Main execution function"""
         print("=" * 50)
@@ -260,8 +334,8 @@ class BotScheduler:
             print("⚠ Step 1 completed with warnings")
             print("⚠ Some report numbers may not be set correctly in venv folders")
         
-        print("Ready for Step 2 implementation...")
-        print("=" * 50)
+        # Proceed to Step 2
+        self.run_step2()
 
 def main():
     """Main function"""
