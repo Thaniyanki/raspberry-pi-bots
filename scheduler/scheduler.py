@@ -1,339 +1,219 @@
-import os
-import subprocess
-import requests
-import json
-from typing import List, Set
+#!/usr/bin/env python3
+"""
+Scheduler Script for Managing Python Bots
+Handles folder structure, report numbers, and virtual environment setup
+"""
 
-class BotManager:
+import os
+import sys
+import subprocess
+import time
+from pathlib import Path
+
+class BotScheduler:
     def __init__(self):
-        self.github_owner = "Thaniyanki"
-        self.github_repo = "raspberry-pi-bots"
-        self.github_api_base = f"https://api.github.com/repos/{self.github_owner}/{self.github_repo}"
-        self.raw_content_base = f"https://raw.githubusercontent.com/{self.github_owner}/{self.github_repo}/main"
+        self.username = os.getenv('USER') or os.getenv('USERNAME')
+        if not self.username:
+            print("Error: Could not determine username")
+            sys.exit(1)
+            
+        self.bots_base_path = Path(f"/home/{self.username}/bots")
+        self.scheduler_folder = "scheduler"
         
-    def step3_get_raspberry_folders(self) -> List[str]:
-        """Step 3: Get folder list from Raspberry Pi local directory"""
-        try:
-            current_dir = os.getcwd()
-            parent_dir = os.path.dirname(current_dir)  # Go up one level to bots folder
-            
-            folders = []
-            
-            for item in os.listdir(parent_dir):
-                item_path = os.path.join(parent_dir, item)
-                if os.path.isdir(item_path):
-                    folders.append(item)
-            
-            # Sort folders alphabetically
-            folders.sort()
-            print("Step 3 - Raspberry Pi folders:")
-            for folder in folders:
-                print(f"  - {folder}")
-            
-            return folders
-        except Exception as e:
-            print(f"Error reading Raspberry Pi folders: {e}")
-            return []
-    
-    def step4_get_github_folders(self) -> List[str]:
-        """Step 4: Get folder list from GitHub repository"""
-        try:
-            url = f"{self.github_api_base}/contents"
-            response = requests.get(url)
-            response.raise_for_status()
-            
-            contents = response.json()
-            folders = []
-            
-            for item in contents:
-                if item['type'] == 'dir':
-                    folders.append(item['name'])
-            
-            # Sort folders alphabetically
-            folders.sort()
-            print("Step 4 - GitHub folders:")
-            for folder in folders:
-                print(f"  - {folder}")
-            
-            return folders
-        except Exception as e:
-            print(f"Error fetching GitHub folders: {e}")
-            return []
-    
-    def normalize_folder_name(self, folder_name: str) -> str:
-        """Normalize folder names by removing hyphens and spaces for comparison"""
-        return folder_name.replace('-', ' ').replace('_', ' ').lower().strip()
-    
-    def is_bot_folder(self, folder_name: str) -> bool:
-        """Check if a folder is actually a bot (exclude utility folders)"""
-        non_bot_folders = [
-            'all-in-one-venv',
-            'venv',
-            'env',
-            'virtualenv',
-            'tmp',
-            'temp',
-            'backup',
-            'archive',
-            'test',
-            'tests',
-            'docs',
-            'documentation'
+    def run_curl_command(self):
+        """Run the curl command to setup bots"""
+        print("Setting up bots using curl command...")
+        curl_command = [
+            'curl', '-sL', 
+            'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/all-in-one-venv/all%20in%20one%20venv.py'
         ]
         
-        normalized_name = self.normalize_folder_name(folder_name)
-        return normalized_name not in [self.normalize_folder_name(nb) for nb in non_bot_folders]
-    
-    def step5_compare_folders(self, raspberry_folders: List[str], github_folders: List[str]) -> List[str]:
-        """Step 5: Compare folders and find missing ones"""
-        # Filter out non-bot folders
-        raspberry_bots = [f for f in raspberry_folders if self.is_bot_folder(f)]
-        github_bots = [f for f in github_folders if self.is_bot_folder(f)]
-        
-        # Normalize all folder names for comparison
-        normalized_raspberry = {self.normalize_folder_name(folder): folder for folder in raspberry_bots}
-        normalized_github = {self.normalize_folder_name(folder): folder for folder in github_bots}
-        
-        print("Step 5 - Comparing BOT folders:")
-        print("Raspberry Pi BOTS (normalized):")
-        for norm_name, orig_name in sorted(normalized_raspberry.items()):
-            print(f"  - {orig_name} -> {norm_name}")
-        
-        print("GitHub BOTS (normalized):")
-        for norm_name, orig_name in sorted(normalized_github.items()):
-            print(f"  - {orig_name} -> {norm_name}")
-        
-        # Find missing bot folders (in GitHub but not in Raspberry Pi)
-        missing_bots = []
-        for github_norm, github_orig in sorted(normalized_github.items()):
-            if github_norm not in normalized_raspberry:
-                missing_bots.append(github_orig)
-                print(f"  Missing BOT: {github_orig} (normalized: {github_norm})")
-        
-        if not missing_bots:
-            print("  No missing bots found - both contain same bots")
-        
-        return missing_bots
-    
-    def step6_check_venv_and_update(self, missing_folders: List[str]) -> bool:
-        """Step 6: Check for venv.sh and update missing bots"""
-        if not missing_folders:
-            print("Step 6 - No missing bots, continuing to Step 7")
-            return True
-        
-        print("Step 6 - Processing missing bots:")
-        
-        for folder in sorted(missing_folders):
-            print(f"  Checking bot: {folder}")
-            
-            # Check if venv.sh exists in the GitHub folder
-            venv_sh_exists = self.check_venv_sh_in_github_folder(folder)
-            
-            if not venv_sh_exists:
-                print(f"    No venv.sh found in {folder}, continuing to Step 7")
-                continue
-            
-            print(f"    venv.sh found in {folder}, preparing to update...")
-            
-            # Prepare and run the update command
-            success = self.run_venv_sh_command(folder)
-            if success:
-                print(f"    Successfully created venv for {folder}")
+        try:
+            result = subprocess.run(
+                ['python3', '-c', f"import urllib.request; exec(urllib.request.urlopen('{curl_command[2]}').read())"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                print("Bots setup completed successfully")
             else:
-                print(f"    Failed to create venv for {folder}")
+                print(f"Error running setup: {result.stderr}")
+        except Exception as e:
+            print(f"Error executing setup: {e}")
+            
+        sys.exit(0)
+    
+    def check_bots_folder(self):
+        """Check if bots folder exists and has valid content"""
+        if not self.bots_base_path.exists():
+            print("Bots folder not found. Running setup...")
+            self.run_curl_command()
+            return False
+            
+        # Get all items in bots folder
+        items = list(self.bots_base_path.iterdir())
+        folders = [item for item in items if item.is_dir() and item.name != self.scheduler_folder]
         
+        if not folders:
+            print("Bots folder is empty or only contains scheduler folder. Running setup...")
+            self.run_curl_command()
+            return False
+            
         return True
     
-    def check_venv_sh_in_github_folder(self, folder_name: str) -> bool:
-        """Check if venv.sh file exists in GitHub folder"""
-        try:
-            url = f"{self.github_api_base}/contents/{folder_name}"
-            response = requests.get(url)
-            response.raise_for_status()
+    def get_bot_folders(self):
+        """Get all bot folders excluding scheduler folder"""
+        if not self.bots_base_path.exists():
+            return []
             
-            contents = response.json()
-            
-            for item in contents:
-                if item['type'] == 'file' and item['name'].lower() == 'venv.sh':
-                    return True
-            
-            return False
-        except Exception as e:
-            print(f"    Error checking venv.sh for {folder_name}: {e}")
-            return False
+        items = list(self.bots_base_path.iterdir())
+        bot_folders = [item for item in items if item.is_dir() and item.name != self.scheduler_folder]
+        return bot_folders
     
-    def run_venv_sh_command(self, folder_name: str) -> bool:
-        """Run the venv.sh command for a specific folder"""
-        try:
-            # Create the venv.sh URL
-            venv_sh_url = f"{self.raw_content_base}/{folder_name}/venv.sh"
-            
-            command = f'curl -s "{venv_sh_url}" | bash'
-            print(f"    Running command: {command}")
-            
-            # Execute the command with live output - NO TIMEOUT
-            result = subprocess.run(
-                ['bash', '-c', command]
-            )
-            
-            if result.returncode == 0:
-                print(f"    ✅ venv.sh executed successfully for {folder_name}")
-                return True
-            else:
-                print(f"    ❌ venv.sh failed for {folder_name} (return code: {result.returncode})")
+    def check_report_numbers_exist(self, bot_folders):
+        """Check if report number files exist in all bot folders"""
+        for folder in bot_folders:
+            report_file = folder / "report number"
+            if not report_file.exists():
                 return False
-                
-        except Exception as e:
-            print(f"    ❌ Error running venv.sh for {folder_name}: {e}")
-            return False
+        return True
     
-    def check_and_setup_missing_venvs(self):
-        """Check each bot for missing venv and setup if needed"""
-        print("Checking for missing venv folders in existing bots...")
+    def delete_all_report_numbers(self, bot_folders):
+        """Delete all report number files"""
+        for folder in bot_folders:
+            report_file = folder / "report number"
+            if report_file.exists():
+                report_file.unlink()
+                print(f"Deleted report number from {folder.name}")
+    
+    def create_report_numbers(self, bot_folders, report_number):
+        """Create report number files in all bot folders"""
+        for folder in bot_folders:
+            report_file = folder / "report number"
+            try:
+                with open(report_file, 'w') as f:
+                    f.write(report_number)
+                print(f"Created report number in {folder.name}")
+            except Exception as e:
+                print(f"Error creating report number in {folder.name}: {e}")
+    
+    def get_user_input(self, prompt, timeout=10):
+        """Get user input with optional timeout"""
+        print(prompt, end='', flush=True)
         
-        current_dir = os.getcwd()
-        parent_dir = os.path.dirname(current_dir)
-        raspberry_folders = self.step3_get_raspberry_folders()
-        
-        bots_needing_venv = []
-        
-        for folder in sorted(raspberry_folders):
-            if not self.is_bot_folder(folder):
-                continue
-                
-            folder_path = os.path.join(parent_dir, folder)
-            venv_path = os.path.join(folder_path, 'venv')
-            
-            if not os.path.exists(venv_path):
-                bots_needing_venv.append(folder)
-                print(f"  ❌ {folder} - venv folder missing")
-            else:
-                print(f"  ✅ {folder} - venv folder exists")
-        
-        # Setup missing venvs using venv.sh from GitHub
-        if bots_needing_venv:
-            print(f"\nSetting up venv for {len(bots_needing_venv)} bot(s) using venv.sh...")
-            for bot_folder in bots_needing_venv:
-                print(f"\n  Setting up venv for: {bot_folder}")
-                success = self.run_venv_sh_for_existing_bot(bot_folder)
-                if success:
-                    print(f"    ✅ Successfully set up venv for {bot_folder}")
-                else:
-                    print(f"    ❌ Failed to set up venv for {bot_folder}")
+        if timeout > 0:
+            # Simple input without timeout for now
+            # In a more advanced version, you could use threading for timeout
+            try:
+                user_input = input().strip()
+                return user_input
+            except EOFError:
+                return ""
         else:
-            print("\nAll bots have venv folders - no setup needed")
-        
-        return len(bots_needing_venv) == 0
+            try:
+                user_input = input().strip()
+                return user_input
+            except EOFError:
+                return ""
     
-    def run_venv_sh_for_existing_bot(self, folder_name: str) -> bool:
-        """Run venv.sh for an existing bot that's missing venv folder"""
-        try:
-            # Convert local folder name to GitHub folder name (with hyphens)
-            github_folder_name = folder_name.replace(' ', '-')
-            
-            # Create the venv.sh URL
-            venv_sh_url = f"{self.raw_content_base}/{github_folder_name}/venv.sh"
-            
-            command = f'curl -s "{venv_sh_url}" | bash'
-            print(f"    Running command: {command}")
-            print("    " + "=" * 60)
-            
-            # Execute the command with live output - NO TIMEOUT
-            result = subprocess.run(
-                ['bash', '-c', command]
-            )
-            
-            print("    " + "=" * 60)
-            if result.returncode == 0:
-                print(f"    ✅ venv.sh executed successfully for {folder_name}")
-                
-                # Verify venv was created
-                current_dir = os.getcwd()
-                parent_dir = os.path.dirname(current_dir)
-                folder_path = os.path.join(parent_dir, folder_name)
-                venv_path = os.path.join(folder_path, 'venv')
-                
-                if os.path.exists(venv_path):
-                    print(f"    ✅ venv folder verified for {folder_name}")
-                    return True
-                else:
-                    print(f"    ⚠️  Command succeeded but venv folder not found for {folder_name}")
-                    return False
-            else:
-                print(f"    ❌ venv.sh failed for {folder_name} (return code: {result.returncode})")
-                return False
-                
-        except Exception as e:
-            print(f"    ❌ Error running venv.sh for {folder_name}: {e}")
-            return False
-    
-    def step7_main_scheduler(self):
-        """Step 7: Main scheduler logic"""
-        print("Step 7 - Main scheduler execution")
-        print("All bots are synchronized and ready!")
+    def handle_report_numbers(self, bot_folders):
+        """Handle report number creation/modification"""
+        all_have_report_numbers = self.check_report_numbers_exist(bot_folders)
         
-        # Final status check
-        print("\nFinal Bot Status:")
-        current_dir = os.getcwd()
-        parent_dir = os.path.dirname(current_dir)
-        raspberry_folders = self.step3_get_raspberry_folders()
-        
-        ready_bots = 0
-        for folder in sorted(raspberry_folders):
-            if not self.is_bot_folder(folder):
-                continue
-                
-            folder_path = os.path.join(parent_dir, folder)
-            venv_path = os.path.join(folder_path, 'venv')
-            
-            if os.path.exists(venv_path):
-                print(f"  ✅ {folder} - Ready with venv")
-                ready_bots += 1
-            else:
-                print(f"  ❌ {folder} - Missing venv")
-        
-        print(f"\nTotal bots ready: {ready_bots}")
-    
-    def run_all_steps(self):
-        """Execute all steps in sequence"""
-        print("Starting Bot Manager Scheduler")
-        print("=" * 50)
-        
-        # Step 3: Get Raspberry Pi folders
-        raspberry_folders = self.step3_get_raspberry_folders()
-        
-        # Step 4: Get GitHub folders
-        github_folders = self.step4_get_github_folders()
-        
-        if not github_folders:
-            print("Error: Could not fetch GitHub folders. Check internet connection.")
+        if not all_have_report_numbers:
+            # Some folders don't have report numbers
+            report_number = self.get_user_input("Enter the report number: ")
+            if report_number:
+                self.create_report_numbers(bot_folders, report_number)
             return
         
-        # Step 5: Compare folders
-        missing_folders = self.step5_compare_folders(raspberry_folders, github_folders)
-        
-        # Step 6: Check venv.sh and update missing bots
-        if missing_folders:
-            print("Missing bots found, proceeding with Step 6...")
-            self.step6_check_venv_and_update(missing_folders)
+        # All folders have report numbers
+        while True:
+            response = self.get_user_input(
+                "Report number already available in all bots folder. Do you want to modify? y/n: "
+            ).lower()
+            
+            if response == 'y':
+                self.delete_all_report_numbers(bot_folders)
+                report_number = self.get_user_input("Enter the report number: ")
+                if report_number:
+                    self.create_report_numbers(bot_folders, report_number)
+                break
+            elif response == 'n':
+                print("Continuing with existing report numbers...")
+                break
+            else:
+                print("Please press either 'y' or 'n'")
+                # Wait 10 seconds and continue if no valid input
+                print("Waiting 10 seconds for response...")
+                time.sleep(10)
+                # Try one more time
+                response = self.get_user_input("Do you want to modify? y/n: ").lower()
+                if response == 'y':
+                    self.delete_all_report_numbers(bot_folders)
+                    report_number = self.get_user_input("Enter the report number: ")
+                    if report_number:
+                        self.create_report_numbers(bot_folders, report_number)
+                    break
+                elif response == 'n':
+                    print("Continuing with existing report numbers...")
+                    break
+                else:
+                    print("No valid response. Continuing with existing report numbers...")
+                    break
+    
+    def list_bot_folders(self, bot_folders):
+        """List all available bot folders"""
+        if bot_folders:
+            print("\nAvailable bot folders:")
+            for folder in bot_folders:
+                print(f"  - {folder.name}")
         else:
-            print("No missing bots found, proceeding to Step 7...")
-        
-        # NEW: Check and setup missing venvs for existing bots
-        print("\n" + "=" * 50)
-        all_venvs_ready = self.check_and_setup_missing_venvs()
-        
-        # Step 7: Main scheduler
-        print("\n" + "=" * 50)
-        self.step7_main_scheduler()
-        
+            print("No bot folders found.")
+    
+    def run(self):
+        """Main execution function"""
         print("=" * 50)
-        print("Bot Manager Scheduler completed")
+        print("Bot Scheduler Starting...")
+        print(f"Username: {self.username}")
+        print(f"Bots path: {self.bots_base_path}")
+        print("=" * 50)
+        
+        # Step 1: Check bots folder structure
+        if not self.check_bots_folder():
+            return
+            
+        # Get bot folders
+        bot_folders = self.get_bot_folders()
+        
+        if not bot_folders:
+            print("No bot folders found. Running setup...")
+            self.run_curl_command()
+            return
+        
+        # List available bot folders
+        self.list_bot_folders(bot_folders)
+        
+        # Handle report numbers
+        self.handle_report_numbers(bot_folders)
+        
+        # Step 2 will be implemented here later
+        print("\n" + "=" * 50)
+        print("Step 1 completed successfully!")
+        print("Ready for Step 2 implementation...")
+        print("=" * 50)
 
 def main():
     """Main function"""
-    bot_manager = BotManager()
-    bot_manager.run_all_steps()
+    try:
+        scheduler = BotScheduler()
+        scheduler.run()
+    except KeyboardInterrupt:
+        print("\n\nScript interrupted by user. Exiting...")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
