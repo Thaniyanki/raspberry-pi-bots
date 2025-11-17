@@ -2,7 +2,7 @@
 set -e
 
 echo "------------------------------------------------------------"
-echo "🤖 FACEBOOK PROFILE LIKER SETUP (Raspberry Pi Universal)"
+echo "🤖 FACEBOOK PROFILE LIKER INSTALLER (Raspberry Pi Universal)"
 echo "------------------------------------------------------------"
 
 # === Variables ===
@@ -11,10 +11,6 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="facebook profile liker"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-REPORT_FILE="$VENV_PATH/report number"
-PHONE_NUMBER="9940585709"
-GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
-BOT_SUBPATH="facebook-profile-liker"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -68,10 +64,6 @@ echo "[OK] Chromedriver: $($CHROMEDRIVER_BIN --version)"
 
 # === Step 4: Python Virtual Environment ===
 echo "[INFO] Creating Python virtual environment..."
-if [ -d "$VENV_PATH" ]; then
-    echo "[INFO] Removing old virtual environment..."
-    rm -rf "$VENV_PATH"
-fi
 python3 -m venv "$VENV_PATH"
 source "$VENV_PATH/bin/activate"
 
@@ -79,23 +71,13 @@ pip install --upgrade pip setuptools wheel
 pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
 
-# === Step 5: Create Phone Number File ===
-echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file: $REPORT_FILE"
-
-# === Step 6: REMOVED - No Python script download ===
-echo "[INFO] Skipping Python script download (will be handled by scheduler)"
-
-# === Step 7: Summary ===
+# === Step 5: Summary ===
 echo "------------------------------------------------------------"
-echo "✅ SETUP COMPLETE!"
+echo "✅ ENVIRONMENT SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
-echo "📄 Phone number file: $REPORT_FILE"
-echo
 echo "🌐 Chromium: $($CHROME_BIN --version)"
 echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
-echo
-echo "💡 Ready for scheduler integration!"
-echo "📝 Python script will be downloaded separately by scheduler"
+echo "💡 Ready for script integration!"
+echo "📝 Python script will be added separately"
 echo "------------------------------------------------------------"
