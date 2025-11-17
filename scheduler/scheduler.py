@@ -114,6 +114,80 @@ class BotScheduler:
                         return False  # Error reading file
         return True
     
+    def get_valid_report_number_from_bots(self, bot_folders):
+        """Get a valid report number from any bot that has one"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            return content, folder.name
+                    except:
+                        continue
+        return None, None
+    
+    def copy_report_numbers_from_valid_bots(self, bot_folders):
+        """Copy report numbers from bots that have valid ones to bots that don't"""
+        print("Automatically copying report numbers from bots that have them...")
+        
+        # Find all valid report numbers
+        valid_report_numbers = {}
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            valid_report_numbers[folder.name] = content
+                    except:
+                        continue
+        
+        if not valid_report_numbers:
+            print("No valid report numbers found in any bot.")
+            return False
+        
+        # Use the first valid report number found
+        source_bot, report_number = next(iter(valid_report_numbers.items()))
+        print(f"Found valid report number '{report_number}' in {source_bot}")
+        
+        # Copy to bots that don't have valid report numbers
+        copied_count = 0
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                needs_copy = False
+                
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if not content or not self.is_valid_phone_number(content):
+                            needs_copy = True
+                    except:
+                        needs_copy = True
+                else:
+                    needs_copy = True
+                
+                if needs_copy:
+                    try:
+                        with open(report_file, 'w') as f:
+                            f.write(report_number)
+                        print(f"  ✓ Copied to {folder.name}/venv/")
+                        copied_count += 1
+                    except Exception as e:
+                        print(f"  ✗ Failed to copy to {folder.name}/venv/: {e}")
+        
+        print(f"Successfully copied report number to {copied_count} bots")
+        return True
+    
     def delete_all_report_numbers(self, bot_folders):
         """Delete all report number files from venv folders"""
         for folder in bot_folders:
@@ -209,7 +283,7 @@ class BotScheduler:
         return None
     
     def handle_report_numbers(self, bot_folders):
-        """Handle report number creation/modification"""
+        """Handle report number creation/modification - AUTO COPY from existing bots"""
         all_have_report_numbers = self.check_report_numbers_exist(bot_folders)
         all_report_numbers_valid = self.check_report_numbers_valid(bot_folders)
         
@@ -218,8 +292,16 @@ class BotScheduler:
             if not all_have_report_numbers:
                 print("Some bots are missing report numbers in their venv folders.")
             if not all_report_numbers_valid:
-                print("Some bots have empty report numbers in their venv folders.")
+                print("Some bots have empty or invalid report numbers in their venv folders.")
             
+            # First try to auto-copy from existing valid report numbers
+            print("Attempting to auto-copy report numbers from bots that have them...")
+            if self.copy_report_numbers_from_valid_bots(bot_folders):
+                print("Auto-copy completed successfully!")
+                return
+            
+            # If auto-copy failed, then ask for user input
+            print("No valid report numbers found to copy from.")
             report_number = self.get_report_number_input()
             
             if report_number:
@@ -279,8 +361,10 @@ class BotScheduler:
                         try:
                             with open(report_file, 'r') as f:
                                 content = f.read().strip()
-                            if content:
-                                status = "✓"
+                            if content and self.is_valid_phone_number(content):
+                                status = f"✓ ({content})"
+                            elif content:
+                                status = "✗ (invalid)"
                             else:
                                 status = "✗ (empty)"
                         except:
@@ -307,10 +391,10 @@ class BotScheduler:
                     try:
                         with open(report_file, 'r') as f:
                             content = f.read().strip()
-                        if content:
+                        if content and self.is_valid_phone_number(content):
                             print(f"  ✓ {folder.name}/venv/: {content}")
                         else:
-                            print(f"  ✗ {folder.name}/venv/: Empty report number")
+                            print(f"  ✗ {folder.name}/venv/: {'Empty' if not content else 'Invalid'} report number")
                             all_set = False
                             empty_files_found = True
                     except Exception as e:
@@ -323,18 +407,25 @@ class BotScheduler:
                 print(f"  ✗ {folder.name}: No venv folder found")
                 all_set = False
         
-        # If empty files found, ask for phone number again
+        # If empty files found, try auto-copy first
         if empty_files_found:
-            print("\nSome bots have empty report numbers. Please enter the phone number again.")
-            report_number = self.get_report_number_input()
-            if report_number:
-                self.create_report_numbers(bot_folders, report_number)
-                print(f"Report number '{report_number}' updated for all bots.")
+            print("\nSome bots have empty or invalid report numbers. Attempting auto-copy...")
+            if self.copy_report_numbers_from_valid_bots(bot_folders):
+                print("Auto-copy completed successfully!")
                 # Re-verify after update
                 print("\nRe-verifying report numbers...")
                 return self.verify_report_numbers(bot_folders)
             else:
-                print("No valid report number provided. Some bots may not work correctly.")
+                print("No valid report numbers found to copy from.")
+                report_number = self.get_report_number_input()
+                if report_number:
+                    self.create_report_numbers(bot_folders, report_number)
+                    print(f"Report number '{report_number}' updated for all bots.")
+                    # Re-verify after update
+                    print("\nRe-verifying report numbers...")
+                    return self.verify_report_numbers(bot_folders)
+                else:
+                    print("No valid report number provided. Some bots may not work correctly.")
         
         return all_set
 
