@@ -11,10 +11,6 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="whatsapp messenger"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-REPORT_FILE="$VENV_PATH/report number"
-PHONE_NUMBER="9940585709"
-GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
-BOT_SUBPATH="whatsapp-messenger"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -86,14 +82,7 @@ pip install --upgrade pip setuptools wheel
 pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client
 
-# === Step 5: Create Phone Number File inside venv ===
-echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file inside virtual environment: $REPORT_FILE"
-
-# === Step 6: REMOVED - No Python script download ===
-echo "[INFO] Skipping Python script download (will be handled by scheduler)"
-
-# === Step 7: Create Folder Structure ===
+# === Step 5: Create Folder Structure ===
 echo "[INFO] Creating folder structure..."
 CURRENT_DATE=$(date +"%d-%m-%Y")
 
@@ -123,13 +112,11 @@ touch "$BOT_PATH/Video/$CURRENT_DATE/Caption.txt"
 
 echo "[OK] Created folder structure with date: $CURRENT_DATE"
 
-# === Step 8: Summary ===
+# === Step 6: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
-echo "📄 Phone number file: $REPORT_FILE"
-echo
 echo "📁 Folder Structure Created:"
 echo "  ├── Image/Caption.txt"
 echo "  ├── Document/Caption.txt"
@@ -139,10 +126,8 @@ echo "  ├── Image/$CURRENT_DATE/Caption.txt"
 echo "  ├── Document/$CURRENT_DATE/Caption.txt"
 echo "  ├── Audio/$CURRENT_DATE/Caption.txt"
 echo "  └── Video/$CURRENT_DATE/Caption.txt"
-echo
 echo "🌐 Chromium: $($CHROME_BIN --version)"
 echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
-echo
 echo "💡 Ready for scheduler integration!"
 echo "📝 Python script will be downloaded separately by scheduler"
 echo "------------------------------------------------------------"
