@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scheduler Script for Managing Python Bots - SIMPLE VERSION
+Scheduler Script for Managing Python Bots
 """
 
 import os
@@ -88,6 +88,7 @@ class BotScheduler:
                 report_file = venv_path / "report number"
                 if report_file.exists():
                     report_file.unlink()
+                    print(f"Deleted report number from {folder.name}/venv/")
     
     def create_report_numbers(self, bot_folders, report_number):
         """Create report number files in all bot folders' venv"""
@@ -98,37 +99,85 @@ class BotScheduler:
                 try:
                     with open(report_file, 'w') as f:
                         f.write(report_number)
+                    print(f"Created report number in {folder.name}/venv/")
                 except Exception as e:
                     print(f"Error creating report number in {folder.name}/venv/: {e}")
+    
+    def get_report_number_input(self):
+        """Get report number input with fallback for piped input"""
+        if not sys.stdin.isatty():
+            # We're in a pipe, try to read from terminal directly
+            try:
+                print("Enter the report number (phone number): ", end='', flush=True)
+                with open('/dev/tty', 'r') as tty:
+                    report_number = tty.readline().strip()
+                return report_number
+            except:
+                # If /dev/tty fails, provide instructions
+                print("\nCannot read input from pipe.")
+                print("Please download and run the script directly:")
+                print("curl -sL 'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/scheduler/scheduler.py' -o scheduler.py && python3 scheduler.py")
+                return None
+        else:
+            # Normal terminal input
+            try:
+                return input("Enter the report number (phone number): ").strip()
+            except (KeyboardInterrupt, EOFError):
+                return None
     
     def handle_report_numbers(self, bot_folders):
         """Handle report number creation/modification"""
         all_have_report_numbers = self.check_report_numbers_exist(bot_folders)
         
         if not all_have_report_numbers:
+            # Some folders don't have report numbers
             print("Some bots are missing report numbers in their venv folders.")
-            print("Please run the script without pipe to enter report number:")
-            print("python3 scheduler.py")
+            report_number = self.get_report_number_input()
+            
+            if report_number:
+                self.create_report_numbers(bot_folders, report_number)
+                print(f"Report number '{report_number}' set for all bots in their venv folders.")
+            else:
+                print("No report number provided. Please run the script again to set report numbers.")
+                sys.exit(1)
             return
         
         # All folders have report numbers
         print("Report number already available in all bots folder's venv folders.")
-        print("Waiting 10 seconds... (Press Ctrl+C to modify)")
         
-        # Simple 10-second wait
-        try:
-            for i in range(10, 0, -1):
-                print(f"\rContinuing in {i} seconds... ", end='', flush=True)
-                time.sleep(1)
-            print("\r" + " " * 30 + "\r", end='', flush=True)
-        except KeyboardInterrupt:
-            print("\n\nModification requested...")
-            self.delete_all_report_numbers(bot_folders)
-            print("Please run the script without pipe to enter new report number:")
-            print("python3 scheduler.py")
-            return
-        
-        print("Continuing with existing report numbers...")
+        # Ask if user wants to modify
+        if not sys.stdin.isatty():
+            # Piped input - wait 10 seconds and continue
+            print("Waiting 10 seconds... (Press Ctrl+C to modify)")
+            try:
+                for i in range(10, 0, -1):
+                    print(f"\rContinuing in {i} seconds... ", end='', flush=True)
+                    time.sleep(1)
+                print("\r" + " " * 30 + "\r", end='', flush=True)
+                print("Continuing with existing report numbers...")
+            except KeyboardInterrupt:
+                print("\n\nModification requested...")
+                self.delete_all_report_numbers(bot_folders)
+                report_number = self.get_report_number_input()
+                if report_number:
+                    self.create_report_numbers(bot_folders, report_number)
+                    print(f"Report number updated to '{report_number}' in all venv folders")
+                else:
+                    print("No report number provided. Keeping existing setup.")
+        else:
+            # Normal terminal input
+            try:
+                response = input("Do you want to modify? y/n: ").strip().lower()
+                if response == 'y':
+                    self.delete_all_report_numbers(bot_folders)
+                    report_number = self.get_report_number_input()
+                    if report_number:
+                        self.create_report_numbers(bot_folders, report_number)
+                        print(f"Report number updated to '{report_number}' in all venv folders")
+                else:
+                    print("Continuing with existing report numbers...")
+            except (KeyboardInterrupt, EOFError):
+                print("\nContinuing with existing report numbers...")
     
     def list_bot_folders(self, bot_folders):
         """List all available bot folders with venv status"""
@@ -148,6 +197,8 @@ class BotScheduler:
     def verify_report_numbers(self, bot_folders):
         """Verify that report numbers are properly set in venv folders"""
         print("\nVerifying report numbers in venv folders...")
+        all_set = True
+        
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if venv_path:
@@ -158,8 +209,20 @@ class BotScheduler:
                             content = f.read().strip()
                         if content:
                             print(f"  ✓ {folder.name}/venv/: {content}")
-                    except:
-                        print(f"  ✗ {folder.name}/venv/: Error reading")
+                        else:
+                            print(f"  ✗ {folder.name}/venv/: Empty report number")
+                            all_set = False
+                    except Exception as e:
+                        print(f"  ✗ {folder.name}/venv/: Error reading - {e}")
+                        all_set = False
+                else:
+                    print(f"  ✗ {folder.name}/venv/: No report number file")
+                    all_set = False
+            else:
+                print(f"  ✗ {folder.name}: No venv folder found")
+                all_set = False
+        
+        return all_set
     
     def run_step2(self):
         """Placeholder for Step 2 implementation"""
