@@ -23,18 +23,14 @@ class BotScheduler:
     def run_curl_command(self):
         """Run the curl command to setup bots"""
         print("Setting up bots using curl command...")
-        curl_command = [
-            'curl', '-sL', 
-            'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/all-in-one-venv/all%20in%20one%20venv.py'
-        ]
-        
         try:
-            result = subprocess.run(
-                ['python3', '-c', f"import urllib.request; exec(urllib.request.urlopen('{curl_command[2]}').read())"],
-                capture_output=True,
-                text=True
-            )
+            result = subprocess.run([
+                'curl', '-sL', 
+                'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/all-in-one-venv/all%20in%20one%20venv.py'
+            ], capture_output=True, text=True)
+            
             if result.returncode == 0:
+                exec(result.stdout)
                 print("Bots setup completed successfully")
             else:
                 print(f"Error running setup: {result.stderr}")
@@ -50,7 +46,6 @@ class BotScheduler:
             self.run_curl_command()
             return False
             
-        # Get all items in bots folder
         items = list(self.bots_base_path.iterdir())
         folders = [item for item in items if item.is_dir() and item.name != self.scheduler_folder]
         
@@ -97,23 +92,26 @@ class BotScheduler:
             except Exception as e:
                 print(f"Error creating report number in {folder.name}: {e}")
     
-    def get_user_input(self, prompt, timeout=10):
-        """Get user input with optional timeout"""
-        print(prompt, end='', flush=True)
-        
-        if timeout > 0:
-            # Simple input without timeout for now
-            # In a more advanced version, you could use threading for timeout
+    def get_user_input_with_fallback(self, prompt):
+        """Get user input with fallback to direct terminal input when piped"""
+        try:
+            # Try to read directly from terminal if possible
+            if sys.stdin.isatty():
+                # Normal input when running directly
+                print(prompt, end='', flush=True)
+                return input().strip()
+            else:
+                # We're in a pipe, try to open terminal directly
+                print(prompt, end='', flush=True)
+                # On Unix systems, we can read from /dev/tty
+                with open('/dev/tty', 'r') as tty:
+                    return tty.readline().strip()
+        except Exception as e:
+            # Fallback to regular input
             try:
-                user_input = input().strip()
-                return user_input
-            except EOFError:
-                return ""
-        else:
-            try:
-                user_input = input().strip()
-                return user_input
-            except EOFError:
+                print(prompt, end='', flush=True)
+                return input().strip()
+            except:
                 return ""
     
     def handle_report_numbers(self, bot_folders):
@@ -122,54 +120,71 @@ class BotScheduler:
         
         if not all_have_report_numbers:
             # Some folders don't have report numbers
-            report_number = self.get_user_input("Enter the report number: ")
+            print("Some bots are missing report numbers.")
+            report_number = self.get_user_input_with_fallback("Enter the report number: ")
             if report_number:
                 self.create_report_numbers(bot_folders, report_number)
+                print(f"Report number '{report_number}' set for all bots.")
+            else:
+                print("No report number provided. Using existing values where available.")
             return
         
         # All folders have report numbers
-        while True:
-            response = self.get_user_input(
-                "Report number already available in all bots folder. Do you want to modify? y/n: "
-            ).lower()
-            
-            if response == 'y':
-                self.delete_all_report_numbers(bot_folders)
-                report_number = self.get_user_input("Enter the report number: ")
-                if report_number:
-                    self.create_report_numbers(bot_folders, report_number)
-                break
-            elif response == 'n':
-                print("Continuing with existing report numbers...")
-                break
-            else:
-                print("Please press either 'y' or 'n'")
-                # Wait 10 seconds and continue if no valid input
-                print("Waiting 10 seconds for response...")
-                time.sleep(10)
-                # Try one more time
-                response = self.get_user_input("Do you want to modify? y/n: ").lower()
-                if response == 'y':
-                    self.delete_all_report_numbers(bot_folders)
-                    report_number = self.get_user_input("Enter the report number: ")
-                    if report_number:
-                        self.create_report_numbers(bot_folders, report_number)
-                    break
-                elif response == 'n':
-                    print("Continuing with existing report numbers...")
-                    break
-                else:
-                    print("No valid response. Continuing with existing report numbers...")
-                    break
+        print("Report number already available in all bots folder.")
+        
+        # Try to get user response with timeout logic
+        response = ""
+        try:
+            response = self.get_user_input_with_fallback("Do you want to modify? y/n: ").lower()
+        except:
+            pass
+        
+        if response == 'y':
+            self.delete_all_report_numbers(bot_folders)
+            new_report_number = self.get_user_input_with_fallback("Enter the report number: ")
+            if new_report_number:
+                self.create_report_numbers(bot_folders, new_report_number)
+                print(f"Report number updated to '{new_report_number}'")
+        elif response == 'n':
+            print("Continuing with existing report numbers...")
+        else:
+            print("No valid response received. Continuing with existing report numbers...")
     
     def list_bot_folders(self, bot_folders):
         """List all available bot folders"""
         if bot_folders:
             print("\nAvailable bot folders:")
             for folder in bot_folders:
-                print(f"  - {folder.name}")
+                report_file = folder / "report number"
+                status = "✓" if report_file.exists() else "✗"
+                print(f"  - {folder.name} [report number: {status}]")
         else:
             print("No bot folders found.")
+    
+    def verify_report_numbers(self, bot_folders):
+        """Verify that report numbers are properly set"""
+        print("\nVerifying report numbers...")
+        all_set = True
+        
+        for folder in bot_folders:
+            report_file = folder / "report number"
+            if report_file.exists():
+                try:
+                    with open(report_file, 'r') as f:
+                        content = f.read().strip()
+                    if content:
+                        print(f"  ✓ {folder.name}: {content}")
+                    else:
+                        print(f"  ✗ {folder.name}: Empty report number")
+                        all_set = False
+                except Exception as e:
+                    print(f"  ✗ {folder.name}: Error reading - {e}")
+                    all_set = False
+            else:
+                print(f"  ✗ {folder.name}: No report number file")
+                all_set = False
+        
+        return all_set
     
     def run(self):
         """Main execution function"""
@@ -197,9 +212,17 @@ class BotScheduler:
         # Handle report numbers
         self.handle_report_numbers(bot_folders)
         
-        # Step 2 will be implemented here later
+        # Verify report numbers are set
+        report_numbers_ok = self.verify_report_numbers(bot_folders)
+        
         print("\n" + "=" * 50)
-        print("Step 1 completed successfully!")
+        if report_numbers_ok:
+            print("✓ Step 1 completed successfully!")
+            print("✓ All report numbers are properly set")
+        else:
+            print("⚠ Step 1 completed with warnings")
+            print("⚠ Some report numbers may not be set correctly")
+        
         print("Ready for Step 2 implementation...")
         print("=" * 50)
 
