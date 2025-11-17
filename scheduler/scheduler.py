@@ -19,6 +19,14 @@ class BotScheduler:
         self.bots_base_path = Path(f"/home/{self.username}/bots")
         self.scheduler_folder = "scheduler"
         
+        # Colors for terminal output
+        self.YELLOW = '\033[93m'
+        self.GREEN = '\033[92m'
+        self.RED = '\033[91m'
+        self.BLUE = '\033[94m'
+        self.ENDC = '\033[0m'
+        self.BOLD = '\033[1m'
+        
     def run_curl_command(self):
         """Run the curl command to setup bots with LIVE output"""
         print("Setting up bots using curl command...")
@@ -154,7 +162,8 @@ class BotScheduler:
             if not sys.stdin.isatty():
                 # We're in a pipe, try to read from terminal directly
                 try:
-                    print("Enter the report number (phone number): ", end='', flush=True)
+                    # Yellow colored prompt
+                    print(f"{self.YELLOW}Enter the report number (phone number): {self.ENDC}", end='', flush=True)
                     with open('/dev/tty', 'r') as tty:
                         report_number = tty.readline().strip()
                     
@@ -177,7 +186,9 @@ class BotScheduler:
             else:
                 # Normal terminal input
                 try:
-                    report_number = input("Enter the report number (phone number): ").strip()
+                    # Yellow colored prompt
+                    print(f"{self.YELLOW}Enter the report number (phone number): {self.ENDC}", end='', flush=True)
+                    report_number = input().strip()
                     
                     if self.is_valid_phone_number(report_number):
                         return report_number
