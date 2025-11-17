@@ -103,27 +103,73 @@ class BotScheduler:
                 except Exception as e:
                     print(f"Error creating report number in {folder.name}/venv/: {e}")
     
+    def is_valid_phone_number(self, phone_number):
+        """Validate that the input contains only digits"""
+        if not phone_number:
+            return False
+        
+        # Remove common phone number characters (spaces, hyphens, plus sign, parentheses)
+        cleaned_number = phone_number.replace(' ', '').replace('-', '').replace('+', '').replace('(', '').replace(')', '')
+        
+        # Check if all characters are digits
+        if not cleaned_number.isdigit():
+            return False
+        
+        # Check if the number has a reasonable length (usually 10-15 digits)
+        if len(cleaned_number) < 10 or len(cleaned_number) > 15:
+            return False
+        
+        return True
+    
     def get_report_number_input(self):
-        """Get report number input with fallback for piped input"""
-        if not sys.stdin.isatty():
-            # We're in a pipe, try to read from terminal directly
-            try:
-                print("Enter the report number (phone number): ", end='', flush=True)
-                with open('/dev/tty', 'r') as tty:
-                    report_number = tty.readline().strip()
-                return report_number
-            except:
-                # If /dev/tty fails, provide instructions
-                print("\nCannot read input from pipe.")
-                print("Please download and run the script directly:")
-                print("curl -sL 'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/scheduler/scheduler.py' -o scheduler.py && python3 scheduler.py")
-                return None
-        else:
-            # Normal terminal input
-            try:
-                return input("Enter the report number (phone number): ").strip()
-            except (KeyboardInterrupt, EOFError):
-                return None
+        """Get report number input with validation and fallback for piped input"""
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            if not sys.stdin.isatty():
+                # We're in a pipe, try to read from terminal directly
+                try:
+                    print("Enter the report number (phone number): ", end='', flush=True)
+                    with open('/dev/tty', 'r') as tty:
+                        report_number = tty.readline().strip()
+                    
+                    if self.is_valid_phone_number(report_number):
+                        return report_number
+                    elif report_number:  # If user entered something but it's invalid
+                        print(f"Error: '{report_number}' is not a valid phone number. Please enter only digits.")
+                        if attempt < max_attempts - 1:
+                            print(f"Attempt {attempt + 1} of {max_attempts}")
+                        continue
+                    else:
+                        return None
+                        
+                except:
+                    # If /dev/tty fails, provide instructions
+                    print("\nCannot read input from pipe.")
+                    print("Please download and run the script directly:")
+                    print("curl -sL 'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/scheduler/scheduler.py' -o scheduler.py && python3 scheduler.py")
+                    return None
+            else:
+                # Normal terminal input
+                try:
+                    report_number = input("Enter the report number (phone number): ").strip()
+                    
+                    if self.is_valid_phone_number(report_number):
+                        return report_number
+                    elif report_number:  # If user entered something but it's invalid
+                        print(f"Error: '{report_number}' is not a valid phone number. Please enter only digits.")
+                        if attempt < max_attempts - 1:
+                            print(f"Attempt {attempt + 1} of {max_attempts}")
+                        continue
+                    else:
+                        return None
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return None
+        
+        # If we've exhausted all attempts
+        print("Maximum attempts reached. Please run the script again.")
+        return None
     
     def handle_report_numbers(self, bot_folders):
         """Handle report number creation/modification"""
@@ -138,7 +184,7 @@ class BotScheduler:
                 self.create_report_numbers(bot_folders, report_number)
                 print(f"Report number '{report_number}' set for all bots in their venv folders.")
             else:
-                print("No report number provided. Please run the script again to set report numbers.")
+                print("No valid report number provided. Please run the script again to set report numbers.")
                 sys.exit(1)
             return
         
@@ -163,7 +209,7 @@ class BotScheduler:
                     self.create_report_numbers(bot_folders, report_number)
                     print(f"Report number updated to '{report_number}' in all venv folders")
                 else:
-                    print("No report number provided. Keeping existing setup.")
+                    print("No valid report number provided. Keeping existing setup.")
         else:
             # Normal terminal input
             try:
