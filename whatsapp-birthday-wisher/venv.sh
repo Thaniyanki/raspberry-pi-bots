@@ -11,10 +11,6 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="whatsapp birthday wisher"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-REPORT_FILE="$VENV_PATH/report number"
-PHONE_NUMBER="9940585709"
-GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
-BOT_SUBPATH="whatsapp-birthday-wisher"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -32,13 +28,12 @@ echo "[OK] Created bot folder at: $BOT_PATH"
 # === Step 2: Dependencies ===
 echo "[INFO] Installing system dependencies..."
 sudo apt update -y
-
 sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
     libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
     libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
     libharfbuzz-dev libfribidi-dev libxcb1-dev || true
 
-# Try installing “t64” versions safely
+# Try installing "t64" versions safely
 for pkg in libasound2t64 libatk-bridge2.0-0t64; do
     if apt-cache show "$pkg" >/dev/null 2>&1; then
         sudo apt install -y "$pkg"
@@ -80,23 +75,13 @@ pip install --upgrade pip setuptools wheel
 pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client
 
-# === Step 5: Create Phone Number File ===
-echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file: $REPORT_FILE"
-
-# === Step 6: REMOVED - No Python script download ===
-echo "[INFO] Skipping Python script download (will be handled by scheduler)"
-
-# === Step 7: Summary ===
+# === Step 5: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
-echo "📄 Phone number file: $REPORT_FILE"
-echo
 echo "🌐 Chromium: $($CHROME_BIN --version)"
 echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
-echo
 echo "💡 Ready for scheduler integration!"
 echo "📝 Python script will be downloaded separately by scheduler"
 echo "------------------------------------------------------------"
