@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import time
+import shutil
 from pathlib import Path
 
 class BotScheduler:
@@ -336,13 +337,126 @@ class BotScheduler:
                 print("No valid report number provided. Some bots may not work correctly.")
         
         return all_set
-    
+
+    def check_database_key_exists(self, bot_folders):
+        """Check if database access key exists in any bot folder's venv"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                db_key_file = venv_path / "database access key.json"
+                if db_key_file.exists():
+                    return True, folder, db_key_file
+        return False, None, None
+
+    def check_all_bots_have_database_key(self, bot_folders):
+        """Check if all bots have database access key"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                db_key_file = venv_path / "database access key.json"
+                if not db_key_file.exists():
+                    return False
+            else:
+                return False
+        return True
+
+    def copy_database_key_to_all_bots(self, source_key_file, bot_folders):
+        """Copy database access key to all bot folders"""
+        print(f"Copying database access key to all bots...")
+        success_count = 0
+        
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                target_key_file = venv_path / "database access key.json"
+                try:
+                    # Skip copying to source folder
+                    if source_key_file != target_key_file:
+                        shutil.copy2(source_key_file, target_key_file)
+                        print(f"  ✓ Copied to {folder.name}/venv/")
+                        success_count += 1
+                    else:
+                        print(f"  ✓ Source folder: {folder.name}/venv/")
+                        success_count += 1
+                except Exception as e:
+                    print(f"  ✗ Failed to copy to {folder.name}/venv/: {e}")
+        
+        return success_count
+
+    def wait_for_database_key(self, bot_folders):
+        """Wait for database access key to be available in any bot folder"""
+        print(f"{self.YELLOW}Database access key not available. Please paste 'database access key.json' in any bot folder's venv.{self.ENDC}")
+        print("Waiting for database access key... (Checking every 2 seconds)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Database access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                # Show waiting animation
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(2)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
     def run_step2(self):
-        """Placeholder for Step 2 implementation"""
+        """Step 2: Database Access Key Management"""
         print("\n" + "=" * 50)
-        print("STEP 2: Bot Scheduling and Management")
+        print("STEP 2: Database Access Key Management")
         print("=" * 50)
-        print("Step 2 functionality will be implemented here...")
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        # Check if all bots already have database key
+        if self.check_all_bots_have_database_key(bot_folders):
+            print(f"{self.GREEN}✓ All bots already have 'database access key.json' in their venv folders{self.ENDC}")
+            return True
+        
+        # Check if any bot has database key
+        key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+        
+        if key_exists:
+            print(f"{self.GREEN}✓ Database access key found in {source_folder.name}/venv/{self.ENDC}")
+            print("Copying to all other bots...")
+        else:
+            # Wait for user to provide database key
+            source_key_file = self.wait_for_database_key(bot_folders)
+            if not source_key_file:
+                return False
+        
+        # Copy database key to all bots
+        success_count = self.copy_database_key_to_all_bots(source_key_file, bot_folders)
+        
+        if success_count == len(bot_folders):
+            print(f"{self.GREEN}✓ Successfully copied database access key to all {len(bot_folders)} bots{self.ENDC}")
+            return True
+        else:
+            print(f"{self.YELLOW}⚠ Database access key copied to {success_count} out of {len(bot_folders)} bots{self.ENDC}")
+            return True  # Continue anyway
+
+    def run_step3(self):
+        """Placeholder for Step 3 implementation"""
+        print("\n" + "=" * 50)
+        print("STEP 3: Bot Execution and Monitoring")
+        print("=" * 50)
+        print("Step 3 functionality will be implemented here...")
+        print("All prerequisites completed successfully!")
+        print("- Report numbers: ✓")
+        print("- Database access keys: ✓")
+        print("- Ready to run bots...")
     
     def run(self):
         """Main execution function"""
@@ -373,10 +487,22 @@ class BotScheduler:
             print("⚠ Step 1 completed with warnings")
             print("⚠ Some report numbers may not be set correctly in venv folders")
         
-        print("Ready for Step 2 implementation...")
         print("=" * 50)
         
-        self.run_step2()
+        # Run Step 2
+        step2_success = self.run_step2()
+        
+        if step2_success:
+            print("\n" + "=" * 50)
+            print("✓ Step 2 completed successfully!")
+            print("✓ All database access keys are properly set in venv folders")
+            print("=" * 50)
+            
+            # Continue to Step 3
+            self.run_step3()
+        else:
+            print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
+            sys.exit(1)
 
 def main():
     """Main function"""
