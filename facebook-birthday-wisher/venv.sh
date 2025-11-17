@@ -11,8 +11,6 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="facebook birthday wisher"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-GITHUB_REPO="https://github.com/Thaniyanki/raspberry-pi-bots.git"
-BOT_SUBPATH="facebook-birthday-wisher"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -30,7 +28,6 @@ echo "[OK] Created bot folder at: $BOT_PATH"
 # === Step 2: Dependencies ===
 echo "[INFO] Installing system dependencies..."
 sudo apt update -y
-
 sudo apt install -y python3 python3-venv python3-pip git curl unzip build-essential x11-utils \
     libnss3 libxkbcommon0 libdrm2 libgbm1 libxshmfence1 libjpeg-dev zlib1g-dev \
     libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev libwebp-dev tk-dev \
@@ -78,21 +75,13 @@ pip install --upgrade pip setuptools wheel
 pip install --no-cache-dir firebase_admin gspread selenium google-auth google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil pyautogui python3-xlib requests Pillow oauth2client python-dateutil
 
-# === Step 5: REMOVED - No phone number file creation ===
-echo "[INFO] Skipping phone number file creation"
-
-# === Step 6: REMOVED - No Python script download ===
-echo "[INFO] Skipping Python script download (will be handled by scheduler)"
-
-# === Step 7: Summary ===
+# === Step 5: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
-echo
 echo "🌐 Chromium: $($CHROME_BIN --version)"
 echo "🔧 Chromedriver: $($CHROMEDRIVER_BIN --version)"
-echo
 echo "💡 Ready for scheduler integration!"
 echo "📝 Python script will be downloaded separately by scheduler"
 echo "------------------------------------------------------------"
