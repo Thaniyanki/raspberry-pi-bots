@@ -911,7 +911,7 @@ def step12_transfer_birthday_data(spreadsheet):
     while True:
         try:
             # Get today's birthdays from spreadsheet
-            worksheet = spreadsheet.worksheet("Birthday list")
+            worksheet = spreadsheet.worksheet("birthday list")
             all_records = worksheet.get_all_records()
             
             birthday_today = []
