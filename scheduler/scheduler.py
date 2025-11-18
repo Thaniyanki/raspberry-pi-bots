@@ -727,6 +727,7 @@ class BotScheduler:
             
             page_token = None
             sheet_count = 0
+            available_sheets = []
             
             while True:
                 response = drive.files().list(
@@ -738,6 +739,12 @@ class BotScheduler:
                 
                 for file in response.get('files', []):
                     sheet_count += 1
+                    sheet_info = {
+                        'name': file['name'],
+                        'id': file['id'],
+                        'number': sheet_count
+                    }
+                    available_sheets.append(sheet_info)
                     print(f"{sheet_count:2d}. {file['name']}  ->  {file['id']}")
                 
                 page_token = response.get('nextPageToken', None)
@@ -749,6 +756,8 @@ class BotScheduler:
             else:
                 print(f"\n{self.GREEN}✓ Found {sheet_count} Google Sheet(s){self.ENDC}")
             
+            # Store the sheets for Step 5 comparison
+            self.available_sheets = available_sheets
             return True
             
         except ImportError as e:
@@ -762,18 +771,105 @@ class BotScheduler:
             return False
 
     def run_step5(self):
-        """Placeholder for Step 5 implementation"""
+        """Step 5: Compare Bot Folders with Google Sheets"""
         print("\n" + "=" * 50)
-        print("STEP 5: Bot Execution and Monitoring")
+        print("STEP 5: Comparing Bot Folders with Google Sheets")
         print("=" * 50)
-        print("Step 5 functionality will be implemented here...")
-        print("All prerequisites completed successfully!")
-        print("- Report numbers: ✓")
-        print("- Database access keys: ✓")
-        print("- Spreadsheet access keys: ✓")
-        print("- Google Sheets listed: ✓")
-        print("- Ready to run bots...")
-    
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False, False  # Return False for both success and all_match
+        
+        if not hasattr(self, 'available_sheets') or not self.available_sheets:
+            print(f"{self.RED}❌ No Google Sheets data available from Step 4{self.ENDC}")
+            return False, False
+        
+        print("Bot folders on Raspberry Pi:")
+        bot_folder_names = []
+        for i, folder in enumerate(bot_folders, 1):
+            print(f"  {i:2d}. {folder.name}")
+            bot_folder_names.append(folder.name)
+        
+        print("\nGoogle Sheets available:")
+        sheet_names = []
+        for sheet in self.available_sheets:
+            print(f"  {sheet['number']:2d}. {sheet['name']}")
+            sheet_names.append(sheet['name'])
+        
+        print(f"\n{self.BOLD}Comparing bot folders with Google Sheets...{self.ENDC}")
+        
+        # Compare exact lowercase matches
+        missing_sheets = []
+        all_match = True
+        
+        for bot_name in bot_folder_names:
+            bot_lower = bot_name.lower()
+            found = False
+            
+            for sheet_name in sheet_names:
+                if bot_lower == sheet_name.lower():
+                    found = True
+                    print(f"{self.GREEN}  ✓ '{bot_name}' matches sheet '{sheet_name}'{self.ENDC}")
+                    break
+            
+            if not found:
+                all_match = False
+                missing_sheets.append(bot_name)
+                print(f"{self.RED}  ✗ '{bot_name}' - No matching Google Sheet found{self.ENDC}")
+        
+        # Check for extra sheets that don't have corresponding bot folders
+        extra_sheets = []
+        for sheet_name in sheet_names:
+            sheet_lower = sheet_name.lower()
+            found = False
+            
+            for bot_name in bot_folder_names:
+                if sheet_lower == bot_name.lower():
+                    found = True
+                    break
+            
+            if not found and sheet_name.lower() != "scheduler":
+                extra_sheets.append(sheet_name)
+        
+        print(f"\n{self.BOLD}Comparison Results:{self.ENDC}")
+        
+        if all_match and not extra_sheets:
+            print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
+            print(f"{self.GREEN}✓ No extra sheets found{self.ENDC}")
+            return True, True  # Success and all match
+        
+        else:
+            if missing_sheets:
+                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
+                for missing in missing_sheets:
+                    print(f"  - {missing}")
+            
+            if extra_sheets:
+                print(f"{self.BLUE}ℹ️  Extra Google Sheets (no corresponding bot):{self.ENDC}")
+                for extra in extra_sheets:
+                    print(f"  - {extra}")
+            
+            return True, False  # Success but not all match
+
+    def run_step6(self):
+        """Step 6: All bots have matching sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 6: All Bots Have Matching Sheets")
+        print("=" * 50)
+        print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
+        print("Continuing with bot execution setup...")
+        # Step 6 implementation will go here
+
+    def run_step7(self):
+        """Step 7: Some bots missing matching sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 7: Some Bots Missing Matching Sheets")
+        print("=" * 50)
+        print(f"{self.YELLOW}⚠ Some bots are missing matching Google Sheets{self.ENDC}")
+        print("Please create the missing sheets or check the bot folder names.")
+        # Step 7 implementation will go here
+
     def run(self):
         """Main execution function"""
         print("=" * 50)
@@ -832,8 +928,23 @@ class BotScheduler:
                     print("✓ Google Sheets listed successfully")
                     print("=" * 50)
                     
-                    # Continue to Step 5
-                    self.run_step5()
+                    # Run Step 5
+                    step5_success, all_match = self.run_step5()
+                    
+                    if step5_success:
+                        print("\n" + "=" * 50)
+                        print("✓ Step 5 completed successfully!")
+                        print("=" * 50)
+                        
+                        if all_match:
+                            # All bots have matching sheets - continue to Step 6
+                            self.run_step6()
+                        else:
+                            # Some bots missing matching sheets - continue to Step 7
+                            self.run_step7()
+                    else:
+                        print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
+                        sys.exit(1)
                 else:
                     print(f"\n{self.RED}❌ Step 4 failed. Cannot continue to Step 5.{self.ENDC}")
                     sys.exit(1)
