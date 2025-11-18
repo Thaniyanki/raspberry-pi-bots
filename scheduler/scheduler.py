@@ -74,7 +74,7 @@ class BotScheduler:
         return True
     
     def get_bot_folders(self):
-        """Get all bot folders including scheduler"""
+        """Get all bot folders INCLUDING scheduler folder"""
         if not self.bots_base_path.exists():
             return []
             
@@ -82,13 +82,18 @@ class BotScheduler:
         bot_folders = [item for item in items if item.is_dir()]
         return bot_folders
     
+    def get_working_bot_folders(self):
+        """Get all bot folders that need database keys (EXCLUDING scheduler)"""
+        bot_folders = self.get_bot_folders()
+        return [folder for folder in bot_folders if folder.name != self.scheduler_folder]
+    
     def get_venv_path(self, bot_folder):
         """Get the venv path for a bot folder"""
         venv_path = bot_folder / "venv"
         return venv_path if venv_path.exists() and venv_path.is_dir() else None
     
     def check_report_numbers_exist(self, bot_folders):
-        """Check if report number files exist in ALL bot folders' venv (including scheduler)"""
+        """Check if report number files exist in ALL bot folders' venv (INCLUDING scheduler)"""
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if not venv_path:
@@ -99,7 +104,7 @@ class BotScheduler:
         return True
     
     def check_report_numbers_valid(self, bot_folders):
-        """Check if all report number files have valid content (not empty) - including scheduler"""
+        """Check if all report number files have valid content (not empty) - INCLUDING scheduler"""
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if venv_path:
@@ -115,7 +120,7 @@ class BotScheduler:
         return True
     
     def get_valid_report_number_from_bots(self, bot_folders):
-        """Get a valid report number from any bot that has one (including scheduler)"""
+        """Get a valid report number from any bot that has one (INCLUDING scheduler)"""
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if venv_path:
@@ -131,7 +136,7 @@ class BotScheduler:
         return None, None
     
     def copy_report_numbers_from_valid_bots(self, bot_folders):
-        """Copy report numbers from bots that have valid ones to bots that don't (including scheduler)"""
+        """Copy report numbers from bots that have valid ones to bots that don't (INCLUDING scheduler)"""
         print("Automatically copying report numbers from bots that have them...")
         
         # Find all valid report numbers
@@ -157,7 +162,7 @@ class BotScheduler:
         source_bot, report_number = next(iter(valid_report_numbers.items()))
         print(f"Found valid report number '{report_number}' in {source_bot}")
         
-        # Copy to bots that don't have valid report numbers (including scheduler)
+        # Copy to bots that don't have valid report numbers (INCLUDING scheduler)
         copied_count = 0
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
@@ -189,7 +194,7 @@ class BotScheduler:
         return True
     
     def delete_all_report_numbers(self, bot_folders):
-        """Delete all report number files from venv folders (including scheduler)"""
+        """Delete all report number files from venv folders (INCLUDING scheduler)"""
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if venv_path:
@@ -199,7 +204,7 @@ class BotScheduler:
                     print(f"Deleted report number from {folder.name}/venv/")
     
     def create_report_numbers(self, bot_folders, report_number):
-        """Create report number files in all bot folders' venv (including scheduler)"""
+        """Create report number files in all bot folders' venv (INCLUDING scheduler)"""
         for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if venv_path:
@@ -283,7 +288,7 @@ class BotScheduler:
         return None
     
     def handle_report_numbers(self, bot_folders):
-        """Handle report number creation/modification - AUTO COPY from existing bots (including scheduler)"""
+        """Handle report number creation/modification - AUTO COPY from existing bots (INCLUDING scheduler)"""
         all_have_report_numbers = self.check_report_numbers_exist(bot_folders)
         all_report_numbers_valid = self.check_report_numbers_valid(bot_folders)
         
@@ -379,7 +384,7 @@ class BotScheduler:
                 print(f"  - {folder.name} [venv: {venv_status}] [report number: {status}]")
     
     def verify_report_numbers(self, bot_folders):
-        """Verify that report numbers are properly set in venv folders (including scheduler)"""
+        """Verify that report numbers are properly set in venv folders (INCLUDING scheduler)"""
         print("\nVerifying report numbers in venv folders...")
         all_set = True
         empty_files_found = False
@@ -655,6 +660,229 @@ class BotScheduler:
             print(f"{self.YELLOW}⚠ Spreadsheet access key copied to {success_count} out of {len(bot_folders)} bots{self.ENDC}")
             return True  # Continue anyway
 
+    def wait_for_spreadsheet_key_for_step4(self, bot_folders):
+        """Wait for spreadsheet access key to be available for Step 4 (continuous checking)"""
+        print(f"{self.YELLOW}Spreadsheet access key not available for Step 4.{self.ENDC}")
+        print("Waiting for spreadsheet access key... (Checking every 1 second)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                # Show waiting animation
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(1)  # Check every 1 second
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
+    def run_step4(self):
+        """Step 4: List Google Sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 4: Listing Google Sheets")
+        print("=" * 50)
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        # Find a bot that has the spreadsheet key - wait continuously if not found
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+        
+        if not key_exists:
+            print(f"{self.YELLOW}Spreadsheet access key not found. Waiting for it to become available...{self.ENDC}")
+            source_key_file = self.wait_for_spreadsheet_key_for_step4(bot_folders)
+            if not source_key_file:
+                return False
+        
+        print(f"{self.GREEN}✓ Using spreadsheet access key from {source_folder.name}/venv/{self.ENDC}")
+        
+        try:
+            # Import required libraries
+            import gspread
+            from google.oauth2.service_account import Credentials
+            from googleapiclient.discovery import build
+            
+            # Define scopes
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/drive.readonly"
+            ]
+            
+            print("Authorizing with Google Sheets API...")
+            
+            # Authorize service account
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            # Get Google Drive API client
+            drive = build("drive", "v3", credentials=creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            print("\nSheets accessible by the Service Account:\n")
+            
+            # Search only for Google Sheets MIME type
+            query = "mimeType='application/vnd.google-apps.spreadsheet'"
+            
+            page_token = None
+            sheet_count = 0
+            available_sheets = []
+            
+            while True:
+                response = drive.files().list(
+                    q=query,
+                    spaces='drive',
+                    fields="nextPageToken, files(id, name)",
+                    pageToken=page_token
+                ).execute()
+                
+                for file in response.get('files', []):
+                    sheet_count += 1
+                    sheet_info = {
+                        'name': file['name'],
+                        'id': file['id'],
+                        'number': sheet_count
+                    }
+                    available_sheets.append(sheet_info)
+                    print(f"{sheet_count:2d}. {file['name']}  ->  {file['id']}")
+                
+                page_token = response.get('nextPageToken', None)
+                if not page_token:
+                    break
+            
+            if sheet_count == 0:
+                print(f"{self.YELLOW}No Google Sheets found accessible by this service account.{self.ENDC}")
+            else:
+                print(f"\n{self.GREEN}✓ Found {sheet_count} Google Sheet(s){self.ENDC}")
+            
+            # Store the sheets for Step 5 comparison
+            self.available_sheets = available_sheets
+            return True
+            
+        except ImportError as e:
+            print(f"{self.RED}❌ Required libraries not installed: {e}{self.ENDC}")
+            print("Please install required packages:")
+            print("pip install gspread google-auth google-api-python-client")
+            return False
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error listing Google Sheets: {e}{self.ENDC}")
+            return False
+
+    def run_step5(self):
+        """Step 5: Compare Bot Folders with Google Sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 5: Comparing Bot Folders with Google Sheets")
+        print("=" * 50)
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False, False  # Return False for both success and all_match
+        
+        if not hasattr(self, 'available_sheets') or not self.available_sheets:
+            print(f"{self.RED}❌ No Google Sheets data available from Step 4{self.ENDC}")
+            return False, False
+        
+        print("Bot folders on Raspberry Pi:")
+        bot_folder_names = []
+        for i, folder in enumerate(bot_folders, 1):
+            print(f"  {i:2d}. {folder.name}")
+            bot_folder_names.append(folder.name)
+        
+        print("\nGoogle Sheets available:")
+        sheet_names = []
+        for sheet in self.available_sheets:
+            print(f"  {sheet['number']:2d}. {sheet['name']}")
+            sheet_names.append(sheet['name'])
+        
+        print(f"\n{self.BOLD}Comparing bot folders with Google Sheets...{self.ENDC}")
+        
+        # Compare exact lowercase matches
+        missing_sheets = []
+        all_match = True
+        
+        for bot_name in bot_folder_names:
+            bot_lower = bot_name.lower()
+            found = False
+            
+            for sheet_name in sheet_names:
+                if bot_lower == sheet_name.lower():
+                    found = True
+                    print(f"{self.GREEN}  ✓ '{bot_name}' matches sheet '{sheet_name}'{self.ENDC}")
+                    break
+            
+            if not found:
+                all_match = False
+                missing_sheets.append(bot_name)
+                print(f"{self.RED}  ✗ '{bot_name}' - No matching Google Sheet found{self.ENDC}")
+        
+        # Check for extra sheets that don't have corresponding bot folders
+        extra_sheets = []
+        for sheet_name in sheet_names:
+            sheet_lower = sheet_name.lower()
+            found = False
+            
+            for bot_name in bot_folder_names:
+                if sheet_lower == bot_name.lower():
+                    found = True
+                    break
+            
+            if not found and sheet_name.lower() != "scheduler":
+                extra_sheets.append(sheet_name)
+        
+        print(f"\n{self.BOLD}Comparison Results:{self.ENDC}")
+        
+        if all_match and not extra_sheets:
+            print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
+            print(f"{self.GREEN}✓ No extra sheets found{self.ENDC}")
+            return True, True  # Success and all match
+        
+        else:
+            if missing_sheets:
+                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
+                for missing in missing_sheets:
+                    print(f"  - {missing}")
+            
+            if extra_sheets:
+                print(f"{self.BLUE}ℹ️  Extra Google Sheets (no corresponding bot):{self.ENDC}")
+                for extra in extra_sheets:
+                    print(f"  - {extra}")
+            
+            return True, False  # Success but not all match
+
+    def run_step6(self):
+        """Step 6: All bots have matching sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 6: All Bots Have Matching Sheets")
+        print("=" * 50)
+        print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
+        print("Continuing with bot execution setup...")
+        # Step 6 implementation will go here
+
+    def run_step7(self):
+        """Step 7: Some bots missing matching sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 7: Some Bots Missing Matching Sheets")
+        print("=" * 50)
+        print(f"{self.YELLOW}⚠ Some bots are missing matching Google Sheets{self.ENDC}")
+        print("Please create the missing sheets or check the bot folder names.")
+        # Step 7 implementation will go here
+
     def run(self):
         """Main execution function"""
         print("=" * 50)
@@ -704,9 +932,35 @@ class BotScheduler:
                 print("✓ All spreadsheet access keys are properly set in venv folders (including scheduler)")
                 print("=" * 50)
                 
-                # Continue with remaining steps...
-                print("Ready for Step 4...")
+                # Run Step 4
+                step4_success = self.run_step4()
                 
+                if step4_success:
+                    print("\n" + "=" * 50)
+                    print("✓ Step 4 completed successfully!")
+                    print("✓ Google Sheets listed successfully")
+                    print("=" * 50)
+                    
+                    # Run Step 5
+                    step5_success, all_match = self.run_step5()
+                    
+                    if step5_success:
+                        print("\n" + "=" * 50)
+                        print("✓ Step 5 completed successfully!")
+                        print("=" * 50)
+                        
+                        if all_match:
+                            # All bots have matching sheets - continue to Step 6
+                            self.run_step6()
+                        else:
+                            # Some bots missing matching sheets - continue to Step 7
+                            self.run_step7()
+                    else:
+                        print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
+                        sys.exit(1)
+                else:
+                    print(f"\n{self.RED}❌ Step 4 failed. Cannot continue to Step 5.{self.ENDC}")
+                    sys.exit(1)
             else:
                 print(f"\n{self.RED}❌ Step 3 failed. Cannot continue to Step 4.{self.ENDC}")
                 sys.exit(1)
