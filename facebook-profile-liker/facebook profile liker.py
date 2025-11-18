@@ -42,7 +42,7 @@ PATHS = {
     "google_sheets_credentials": os.path.join(CURRENT_BOT_DIR, "venv", "spread sheet access key.json"),
     
     # Data files
-    "current_friends_file": os.path.join(CURRENT_BOT_DIR, "Current Friends"),
+    "current_friends_file": os.path.join(CURRENT_BOT_DIR, "current friends"),
     "waiting_for_proceed_file": os.path.join(CURRENT_BOT_DIR, "Waiting for proceed"),
     "report_number_file": os.path.join(CURRENT_BOT_DIR, "venv", "report number"),
     
