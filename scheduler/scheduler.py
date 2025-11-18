@@ -538,15 +538,125 @@ class BotScheduler:
             print(f"{self.YELLOW}⚠ Database access key copied to {success_count} out of {len(bot_folders)} bots{self.ENDC}")
             return True  # Continue anyway
 
+    def check_spreadsheet_key_exists(self, bot_folders):
+        """Check if spreadsheet access key exists in any bot folder's venv"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                spreadsheet_key_file = venv_path / "spread sheet access key.json"
+                if spreadsheet_key_file.exists():
+                    return True, folder, spreadsheet_key_file
+        return False, None, None
+
+    def check_all_bots_have_spreadsheet_key(self, bot_folders):
+        """Check if all bots have spreadsheet access key"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                spreadsheet_key_file = venv_path / "spread sheet access key.json"
+                if not spreadsheet_key_file.exists():
+                    return False
+            else:
+                return False
+        return True
+
+    def copy_spreadsheet_key_to_all_bots(self, source_key_file, bot_folders):
+        """Copy spreadsheet access key to all bot folders"""
+        print(f"Copying spreadsheet access key to all bots...")
+        success_count = 0
+        
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                target_key_file = venv_path / "spread sheet access key.json"
+                try:
+                    # Skip copying to source folder
+                    if source_key_file != target_key_file:
+                        shutil.copy2(source_key_file, target_key_file)
+                        print(f"  ✓ Copied to {folder.name}/venv/")
+                        success_count += 1
+                    else:
+                        print(f"  ✓ Source folder: {folder.name}/venv/")
+                        success_count += 1
+                except Exception as e:
+                    print(f"  ✗ Failed to copy to {folder.name}/venv/: {e}")
+        
+        return success_count
+
+    def wait_for_spreadsheet_key(self, bot_folders):
+        """Wait for spreadsheet access key to be available in any bot folder"""
+        print(f"{self.YELLOW}Spreadsheet access key not available. Please paste 'spread sheet access key.json' in any bot folder's venv.{self.ENDC}")
+        print("Waiting for spreadsheet access key... (Checking every 2 seconds)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                # Show waiting animation
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(2)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
     def run_step3(self):
-        """Placeholder for Step 3 implementation"""
+        """Step 3: Spreadsheet Access Key Management"""
         print("\n" + "=" * 50)
-        print("STEP 3: Bot Execution and Monitoring")
+        print("STEP 3: Spreadsheet Access Key Management")
         print("=" * 50)
-        print("Step 3 functionality will be implemented here...")
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        # Check if all bots already have spreadsheet key
+        if self.check_all_bots_have_spreadsheet_key(bot_folders):
+            print(f"{self.GREEN}✓ All bots already have 'spread sheet access key.json' in their venv folders{self.ENDC}")
+            return True
+        
+        # Check if any bot has spreadsheet key
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+        
+        if key_exists:
+            print(f"{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+            print("Copying to all other bots...")
+        else:
+            # Wait for user to provide spreadsheet key
+            source_key_file = self.wait_for_spreadsheet_key(bot_folders)
+            if not source_key_file:
+                return False
+        
+        # Copy spreadsheet key to all bots
+        success_count = self.copy_spreadsheet_key_to_all_bots(source_key_file, bot_folders)
+        
+        if success_count == len(bot_folders):
+            print(f"{self.GREEN}✓ Successfully copied spreadsheet access key to all {len(bot_folders)} bots{self.ENDC}")
+            return True
+        else:
+            print(f"{self.YELLOW}⚠ Spreadsheet access key copied to {success_count} out of {len(bot_folders)} bots{self.ENDC}")
+            return True  # Continue anyway
+
+    def run_step4(self):
+        """Placeholder for Step 4 implementation"""
+        print("\n" + "=" * 50)
+        print("STEP 4: Bot Execution and Monitoring")
+        print("=" * 50)
+        print("Step 4 functionality will be implemented here...")
         print("All prerequisites completed successfully!")
         print("- Report numbers: ✓")
         print("- Database access keys: ✓")
+        print("- Spreadsheet access keys: ✓")
         print("- Ready to run bots...")
     
     def run(self):
@@ -589,8 +699,20 @@ class BotScheduler:
             print("✓ All database access keys are properly set in venv folders")
             print("=" * 50)
             
-            # Continue to Step 3
-            self.run_step3()
+            # Run Step 3
+            step3_success = self.run_step3()
+            
+            if step3_success:
+                print("\n" + "=" * 50)
+                print("✓ Step 3 completed successfully!")
+                print("✓ All spreadsheet access keys are properly set in venv folders")
+                print("=" * 50)
+                
+                # Continue to Step 4
+                self.run_step4()
+            else:
+                print(f"\n{self.RED}❌ Step 3 failed. Cannot continue to Step 4.{self.ENDC}")
+                sys.exit(1)
         else:
             print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
             sys.exit(1)
