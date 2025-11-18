@@ -29,7 +29,7 @@ SPREADSHEET_KEY = os.path.join(WHATSAPP_BOT_DIR, "venv", "spread sheet access ke
 DATABASE_KEY = os.path.join(WHATSAPP_BOT_DIR, "venv", "database access key.json")
 REPORT_NUMBER_FILE = os.path.join(WHATSAPP_BOT_DIR, "venv", "report number")
 CONTACT_FILE = os.path.join(WHATSAPP_BOT_DIR, "Today birthday list contact")
-WISHES_FILE = os.path.join(WHATSAPP_BOT_DIR, "wishes")
+WISHES_FILE = os.path.join(WHATSAPP_BOT_DIR, "Wishes")
 WHATSAPP_REPORT_FILE = os.path.join(WHATSAPP_BOT_DIR, "WhatsApp report")
 
 # Browser settings
@@ -141,9 +141,8 @@ def step7_remove_duplicates(spreadsheet):
             duplicate_rows = []
             
             for i, row in enumerate(records, start=2):
-                # Use the correct column name from your spreadsheet: 'Counrty Code' (with typo)
-                country_code = str(row.get('Counrty Code', '')).strip()
-                whatsapp_number = str(row.get('WhatsApp Number', '')).strip()
+                country_code = str(row.get('country code', '')).strip()
+                whatsapp_number = str(row.get('whatsapp number', '')).strip()
                 
                 # Create a unique key combining both country code AND WhatsApp number
                 key = f"{country_code}-{whatsapp_number}"
@@ -185,7 +184,7 @@ def step8_filter_birthdays(spreadsheet):
             
             birthday_today = []
             for record in all_records:
-                dob = record.get('Date of Birth', '')
+                dob = record.get('date of birth', '')
                 if dob.startswith(current_day_month):
                     birthday_today.append(record)
             
@@ -564,11 +563,11 @@ def step9k_type_message():
         try:
             # Only proceed if we have one of the two specific cases
             if "No more birthday today" in step8_message:
-                message = "WhatsApp birthday bot - No more birthday today"
+                message = "whatsapp birthday bot - No more birthday today"
             elif "Warning - More than limit" in step8_message:
                 # Extract the number from the warning message
                 num = step8_message.split("limit ")[1].split(" ")[0]
-                message = f"WhatsApp birthday bot - Warning! More than limit {num} people have birthday today it may consider as spam so drop the process"
+                message = f"whatsapp birthday bot - Warning! More than limit {num} people have birthday today it may consider as spam so drop the process"
             else:
                 # For normal cases, just continue without typing
                 print("Normal case - no admin message needed")
@@ -918,28 +917,24 @@ def step12_transfer_birthday_data(spreadsheet):
             skipped_count = 0
             
             for record in all_records:
-                # Try different possible column names for Date of Birth
-                dob = record.get('Date of Birth', '') or record.get('Date of birth', '') or record.get('DOB', '') or record.get('dob', '')
+                dob = record.get('date of birth', '') or record.get('dob', '')
                 
                 # Check if date of birth matches today (accepts both DD-MM and DD-MM-YYYY formats)
                 if not str(dob).startswith(current_day_month):
                     skipped_count += 1
                     continue
                 
-                # Try different possible column names for Country Code
-                country_code = str(record.get('Country Code', '') or record.get('country code', '') or record.get('Country code', '') or record.get('Counrty Code', '')).strip()
+                country_code = str(record.get('country code', '')).strip()
                 if not country_code or not country_code.isdigit():
                     skipped_count += 1
                     continue
                 
-                # Try different possible column names for WhatsApp Number
-                whatsapp_num = str(record.get('WhatsApp Number', '') or record.get('Whatsapp Number', '') or record.get('whatsapp number', '') or record.get('Phone', '')).strip()
+                whatsapp_num = str(record.get('whatsapp number', '')).strip()
                 if not whatsapp_num or not whatsapp_num.isdigit():
                     skipped_count += 1
                     continue
                 
-                # Try different possible column names for Name
-                name = str(record.get('Name', '') or record.get('name', '')).strip()
+                name = str(record.get('name', '')).strip()
                 if not name:
                     name = "unavailable"
                 
@@ -978,29 +973,29 @@ def step12_transfer_birthday_data(spreadsheet):
                 time.sleep(1)
 
 def step13_check_and_delete_wishes_file():
-    """Step 13: Check and delete 'wishes' file if it exists."""
+    """Step 13: Check and delete 'Wishes' file if it exists."""
     wishes_file = WISHES_FILE
     
     try:
         if os.path.exists(wishes_file):
             os.remove(wishes_file)
-            print("Deleted existing 'wishes' file")
+            print("Deleted existing 'Wishes' file")
             return "step14"  # File existed and was deleted
         else:
-            print("'wishes' file not found")
+            print("'Wishes' file not found")
             return "step15"  # File didn't exist, skip to step15
     except Exception as e:
         print(f"Error during wishes file handling: {str(e)}")
         return "step15"  # On error, continue with step15
 
 def step14_create_wishes_file():
-    """Step 14: Create new 'wishes' file."""
+    """Step 14: Create new 'Wishes' file."""
     wishes_file = WISHES_FILE
     
     try:
         with open(wishes_file, 'w') as f:
             pass  # Just create empty file
-        print("Created new 'wishes' file")
+        print("Created new 'Wishes' file")
         return True
     except Exception as e:
         print(f"Error creating wishes file: {str(e)}")
@@ -1012,7 +1007,7 @@ def step15_process_wishes_from_sheets(spreadsheet):
     
     while True:
         try:
-            # Access the wishes worksheet
+            # Access the Wishes worksheet
             worksheet = spreadsheet.worksheet("wishes")
             
             # Get all values from column A (skip header row)
@@ -1050,7 +1045,7 @@ def step15_process_wishes_from_sheets(spreadsheet):
                 for wish in unique_wishes:
                     f.write(wish + "\n")
             
-            print(f"Transferred {len(unique_wishes)} unique wishes to wishes file")
+            print(f"Transferred {len(unique_wishes)} unique wishes to Wishes file")
             return True
             
         except Exception as e:
@@ -1493,12 +1488,12 @@ def step27_find_and_click_xpath002():
         return False
 
 def step28_check_wishes_file():
-    """Step 28: Check wishes file exists and has content."""
+    """Step 28: Check Wishes file exists and has content."""
     wishes_file = WISHES_FILE
     
     # Check if file exists
     if not os.path.isfile(wishes_file):
-        print("wishes file is missing")
+        print("Wishes file is missing")
         close_chrome()
         print("Closing script.")
         exit()
@@ -1517,11 +1512,11 @@ def step28_check_wishes_file():
             print("Closing script.")
             exit()
         
-        print(f"Found {len(wishes)} wishes in wishes file")
+        print(f"Found {len(wishes)} wishes in Wishes file")
         return wishes
         
     except Exception as e:
-        print(f"Error reading wishes file: {str(e)}")
+        print(f"Error reading Wishes file: {str(e)}")
         close_chrome()
         print("Closing script.")
         exit()
@@ -1548,7 +1543,7 @@ def step29_type_random_wish(wishes):
         
         # Verify message was typed
         if random_wish in message_field.text:
-            print("wishes message is typed")
+            print("Wishes message is typed")
             return True, random_wish  # Return both success status and the wish
         else:
             raise Exception("Wish not typed correctly")
@@ -1996,12 +1991,12 @@ def step40_process_report():
         current_date = datetime.now().strftime("%d-%m-%Y")
         
         # Create report content
-        report_content = f"""WhatsApp birthday bot({current_date})
+        report_content = f"""whatsapp birthday bot({current_date})
 
 Today birthday(s)  = {total_lines}
 Contact not found = {keyword_count}
 -----------------------
-sent message       = {sent_messages}
+Sent message       = {sent_messages}
 -----------------------"""
         
         # Write to WhatsApp report file
@@ -2761,12 +2756,12 @@ if __name__ == "__main__":
                                 print("\n=== Step 12: Transferring birthday data ===")
                                 if step12_transfer_birthday_data(spreadsheet):
                                     
-                                    # Step 13: Check and delete wishes file
-                                    print("\n=== Step 13: Checking wishes file ===")
+                                    # Step 13: Check and delete Wishes file
+                                    print("\n=== Step 13: Checking Wishes file ===")
                                     next_step_after_13 = step13_check_and_delete_wishes_file()
                                     
                                     if next_step_after_13 == "step14":
-                                        print("\n=== Step 14: Creating new wishes file ===")
+                                        print("\n=== Step 14: Creating new Wishes file ===")
                                         if step14_create_wishes_file():
                                             print("\n=== Step 15: Processing wishes from sheets ===")
                                             if step15_process_wishes_from_sheets(spreadsheet):
