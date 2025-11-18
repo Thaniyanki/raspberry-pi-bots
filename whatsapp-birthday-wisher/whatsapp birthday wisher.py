@@ -37,7 +37,7 @@ CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
 CHROME_PROFILE_PATH = os.path.join(USER_HOME, ".config", "chromium") 
 
 # Application settings
-SPREADSHEET_NAME = "whatsApp birthday wisher"
+SPREADSHEET_NAME = "whatsapp birthday wisher"
 FIREBASE_DB_URL = "https://thaniyanki-xpath-manager-default-rtdb.firebaseio.com/"
 # ==================== END CONFIGURABLE SETTINGS ====================
 
