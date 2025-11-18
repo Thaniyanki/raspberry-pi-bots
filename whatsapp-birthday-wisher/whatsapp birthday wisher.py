@@ -1821,7 +1821,7 @@ def step36_process_next_contact():
         return "step20"  # Continue with next contact even on error
 
 def step35_transfer_to_sheets():
-    """Step 35: Transfer data to Google Sheets 'Sent message' sheet."""
+    """Step 35: Transfer data to Google Sheets 'sent message' sheet."""
     while True:
         try:
             # Initialize spreadsheet connection
@@ -1831,8 +1831,8 @@ def step35_transfer_to_sheets():
             client = gspread.authorize(creds)
             spreadsheet = client.open(SPREADSHEET_NAME)
             
-            # Access the "Sent message" worksheet
-            worksheet = spreadsheet.worksheet("Sent message")
+            # Access the "sent message" worksheet
+            worksheet = spreadsheet.worksheet("sent message")
             print("Reached sheets ready to upload")
             return worksheet
             
@@ -2001,7 +2001,7 @@ def step40_process_report():
 Today birthday(s)  = {total_lines}
 Contact not found = {keyword_count}
 -----------------------
-Sent message       = {sent_messages}
+sent message       = {sent_messages}
 -----------------------"""
         
         # Write to WhatsApp report file
