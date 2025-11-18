@@ -34,7 +34,7 @@ CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
 CHROME_PROFILE_PATH = os.path.join(USER_HOME, ".config", "chromium")
 
 # Application settings
-SPREADSHEET_NAME = "WhatsApp Messenger"
+SPREADSHEET_NAME = "whatsApp messenger"
 
 # Firebase settings
 FIREBASE_DB_URL = "https://thaniyanki-xpath-manager-default-rtdb.firebaseio.com/"  # Update with your actual Firebase URL
