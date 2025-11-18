@@ -417,7 +417,7 @@ def update_google_sheet(client):
             print("📊 Updating Google Sheet - clearing today's entries...")
             
             # Access worksheet
-            spreadsheet = client.open("Facebook birthday wisher")
+            spreadsheet = client.open("facebook birthday wisher")
             worksheet = spreadsheet.worksheet("Report")
             
             current_date = datetime.now().strftime("%d-%m-%Y")
@@ -1919,7 +1919,7 @@ def transfer_data_to_google_sheets():
         try:
             # Connect to Google Sheets
             client = connect_to_google_sheets()
-            spreadsheet = client.open("Facebook birthday wisher")
+            spreadsheet = client.open("facebook birthday wisher")
             worksheet = spreadsheet.worksheet("Report")
             
             # Step 71: Delete all today's rows
@@ -2372,7 +2372,7 @@ def create_or_refresh_wishes_file(client):
                 print("New wishes file is created")
             
             print("📊 Importing wishes from Google Sheets...")
-            spreadsheet = client.open("Facebook birthday wisher")
+            spreadsheet = client.open("facebook birthday wisher")
             worksheet = spreadsheet.worksheet("Wishes")
             
             messages = worksheet.col_values(1)[1:]
