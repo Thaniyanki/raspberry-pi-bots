@@ -256,7 +256,7 @@ def step3_import_spreadsheet_data():
     
     # Use centralized configuration
     OUTPUT_FILE = os.path.join(WHATSAPP_BOT_DIR, "Receiver list.txt")
-    SHEET_NAME = "Receiver list"
+    SHEET_NAME = "receiver list"  # Changed from "Receiver list" to "receiver list"
     
     def setup_google_sheets_client():
         """Setup and authenticate Google Sheets client"""
@@ -1353,7 +1353,7 @@ def step5_export_to_google_sheets():
     print("\n=== Step 5: Exporting data to Google Sheets Sent Report ===")
     
     # Use centralized configuration
-    SHEET_NAME = "Sent Report"
+    SHEET_NAME = "sent report"  # Changed from "Sent Report" to "sent report"
     RECEIVER_LIST_FILE = os.path.join(WHATSAPP_BOT_DIR, "Receiver list.txt")
     
     def setup_google_sheets_client():
@@ -1541,9 +1541,9 @@ def step5_export_to_google_sheets():
                     print(f"Worksheet '{SHEET_NAME}' not found, creating new one...")
                     worksheet = spreadsheet.add_worksheet(title=SHEET_NAME, rows=1000, cols=20)
                     
-                    # Add headers
-                    headers = ["Date-Time", "Name", "Country Code", "WhatsApp Number", "Message", 
-                              "Image | Photo Path", "Document Path", "Audio Path", "Video Path", "Remark"]
+                    # Add headers with corrected column names
+                    headers = ["date-time", "name", "country code", "whatsapp number", "message", 
+                              "image | photo path", "document path", "audio path", "video path", "remark"]
                     worksheet.append_row(headers)
                     print("Added headers to new worksheet")
                 
@@ -1639,14 +1639,14 @@ def get_report_numbers():
         spreadsheet = client.open(SPREADSHEET_NAME)
         
         # Count persons in Receiver list (rows from 2 to N)
-        receiver_worksheet = spreadsheet.worksheet("Receiver list")
+        receiver_worksheet = spreadsheet.worksheet("receiver list")  # Changed from "Receiver list" to "receiver list"
         receiver_data = receiver_worksheet.get_all_values()
         # Subtract 1 for header row, count only rows with data
         receiver_count = len([row for row in receiver_data[1:] if any(cell.strip() for cell in row)])
         
         # Count persons in Sent Report (only rows after program start time)
         try:
-            sent_report_worksheet = spreadsheet.worksheet("Sent Report")
+            sent_report_worksheet = spreadsheet.worksheet("sent report")  # Changed from "Sent Report" to "sent report"
             sent_report_data = sent_report_worksheet.get_all_values()
             
             # Count rows that have Date-Time after program start time (excluding header)
