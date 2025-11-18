@@ -1906,14 +1906,14 @@ def send_whatsapp_report():
         
         # Check if there are any valid numbers in Receiver list
         if receiver_count > 0:
-            report_message = f"""WhatsApp Messenger({current_date})
+            report_message = f"""whatsapp messenger({current_date})
 
 Receiver List = {receiver_count}
 Sent Report = {sent_count}
 
 The Sent Report filtered after starting time"""
         else:
-            report_message = f"""WhatsApp Messenger({current_date})
+            report_message = f"""whatsapp messenger({current_date})
 
 No More Valid Data on Receiver List"""
 
