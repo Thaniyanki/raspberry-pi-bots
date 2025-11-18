@@ -1981,7 +1981,7 @@ def transfer_data_to_google_sheets():
             if current_record:
                 records.append(current_record)
             
-            # Transfer data to Google Sheets
+            # Transfer data to Google Sheets with corrected column names
             for record in records:
                 row_data = [
                     record.get('datetime', ''),
@@ -2373,7 +2373,7 @@ def create_or_refresh_wishes_file(client):
             
             print("📊 Importing wishes from Google Sheets...")
             spreadsheet = client.open("facebook birthday wisher")
-            worksheet = spreadsheet.worksheet("wishes")
+            worksheet = spreadsheet.worksheet("random wishes")  # Corrected worksheet name
             
             messages = worksheet.col_values(1)[1:]
             
