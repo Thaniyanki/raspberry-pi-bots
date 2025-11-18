@@ -180,7 +180,7 @@ def step8_filter_birthdays(spreadsheet):
             today = datetime.now()
             current_day_month = today.strftime("%d-%m")
             
-            worksheet = spreadsheet.worksheet("Birthday list")
+            worksheet = spreadsheet.worksheet("birthday list")
             all_records = worksheet.get_all_records()
             
             birthday_today = []
