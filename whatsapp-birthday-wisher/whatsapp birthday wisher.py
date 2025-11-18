@@ -29,7 +29,7 @@ SPREADSHEET_KEY = os.path.join(WHATSAPP_BOT_DIR, "venv", "spread sheet access ke
 DATABASE_KEY = os.path.join(WHATSAPP_BOT_DIR, "venv", "database access key.json")
 REPORT_NUMBER_FILE = os.path.join(WHATSAPP_BOT_DIR, "venv", "report number")
 CONTACT_FILE = os.path.join(WHATSAPP_BOT_DIR, "Today birthday list contact")
-WISHES_FILE = os.path.join(WHATSAPP_BOT_DIR, "Wishes")
+WISHES_FILE = os.path.join(WHATSAPP_BOT_DIR, "wishes")
 WHATSAPP_REPORT_FILE = os.path.join(WHATSAPP_BOT_DIR, "WhatsApp report")
 
 # Browser settings
@@ -978,29 +978,29 @@ def step12_transfer_birthday_data(spreadsheet):
                 time.sleep(1)
 
 def step13_check_and_delete_wishes_file():
-    """Step 13: Check and delete 'Wishes' file if it exists."""
+    """Step 13: Check and delete 'wishes' file if it exists."""
     wishes_file = WISHES_FILE
     
     try:
         if os.path.exists(wishes_file):
             os.remove(wishes_file)
-            print("Deleted existing 'Wishes' file")
+            print("Deleted existing 'wishes' file")
             return "step14"  # File existed and was deleted
         else:
-            print("'Wishes' file not found")
+            print("'wishes' file not found")
             return "step15"  # File didn't exist, skip to step15
     except Exception as e:
         print(f"Error during wishes file handling: {str(e)}")
         return "step15"  # On error, continue with step15
 
 def step14_create_wishes_file():
-    """Step 14: Create new 'Wishes' file."""
+    """Step 14: Create new 'wishes' file."""
     wishes_file = WISHES_FILE
     
     try:
         with open(wishes_file, 'w') as f:
             pass  # Just create empty file
-        print("Created new 'Wishes' file")
+        print("Created new 'wishes' file")
         return True
     except Exception as e:
         print(f"Error creating wishes file: {str(e)}")
@@ -1012,8 +1012,8 @@ def step15_process_wishes_from_sheets(spreadsheet):
     
     while True:
         try:
-            # Access the Wishes worksheet
-            worksheet = spreadsheet.worksheet("Wishes")
+            # Access the wishes worksheet
+            worksheet = spreadsheet.worksheet("wishes")
             
             # Get all values from column A (skip header row)
             column_a_data = worksheet.col_values(1)
@@ -1050,7 +1050,7 @@ def step15_process_wishes_from_sheets(spreadsheet):
                 for wish in unique_wishes:
                     f.write(wish + "\n")
             
-            print(f"Transferred {len(unique_wishes)} unique wishes to Wishes file")
+            print(f"Transferred {len(unique_wishes)} unique wishes to wishes file")
             return True
             
         except Exception as e:
@@ -1493,12 +1493,12 @@ def step27_find_and_click_xpath002():
         return False
 
 def step28_check_wishes_file():
-    """Step 28: Check Wishes file exists and has content."""
+    """Step 28: Check wishes file exists and has content."""
     wishes_file = WISHES_FILE
     
     # Check if file exists
     if not os.path.isfile(wishes_file):
-        print("Wishes file is missing")
+        print("wishes file is missing")
         close_chrome()
         print("Closing script.")
         exit()
@@ -1517,11 +1517,11 @@ def step28_check_wishes_file():
             print("Closing script.")
             exit()
         
-        print(f"Found {len(wishes)} wishes in Wishes file")
+        print(f"Found {len(wishes)} wishes in wishes file")
         return wishes
         
     except Exception as e:
-        print(f"Error reading Wishes file: {str(e)}")
+        print(f"Error reading wishes file: {str(e)}")
         close_chrome()
         print("Closing script.")
         exit()
@@ -1548,7 +1548,7 @@ def step29_type_random_wish(wishes):
         
         # Verify message was typed
         if random_wish in message_field.text:
-            print("Wishes message is typed")
+            print("wishes message is typed")
             return True, random_wish  # Return both success status and the wish
         else:
             raise Exception("Wish not typed correctly")
@@ -2761,12 +2761,12 @@ if __name__ == "__main__":
                                 print("\n=== Step 12: Transferring birthday data ===")
                                 if step12_transfer_birthday_data(spreadsheet):
                                     
-                                    # Step 13: Check and delete Wishes file
-                                    print("\n=== Step 13: Checking Wishes file ===")
+                                    # Step 13: Check and delete wishes file
+                                    print("\n=== Step 13: Checking wishes file ===")
                                     next_step_after_13 = step13_check_and_delete_wishes_file()
                                     
                                     if next_step_after_13 == "step14":
-                                        print("\n=== Step 14: Creating new Wishes file ===")
+                                        print("\n=== Step 14: Creating new wishes file ===")
                                         if step14_create_wishes_file():
                                             print("\n=== Step 15: Processing wishes from sheets ===")
                                             if step15_process_wishes_from_sheets(spreadsheet):
