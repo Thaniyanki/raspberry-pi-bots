@@ -43,7 +43,7 @@ PATHS = {
     
     # Data files
     "current_friends_file": os.path.join(CURRENT_BOT_DIR, "current friends"),
-    "waiting_for_proceed_file": os.path.join(CURRENT_BOT_DIR, "Waiting for proceed"),
+    "waiting_for_proceed_file": os.path.join(CURRENT_BOT_DIR, "waiting for proceed"),
     "report_number_file": os.path.join(CURRENT_BOT_DIR, "venv", "report number"),
     
     # Browser
@@ -437,17 +437,17 @@ def manage_current_friends_file():
         # Check if file exists and delete it
         if os.path.exists(file_path):
             os.remove(file_path)
-            print("✅ Old 'Current Friends' file deleted")
+            print("✅ Old 'current friends' file deleted")
         
         # Create new file
         with open(file_path, 'w') as f:
             f.write("")  # Create empty file
         
-        print("✅ New 'Current Friends' file created")
+        print("✅ New 'current friends' file created")
         return True
         
     except Exception as e:
-        print(f"❌ Error managing 'Current Friends' file: {str(e)}")
+        print(f"❌ Error managing 'current friends' file: {str(e)}")
         return False
 
 # ================================
@@ -500,10 +500,10 @@ def collect_friends_data_optimized(base_xpath):
             
             with open(file_path, 'a', encoding='utf-8') as f:
                 f.write(f"{index}\n")
-                f.write(f"Profile Link = {profile_link}\n")
-                f.write(f"Profile Picture Link = {profile_picture_url}\n")
-                f.write(f"Raw Picture ID = {raw_picture_id}\n")
-                f.write("Remark = \n")
+                f.write(f"profile link = {profile_link}\n")
+                f.write(f"profile picture link = {profile_picture_url}\n")
+                f.write(f"raw picture id = {raw_picture_id}\n")
+                f.write("remark = \n")
                 f.write("\n")
             
             friend_count += 1
@@ -559,7 +559,7 @@ def step11_filter_and_click_default_pictures():
         try:
             file_path = PATHS["current_friends_file"]
             
-            print("📖 Reading Current Friends file...")
+            print("📖 Reading current friends file...")
             
             # Read the entire file
             with open(file_path, 'r', encoding='utf-8') as file:
@@ -586,16 +586,16 @@ def step11_filter_and_click_default_pictures():
                     if line.isdigit():
                         friend_data['serial_number'] = int(line)
                         new_block_lines.append(line)
-                    elif line.startswith("Profile Link = "):
-                        friend_data['profile_link'] = line.replace("Profile Link = ", "").strip()
+                    elif line.startswith("profile link = "):
+                        friend_data['profile_link'] = line.replace("profile link = ", "").strip()
                         new_block_lines.append(line)
-                    elif line.startswith("Profile Picture Link = "):
-                        friend_data['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
+                    elif line.startswith("profile picture link = "):
+                        friend_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
                         new_block_lines.append(line)
-                    elif line.startswith("Raw Picture ID = "):
-                        friend_data['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
+                    elif line.startswith("raw picture id = "):
+                        friend_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
                         new_block_lines.append(line)
-                    elif line.startswith("Remark = "):
+                    elif line.startswith("remark = "):
                         # SKIP the original remark line completely
                         continue
                     else:
@@ -613,7 +613,7 @@ def step11_filter_and_click_default_pictures():
                     remark = "Unique Profile Picture"
                 
                 # Add the correct remark line
-                new_block_lines.append(f"Remark = {remark}")
+                new_block_lines.append(f"remark = {remark}")
                 
                 # Add the updated block
                 updated_blocks.append('\n'.join(new_block_lines))
@@ -622,14 +622,14 @@ def step11_filter_and_click_default_pictures():
             with open(file_path, 'w', encoding='utf-8') as file:
                 file.write('\n\n'.join(updated_blocks))
             
-            print("✅ Successfully updated remarks in Current Friends file")
+            print("✅ Successfully updated remarks in current friends file")
             
             # Count remarks for statistics
             remark_counts = {"Unknown": 0, "Default Profile Picture": 0, "Unique Profile Picture": 0}
             for block in updated_blocks:
                 for line in block.split('\n'):
-                    if line.startswith("Remark = "):
-                        remark = line.replace("Remark = ", "").strip()
+                    if line.startswith("remark = "):
+                        remark = line.replace("remark = ", "").strip()
                         if remark in remark_counts:
                             remark_counts[remark] += 1
             
@@ -644,7 +644,7 @@ def step11_filter_and_click_default_pictures():
             return False
     
     # STEP 1: Update remarks in the file FIRST
-    print("🔄 Step 1: Updating remarks in Current Friends file...")
+    print("🔄 Step 1: Updating remarks in current friends file...")
     if not update_remarks_in_file():
         print("❌ Failed to update remarks in file")
         return False
@@ -662,9 +662,9 @@ def step12_upload_to_google_sheets():
     print("STEP 12: Uploading data to Google Sheets...")
     print("=" * 40)
     
-    # Configuration
-    SPREADSHEET_NAME = "Facebook profile liker"
-    CURRENT_FRIENDS_SHEET = "Current Friends"
+    # Configuration - UPDATED NAMES
+    SPREADSHEET_NAME = "facebook profile liker"
+    CURRENT_FRIENDS_SHEET = "current friends"
     
     def setup_google_sheets_client():
         """Setup and authenticate Google Sheets client"""
@@ -692,7 +692,7 @@ def step12_upload_to_google_sheets():
         
         try:
             if not os.path.exists(file_path):
-                print(f"❌ Current Friends file not found: {file_path}")
+                print(f"❌ Current friends file not found: {file_path}")
                 return []
             
             with open(file_path, 'r', encoding='utf-8') as file:
@@ -715,24 +715,24 @@ def step12_upload_to_google_sheets():
                 # Check if line is a serial number (digits only)
                 if line.isdigit():
                     current_friend['serial_number'] = int(line)
-                elif line.startswith("Profile Link = "):
-                    current_friend['profile_link'] = line.replace("Profile Link = ", "").strip()
-                elif line.startswith("Profile Picture Link = "):
-                    current_friend['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                elif line.startswith("Raw Picture ID = "):
-                    current_friend['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
-                elif line.startswith("Remark = "):
-                    current_friend['remark'] = line.replace("Remark = ", "").strip()
+                elif line.startswith("profile link = "):
+                    current_friend['profile_link'] = line.replace("profile link = ", "").strip()
+                elif line.startswith("profile picture link = "):
+                    current_friend['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                elif line.startswith("raw picture id = "):
+                    current_friend['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
+                elif line.startswith("remark = "):
+                    current_friend['remark'] = line.replace("remark = ", "").strip()
             
             # Add the last friend if exists
             if current_friend:
                 friends_data.append(current_friend)
             
-            print(f"✅ Parsed {len(friends_data)} friends from Current Friends file")
+            print(f"✅ Parsed {len(friends_data)} friends from current friends file")
             return friends_data
             
         except Exception as e:
-            raise Exception(f"Failed to parse Current Friends file: {str(e)}")
+            raise Exception(f"Failed to parse current friends file: {str(e)}")
     
     def is_valid_profile_link(profile_link):
         """Check if the profile link is a valid Facebook profile URL"""
@@ -770,14 +770,14 @@ def step12_upload_to_google_sheets():
             
             # Only include active accounts (skip deactivated/unknown)
             if has_valid_link:
-                # Prepare row data with Remark
+                # Prepare row data with Remark - UPDATED COLUMN NAMES
                 row_data = [
-                    current_datetime,      # Date-Time
-                    serial_number,         # Serial Number
-                    profile_link,          # Profile Link
-                    profile_picture_link,  # Profile Picture Link
-                    raw_picture_id,        # Raw Picture ID
-                    remark                 # Remark
+                    current_datetime,      # date-time
+                    serial_number,         # serial number
+                    profile_link,          # profile link
+                    profile_picture_link,  # profile picture link
+                    raw_picture_id,        # raw picture id
+                    remark                 # remark
                 ]
                 
                 active_friends.append(row_data)
@@ -850,8 +850,8 @@ def step12_upload_to_google_sheets():
                 print(f"📝 Worksheet '{sheet_name}' not found, creating new one...")
                 worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
                 
-                # Add headers if it's a new worksheet
-                headers = ["Date-Time", "Serial Number", "Profile Link", "Profile Picture Link", "Raw Picture ID", "Remark"]
+                # Add headers if it's a new worksheet - UPDATED HEADER NAMES
+                headers = ["date-time", "serial number", "profile link", "profile picture link", "raw picture id", "remark"]
                 worksheet.append_row(headers)
                 print(f"✅ Added headers to new worksheet: {sheet_name}")
             
@@ -897,7 +897,7 @@ def step12_upload_to_google_sheets():
             # Prepare data for upload (only active accounts)
             active_friends = prepare_data_for_upload(friends_data)
             
-            # Upload active friends to "Current Friends" sheet
+            # Upload active friends to "current friends" sheet
             upload_success = True
             
             if active_friends:
@@ -946,10 +946,10 @@ def step13_compare_and_create_waiting_file():
     print("STEP 13: Comparing sheets and creating waiting file...")
     print("=" * 40)
     
-    # Configuration
-    SPREADSHEET_NAME = "Facebook profile liker"
-    CURRENT_FRIENDS_SHEET = "Current Friends"
-    REPORT_SHEET = "Report"
+    # Configuration - UPDATED NAMES
+    SPREADSHEET_NAME = "facebook profile liker"
+    CURRENT_FRIENDS_SHEET = "current friends"
+    REPORT_SHEET = "report"
     
     def setup_google_sheets_client():
         """Setup and authenticate Google Sheets client"""
@@ -974,7 +974,7 @@ def step13_compare_and_create_waiting_file():
     def get_unique_profile_pictures(client):
         """Get only Unique Profile Pictures from Current Friends sheet"""
         try:
-            print("📖 Reading Unique Profile Pictures from Current Friends sheet...")
+            print("📖 Reading Unique Profile Pictures from current friends sheet...")
             
             # Open the spreadsheet and worksheet
             spreadsheet = client.open(SPREADSHEET_NAME)
@@ -984,16 +984,16 @@ def step13_compare_and_create_waiting_file():
             all_data = worksheet.get_all_values()
             
             if len(all_data) <= 1:  # Only headers or empty
-                print("ℹ️ No data found in Current Friends sheet")
+                print("ℹ️ No data found in current friends sheet")
                 return []
             
-            # Filter only rows with "Unique Profile Picture" in Remark column (Column F, index 5)
+            # Filter only rows with "Unique Profile Picture" in remark column (Column F, index 5)
             unique_profile_pictures = []
             default_picture_count = 0
             
             for i, row in enumerate(all_data[1:], start=2):  # Skip header, start from row 2
                 if len(row) >= 6:  # Ensure row has all columns (A-F)
-                    remark = row[5].strip()  # Column F (index 5) - Remark
+                    remark = row[5].strip()  # Column F (index 5) - remark
                     
                     if remark == "Unique Profile Picture":
                         serial_number = row[1].strip()  # Column B (index 1)
@@ -1031,7 +1031,7 @@ def step13_compare_and_create_waiting_file():
     def get_report_raw_picture_ids(client):
         """Get only Raw Picture IDs from Report sheet"""
         try:
-            print("📖 Reading Raw Picture IDs from Report sheet...")
+            print("📖 Reading Raw Picture IDs from report sheet...")
             
             # Open the spreadsheet and worksheet
             spreadsheet = client.open(SPREADSHEET_NAME)
@@ -1041,7 +1041,7 @@ def step13_compare_and_create_waiting_file():
             all_data = worksheet.get_all_values()
             
             if len(all_data) <= 1:  # Only headers or empty
-                print("ℹ️ No data found in Report sheet")
+                print("ℹ️ No data found in report sheet")
                 return set()
             
             # Extract only Raw Picture IDs from Column E
@@ -1055,7 +1055,7 @@ def step13_compare_and_create_waiting_file():
                         raw_picture_id.lower() != "unknown"):
                         report_raw_picture_ids.add(raw_picture_id)
             
-            print(f"✅ Found {len(report_raw_picture_ids)} unique Raw Picture IDs in Report sheet")
+            print(f"✅ Found {len(report_raw_picture_ids)} unique Raw Picture IDs in report sheet")
             return report_raw_picture_ids
             
         except gspread.exceptions.WorksheetNotFound:
@@ -1066,7 +1066,7 @@ def step13_compare_and_create_waiting_file():
     
     def filter_new_unique_pictures(unique_profile_pictures, report_raw_picture_ids):
         """Filter out Unique Profile Pictures that are already in Report sheet"""
-        print("\n🔍 Comparing Unique Profile Pictures with Report sheet...")
+        print("\n🔍 Comparing Unique Profile Pictures with report sheet...")
         
         new_unique_pictures = []
         
@@ -1079,20 +1079,20 @@ def step13_compare_and_create_waiting_file():
         
         print(f"📊 Comparison Results:")
         print(f"   - Total Unique Profile Pictures: {len(unique_profile_pictures)}")
-        print(f"   - Already in Report sheet: {len(unique_profile_pictures) - len(new_unique_pictures)}")
+        print(f"   - Already in report sheet: {len(unique_profile_pictures) - len(new_unique_pictures)}")
         print(f"   - New Unique Profile Pictures: {len(new_unique_pictures)}")
         
         return new_unique_pictures
     
     def create_waiting_for_proceed_file(new_unique_pictures):
-        """Create Waiting for proceed file with new unique friends"""
+        """Create waiting for proceed file with new unique friends"""
         file_path = PATHS["waiting_for_proceed_file"]
         
         try:
             # Delete existing file if it exists
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print("✅ Old 'Waiting for proceed' file deleted")
+                print("✅ Old 'waiting for proceed' file deleted")
             
             if not new_unique_pictures:
                 print("ℹ️ No new Unique Profile Pictures to process - creating empty waiting file")
@@ -1101,16 +1101,16 @@ def step13_compare_and_create_waiting_file():
                     f.write("")
                 return True
             
-            # Create new file with friend data
+            # Create new file with friend data - UPDATED FIELD NAMES
             with open(file_path, 'w', encoding='utf-8') as f:
                 for friend in new_unique_pictures:
                     f.write(f"{friend['serial_number']}\n")
-                    f.write(f"Profile Link = {friend['profile_link']}\n")
-                    f.write(f"Profile Picture Link = {friend['profile_picture_link']}\n")
-                    f.write(f"Raw Picture ID = {friend['raw_picture_id']}\n")
+                    f.write(f"profile link = {friend['profile_link']}\n")
+                    f.write(f"profile picture link = {friend['profile_picture_link']}\n")
+                    f.write(f"raw picture id = {friend['raw_picture_id']}\n")
                     f.write("\n")  # Empty line between friends
             
-            print(f"✅ Created 'Waiting for proceed' file with {len(new_unique_pictures)} new friends")
+            print(f"✅ Created 'waiting for proceed' file with {len(new_unique_pictures)} new friends")
             print(f"📁 File location: {file_path}")
             
             # Print sample entries for verification
@@ -1140,19 +1140,19 @@ def step13_compare_and_create_waiting_file():
             client = setup_google_sheets_client()
             print("✅ Google Sheets client authenticated successfully")
             
-            # STEP 1: Get only Unique Profile Pictures from Current Friends sheet
+            # STEP 1: Get only Unique Profile Pictures from current friends sheet
             unique_profile_pictures = get_unique_profile_pictures(client)
             
             if not unique_profile_pictures:
-                print("❌ No Unique Profile Pictures found in Current Friends sheet")
+                print("❌ No Unique Profile Pictures found in current friends sheet")
                 # Create empty waiting file
                 create_waiting_for_proceed_file([])
                 return True
             
-            # STEP 2: Get only Raw Picture IDs from Report sheet
+            # STEP 2: Get only Raw Picture IDs from report sheet
             report_raw_picture_ids = get_report_raw_picture_ids(client)
             
-            # STEP 3: Filter out pictures that are already in Report sheet
+            # STEP 3: Filter out pictures that are already in report sheet
             new_unique_pictures = filter_new_unique_pictures(unique_profile_pictures, report_raw_picture_ids)
             
             # STEP 4: Create waiting file
@@ -1185,7 +1185,7 @@ def step13_compare_and_create_waiting_file():
 # ================================
 
 def step14_process_profiles_from_waiting_file(XPATHS):
-    """Step 14: Process profiles from Waiting for proceed file"""
+    """Step 14: Process profiles from waiting for proceed file"""
     print("\n" + "=" * 40)
     print("STEP 14: Processing profiles from waiting file")
     print("=" * 40)
@@ -1201,12 +1201,12 @@ def step14_process_profiles_from_waiting_file(XPATHS):
         print("✅ 5 seconds wait completed")
     
     def get_profiles_without_status():
-        """Get profiles that don't have Status keyword"""
+        """Get profiles that don't have status keyword"""
         file_path = PATHS["waiting_for_proceed_file"]
         
         try:
             if not os.path.exists(file_path):
-                print("❌ Waiting for proceed file not found")
+                print("❌ waiting for proceed file not found")
                 return []
             
             with open(file_path, 'r', encoding='utf-8') as file:
@@ -1214,7 +1214,7 @@ def step14_process_profiles_from_waiting_file(XPATHS):
             
             # If file is empty, return empty list
             if not content:
-                print("ℹ️ Waiting for proceed file is empty")
+                print("ℹ️ waiting for proceed file is empty")
                 return []
             
             profiles = []
@@ -1233,14 +1233,14 @@ def step14_process_profiles_from_waiting_file(XPATHS):
                 
                 if line.isdigit():
                     current_profile['serial_number'] = line
-                elif line.startswith("Profile Link = "):
-                    current_profile['profile_link'] = line.replace("Profile Link = ", "").strip()
-                elif line.startswith("Profile Picture Link = "):
-                    current_profile['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                elif line.startswith("Raw Picture ID = "):
-                    current_profile['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
-                elif line.startswith("Status = "):
-                    current_profile['status'] = line.replace("Status = ", "").strip()
+                elif line.startswith("profile link = "):
+                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
+                elif line.startswith("profile picture link = "):
+                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                elif line.startswith("raw picture id = "):
+                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
+                elif line.startswith("status = "):
+                    current_profile['status'] = line.replace("status = ", "").strip()
             
             # Add the last profile if exists
             if current_profile:
@@ -1291,14 +1291,14 @@ def step14_process_profiles_from_waiting_file(XPATHS):
                 
                 if line.isdigit():
                     current_profile['serial_number'] = line
-                elif line.startswith("Profile Link = "):
-                    current_profile['profile_link'] = line.replace("Profile Link = ", "").strip()
-                elif line.startswith("Profile Picture Link = "):
-                    current_profile['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                elif line.startswith("Raw Picture ID = "):
-                    current_profile['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
-                elif line.startswith("Status = "):
-                    current_profile['status'] = line.replace("Status = ", "").strip()
+                elif line.startswith("profile link = "):
+                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
+                elif line.startswith("profile picture link = "):
+                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                elif line.startswith("raw picture id = "):
+                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
+                elif line.startswith("status = "):
+                    current_profile['status'] = line.replace("status = ", "").strip()
             
             if current_profile:
                 profiles.append(current_profile)
@@ -1449,7 +1449,7 @@ def step14_process_profiles_from_waiting_file(XPATHS):
                 return "restart_step14c"
     
     def update_profile_status_in_file(profile_data, status):
-        """Update profile status in waiting file"""
+        """Update profile status in waiting file - FIXED SYNTAX ERROR"""
         file_path = PATHS["waiting_for_proceed_file"]
         
         try:
@@ -1467,12 +1467,12 @@ def step14_process_profiles_from_waiting_file(XPATHS):
                     line = line.strip()
                     if line.isdigit():
                         current_profile_data['serial_number'] = line
-                    elif line.startswith("Profile Link = "):
-                        current_profile_data['profile_link'] = line.replace("Profile Link = ", "").strip()
-                    elif line.startswith("Profile Picture Link = "):
-                        current_profile_data['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                    elif line.startswith("Raw Picture ID = "):
-                        current_profile_data['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
+                    elif line.startswith("profile link = "):
+                        current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
+                    elif line.startswith("profile picture link = "):
+                        current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                    elif line.startswith("raw picture id = "):
+                        current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
                 
                 # Check if this is the profile we want to update
                 if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
@@ -1480,10 +1480,10 @@ def step14_process_profiles_from_waiting_file(XPATHS):
                     current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
                     
                     # Remove existing status line if present
-                    new_lines = [line for line in lines if not line.startswith("Status = ")]
+                    new_lines = [line for line in lines if not line.startswith("status = ")]
                     
                     # Add new status line
-                    new_lines.append(f"Status = {status}")
+                    new_lines.append(f"status = {status}")
                     
                     profiles[i] = '\n'.join(new_lines)
                     
@@ -1746,6 +1746,59 @@ def step15_like_profile_picture(profile, profile_data, XPATHS):
         print("✅ Browser restarted successfully, continuing from step14")
         return "RESTART_FROM_STEP14"
     
+    def update_profile_status_in_file(profile_data, status):
+        """Update profile status in waiting file - FIXED SYNTAX ERROR"""
+        file_path = PATHS["waiting_for_proceed_file"]
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            
+            profiles = content.strip().split('\n\n')
+            
+            # Find the profile to update
+            for i, profile_block in enumerate(profiles):
+                lines = profile_block.strip().split('\n')
+                current_profile_data = {}
+                
+                for line in lines:
+                    line = line.strip()
+                    if line.isdigit():
+                        current_profile_data['serial_number'] = line
+                    elif line.startswith("profile link = "):
+                        current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
+                    elif line.startswith("profile picture link = "):
+                        current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                    elif line.startswith("raw picture id = "):
+                        current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
+                
+                # Check if this is the profile we want to update
+                if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
+                    current_profile_data.get('profile_link') == profile_data.get('profile_link') and
+                    current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
+                    
+                    # Remove existing status line if present
+                    new_lines = [line for line in lines if not line.startswith("status = ")]
+                    
+                    # Add new status line
+                    new_lines.append(f"status = {status}")
+                    
+                    profiles[i] = '\n'.join(new_lines)
+                    
+                    # Write the updated content back to file
+                    with open(file_path, 'w', encoding='utf-8') as file:
+                        file.write('\n\n'.join(profiles))
+                    
+                    print(f"✅ Updated status to: {status}")
+                    return True
+            
+            print(f"❌ Profile not found in file")
+            return False
+                
+        except Exception as e:
+            print(f"❌ Error updating status: {str(e)}")
+            return False
+    
     # Step 15: Wait 5 seconds for stability
     try:
         wait_5_seconds()
@@ -1995,7 +2048,7 @@ def step16_open_profile_picture(profile, profile_data, XPATHS):
             return step14_process_profiles_from_waiting_file(XPATHS)
     
     def update_profile_status_in_file(profile_data, status):
-        """Update profile status in waiting file"""
+        """Update profile status in waiting file - FIXED SYNTAX ERROR"""
         file_path = PATHS["waiting_for_proceed_file"]
         
         try:
@@ -2013,12 +2066,12 @@ def step16_open_profile_picture(profile, profile_data, XPATHS):
                     line = line.strip()
                     if line.isdigit():
                         current_profile_data['serial_number'] = line
-                    elif line.startswith("Profile Link = "):
-                        current_profile_data['profile_link'] = line.replace("Profile Link = ", "").strip()
-                    elif line.startswith("Profile Picture Link = "):
-                        current_profile_data['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                    elif line.startswith("Raw Picture ID = "):
-                        current_profile_data['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
+                    elif line.startswith("profile link = "):
+                        current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
+                    elif line.startswith("profile picture link = "):
+                        current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                    elif line.startswith("raw picture id = "):
+                        current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
                 
                 # Check if this is the profile we want to update
                 if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
@@ -2026,10 +2079,10 @@ def step16_open_profile_picture(profile, profile_data, XPATHS):
                     current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
                     
                     # Remove existing status line if present
-                    new_lines = [line for line in lines if not line.startswith("Status = ")]
+                    new_lines = [line for line in lines if not line.startswith("status = ")]
                     
                     # Add new status line
-                    new_lines.append(f"Status = {status}")
+                    new_lines.append(f"status = {status}")
                     
                     profiles[i] = '\n'.join(new_lines)
                     
@@ -2074,7 +2127,7 @@ def step16_open_profile_picture(profile, profile_data, XPATHS):
 # ================================
 
 def update_profile_status_in_file(profile_data, status):
-    """Update profile status in waiting file - Step 17"""
+    """Update profile status in waiting file - Step 17 - FIXED SYNTAX ERROR"""
     file_path = PATHS["waiting_for_proceed_file"]
     
     try:
@@ -2092,12 +2145,12 @@ def update_profile_status_in_file(profile_data, status):
                 line = line.strip()
                 if line.isdigit():
                     current_profile_data['serial_number'] = line
-                elif line.startswith("Profile Link = "):
-                    current_profile_data['profile_link'] = line.replace("Profile Link = ", "").strip()
-                elif line.startswith("Profile Picture Link = "):
-                    current_profile_data['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                elif line.startswith("Raw Picture ID = "):
-                    current_profile_data['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
+                elif line.startswith("profile link = "):
+                    current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
+                elif line.startswith("profile picture link = "):
+                    current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                elif line.startswith("raw picture id = "):
+                    current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
             
             # Check if this is the profile we want to update
             if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
@@ -2105,10 +2158,10 @@ def update_profile_status_in_file(profile_data, status):
                 current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
                 
                 # Remove existing status line if present
-                new_lines = [line for line in lines if not line.startswith("Status = ")]
+                new_lines = [line for line in lines if not line.startswith("status = ")]
                 
                 # Add new status line
-                new_lines.append(f"Status = {status}")
+                new_lines.append(f"status = {status}")
                 
                 profiles[i] = '\n'.join(new_lines)
                 
@@ -2168,14 +2221,14 @@ def step18_whatsapp_report_invalid_data():
                 
                 if line.isdigit():
                     current_profile['serial_number'] = line
-                elif line.startswith("Profile Link = "):
-                    current_profile['profile_link'] = line.replace("Profile Link = ", "").strip()
-                elif line.startswith("Profile Picture Link = "):
-                    current_profile['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                elif line.startswith("Raw Picture ID = "):
-                    current_profile['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
-                elif line.startswith("Status = "):
-                    current_profile['status'] = line.replace("Status = ", "").strip()
+                elif line.startswith("profile link = "):
+                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
+                elif line.startswith("profile picture link = "):
+                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                elif line.startswith("raw picture id = "):
+                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
+                elif line.startswith("status = "):
+                    current_profile['status'] = line.replace("status = ", "").strip()
             
             if current_profile:
                 profiles.append(current_profile)
@@ -2558,19 +2611,19 @@ def step19_upload_to_report_and_whatsapp():
     print("=" * 40)
     
     def parse_waiting_file():
-        """Parse Waiting for proceed file and extract all profiles with status"""
+        """Parse waiting for proceed file and extract all profiles with status"""
         file_path = PATHS["waiting_for_proceed_file"]
         
         try:
             if not os.path.exists(file_path):
-                print("❌ Waiting for proceed file not found")
+                print("❌ waiting for proceed file not found")
                 return []
             
             with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read().strip()
             
             if not content:
-                print("ℹ️ Waiting for proceed file is empty")
+                print("ℹ️ waiting for proceed file is empty")
                 return []
             
             profiles = []
@@ -2589,14 +2642,14 @@ def step19_upload_to_report_and_whatsapp():
                 
                 if line.isdigit():
                     current_profile['serial_number'] = line
-                elif line.startswith("Profile Link = "):
-                    current_profile['profile_link'] = line.replace("Profile Link = ", "").strip()
-                elif line.startswith("Profile Picture Link = "):
-                    current_profile['profile_picture_link'] = line.replace("Profile Picture Link = ", "").strip()
-                elif line.startswith("Raw Picture ID = "):
-                    current_profile['raw_picture_id'] = line.replace("Raw Picture ID = ", "").strip()
-                elif line.startswith("Status = "):
-                    current_profile['status'] = line.replace("Status = ", "").strip()
+                elif line.startswith("profile link = "):
+                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
+                elif line.startswith("profile picture link = "):
+                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
+                elif line.startswith("raw picture id = "):
+                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
+                elif line.startswith("status = "):
+                    current_profile['status'] = line.replace("status = ", "").strip()
             
             # Add the last profile if exists
             if current_profile:
@@ -2615,9 +2668,9 @@ def step19_upload_to_report_and_whatsapp():
         print("Uploading to Report Sheet")
         print("-" * 30)
         
-        # Configuration
-        SPREADSHEET_NAME = "Facebook profile liker"
-        REPORT_SHEET = "Report"
+        # Configuration - UPDATED NAMES
+        SPREADSHEET_NAME = "facebook profile liker"
+        REPORT_SHEET = "report"
         
         def setup_google_sheets_client():
             """Setup and authenticate Google Sheets client"""
@@ -2649,20 +2702,20 @@ def step19_upload_to_report_and_whatsapp():
                 raw_picture_id = profile.get('raw_picture_id', '')
                 status = profile.get('status', '')
                 
-                # Prepare row data for Report sheet (7 columns)
+                # Prepare row data for Report sheet (7 columns) - UPDATED COLUMN NAMES
                 row_data = [
-                    current_datetime,      # Column A: Date-Time
-                    serial_number,         # Column B: Serial Number
-                    profile_link,          # Column C: Profile Link
-                    profile_picture_link,  # Column D: Profile Picture Link
-                    raw_picture_id,        # Column E: Raw Picture ID
-                    status,                # Column F: Status
-                    ""                     # Column G: Remark (leave empty)
+                    current_datetime,      # date-time
+                    serial_number,         # serial number
+                    profile_link,          # profile link
+                    profile_picture_link,  # profile picture link
+                    raw_picture_id,        # raw picture id
+                    status,                # status
+                    ""                     # remark (leave empty)
                 ]
                 
                 report_data.append(row_data)
             
-            print(f"📊 Prepared {len(report_data)} rows for Report sheet")
+            print(f"📊 Prepared {len(report_data)} rows for report sheet")
             return report_data
         
         # Unlimited retry logic for upload
@@ -2671,7 +2724,7 @@ def step19_upload_to_report_and_whatsapp():
         while True:
             try:
                 retry_count += 1
-                print(f"🔄 Attempt {retry_count} to upload to Report sheet...")
+                print(f"🔄 Attempt {retry_count} to upload to report sheet...")
                 
                 # Setup client
                 client = setup_google_sheets_client()
@@ -2688,19 +2741,19 @@ def step19_upload_to_report_and_whatsapp():
                 
                 try:
                     worksheet = spreadsheet.worksheet(REPORT_SHEET)
-                    print("✅ Found existing Report worksheet")
+                    print("✅ Found existing report worksheet")
                 except gspread.exceptions.WorksheetNotFound:
-                    print("📝 Creating new Report worksheet...")
+                    print("📝 Creating new report worksheet...")
                     worksheet = spreadsheet.add_worksheet(title=REPORT_SHEET, rows=1000, cols=10)
                     
-                    # Add headers
-                    headers = ["Date-Time", "Serial Number", "Profile Link", "Profile Picture Link", "Raw Picture ID", "Status", "Remark"]
+                    # Add headers - UPDATED HEADER NAMES
+                    headers = ["date-time", "serial number", "profile link", "profile picture link", "raw picture id", "status", "remark"]
                     worksheet.append_row(headers)
-                    print("✅ Added headers to new Report worksheet")
+                    print("✅ Added headers to new report worksheet")
                 
                 # Upload data (append to existing data)
                 worksheet.append_rows(report_data)
-                print(f"✅ Successfully uploaded {len(report_data)} rows to Report sheet")
+                print(f"✅ Successfully uploaded {len(report_data)} rows to report sheet")
                 return True
                 
             except Exception as e:
@@ -3110,7 +3163,7 @@ def step19_upload_to_report_and_whatsapp():
     
     # Step 2: Upload to Report sheet
     if not upload_to_report_sheet(profiles):
-        print("❌ Failed to upload to Report sheet")
+        print("❌ Failed to upload to report sheet")
         return False
     
     # Step 3: Analyze status counts
@@ -3250,10 +3303,10 @@ def main():
                 
                 # STEP 9: Manage Current Friends File
                 print("\n" + "=" * 40)
-                print("STEP 9: Managing Current Friends file...")
+                print("STEP 9: Managing current friends file...")
                 print("=" * 40)
                 if not manage_current_friends_file():
-                    print("❌ Failed to manage Current Friends file, restarting from Step 1...")
+                    print("❌ Failed to manage current friends file, restarting from Step 1...")
                     close_chrome()
                     continue
                 
