@@ -586,7 +586,7 @@ class BotScheduler:
     def wait_for_spreadsheet_key(self, bot_folders):
         """Wait for spreadsheet access key to be available in any bot folder"""
         print(f"{self.YELLOW}Spreadsheet access key not available. Please paste 'spread sheet access key.json' in any bot folder's venv.{self.ENDC}")
-        print("Waiting for spreadsheet access key... (Checking every 2 seconds)")
+        print("Waiting for spreadsheet access key... (Checking every 1 second)")
         print("Press Ctrl+C to cancel and exit.")
         
         check_count = 0
@@ -603,7 +603,7 @@ class BotScheduler:
                 dots = "." * (check_count % 4)
                 spaces = " " * (3 - len(dots))
                 print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
-                time.sleep(2)
+                time.sleep(1)  # Check every 1 second
                 
         except KeyboardInterrupt:
             print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
@@ -647,16 +647,131 @@ class BotScheduler:
             print(f"{self.YELLOW}⚠ Spreadsheet access key copied to {success_count} out of {len(bot_folders)} bots{self.ENDC}")
             return True  # Continue anyway
 
+    def wait_for_spreadsheet_key_for_step4(self, bot_folders):
+        """Wait for spreadsheet access key to be available for Step 4 (continuous checking)"""
+        print(f"{self.YELLOW}Spreadsheet access key not available for Step 4.{self.ENDC}")
+        print("Waiting for spreadsheet access key... (Checking every 1 second)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                # Show waiting animation
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(1)  # Check every 1 second
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
     def run_step4(self):
-        """Placeholder for Step 4 implementation"""
+        """Step 4: List Google Sheets"""
         print("\n" + "=" * 50)
-        print("STEP 4: Bot Execution and Monitoring")
+        print("STEP 4: Listing Google Sheets")
         print("=" * 50)
-        print("Step 4 functionality will be implemented here...")
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        # Find a bot that has the spreadsheet key - wait continuously if not found
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+        
+        if not key_exists:
+            print(f"{self.YELLOW}Spreadsheet access key not found. Waiting for it to become available...{self.ENDC}")
+            source_key_file = self.wait_for_spreadsheet_key_for_step4(bot_folders)
+            if not source_key_file:
+                return False
+        
+        print(f"{self.GREEN}✓ Using spreadsheet access key from {source_folder.name}/venv/{self.ENDC}")
+        
+        try:
+            # Import required libraries
+            import gspread
+            from google.oauth2.service_account import Credentials
+            from googleapiclient.discovery import build
+            
+            # Define scopes
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/drive.readonly"
+            ]
+            
+            print("Authorizing with Google Sheets API...")
+            
+            # Authorize service account
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            # Get Google Drive API client
+            drive = build("drive", "v3", credentials=creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            print("\nSheets accessible by the Service Account:\n")
+            
+            # Search only for Google Sheets MIME type
+            query = "mimeType='application/vnd.google-apps.spreadsheet'"
+            
+            page_token = None
+            sheet_count = 0
+            
+            while True:
+                response = drive.files().list(
+                    q=query,
+                    spaces='drive',
+                    fields="nextPageToken, files(id, name)",
+                    pageToken=page_token
+                ).execute()
+                
+                for file in response.get('files', []):
+                    sheet_count += 1
+                    print(f"{sheet_count:2d}. {file['name']}  ->  {file['id']}")
+                
+                page_token = response.get('nextPageToken', None)
+                if not page_token:
+                    break
+            
+            if sheet_count == 0:
+                print(f"{self.YELLOW}No Google Sheets found accessible by this service account.{self.ENDC}")
+            else:
+                print(f"\n{self.GREEN}✓ Found {sheet_count} Google Sheet(s){self.ENDC}")
+            
+            return True
+            
+        except ImportError as e:
+            print(f"{self.RED}❌ Required libraries not installed: {e}{self.ENDC}")
+            print("Please install required packages:")
+            print("pip install gspread google-auth google-api-python-client")
+            return False
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error listing Google Sheets: {e}{self.ENDC}")
+            return False
+
+    def run_step5(self):
+        """Placeholder for Step 5 implementation"""
+        print("\n" + "=" * 50)
+        print("STEP 5: Bot Execution and Monitoring")
+        print("=" * 50)
+        print("Step 5 functionality will be implemented here...")
         print("All prerequisites completed successfully!")
         print("- Report numbers: ✓")
         print("- Database access keys: ✓")
         print("- Spreadsheet access keys: ✓")
+        print("- Google Sheets listed: ✓")
         print("- Ready to run bots...")
     
     def run(self):
@@ -708,8 +823,20 @@ class BotScheduler:
                 print("✓ All spreadsheet access keys are properly set in venv folders")
                 print("=" * 50)
                 
-                # Continue to Step 4
-                self.run_step4()
+                # Run Step 4
+                step4_success = self.run_step4()
+                
+                if step4_success:
+                    print("\n" + "=" * 50)
+                    print("✓ Step 4 completed successfully!")
+                    print("✓ Google Sheets listed successfully")
+                    print("=" * 50)
+                    
+                    # Continue to Step 5
+                    self.run_step5()
+                else:
+                    print(f"\n{self.RED}❌ Step 4 failed. Cannot continue to Step 5.{self.ENDC}")
+                    sys.exit(1)
             else:
                 print(f"\n{self.RED}❌ Step 3 failed. Cannot continue to Step 4.{self.ENDC}")
                 sys.exit(1)
