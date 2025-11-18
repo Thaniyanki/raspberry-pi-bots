@@ -134,7 +134,7 @@ def step7_remove_duplicates(spreadsheet):
     """Step 7: Remove duplicate rows from spreadsheet (retries forever)."""
     while True:
         try:
-            worksheet = spreadsheet.worksheet("Birthday list")
+            worksheet = spreadsheet.worksheet("birthday list")
             records = worksheet.get_all_records()
             
             seen = set()
