@@ -1904,12 +1904,12 @@ def step38_process_contact_data(worksheet):
                     
                     # Append data to list
                     data_to_append.append([
-                        datetime_str,    # Column A: Date-Time
-                        dob_str,        # Column B: Date of Birth
-                        name_str,       # Column C: Name
-                        country_code,   # Column D: Country Code
-                        whatsapp_num,   # Column E: WhatsApp Number
-                        after_pipe      # Column F: Sent Message
+                        datetime_str,    # Column A: date-time
+                        dob_str,        # Column B: date of birth
+                        name_str,       # Column C: name
+                        country_code,   # Column D: country code
+                        whatsapp_num,   # Column E: whatsapp number
+                        after_pipe      # Column F: sent message
                     ])
                     
                 except Exception as e:
