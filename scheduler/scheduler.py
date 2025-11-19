@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Complete Bot Scheduler Script - Top to Bottom
+Complete Bot Scheduler Script - Top to Bottom with WhatsApp Integration
 """
 
 import os
@@ -35,6 +35,7 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    from selenium.webdriver.common.action_chains import ActionChains
 except ImportError:
     print("Installing Selenium...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])
@@ -44,6 +45,7 @@ except ImportError:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    from selenium.webdriver.common.action_chains import ActionChains
 
 try:
     import firebase_admin
@@ -1327,8 +1329,9 @@ class CompleteBotScheduler:
         return None
 
     def send_whatsapp_message(self, missing_bots):
-        """Send WhatsApp message about missing sheets"""
+        """Send WhatsApp message about missing sheets - FROM REFERENCE CODE"""
         try:
+            # Create message exactly as in reference code
             if len(missing_bots) == 1:
                 message = f"""Google Sheet Error - {missing_bots[0]}
 ---------------------------------------------
@@ -1349,11 +1352,14 @@ Not shared with service account
 Kindly check
 ---------------------------------------------"""
             
-            actions = webdriver.ActionChains(self.driver)
+            # Type the message exactly as in reference code
+            actions = ActionChains(self.driver)
             
+            # Type message with Shift+Enter for new lines
             lines = message.split('\n')
             for i, line in enumerate(lines):
                 if i > 0:
+                    # Press Shift+Enter for new line
                     actions.key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT)
                 actions.send_keys(line)
             
