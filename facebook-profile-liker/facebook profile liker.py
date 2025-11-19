@@ -1,3451 +1,1622 @@
-# facebook profile liker Python Script
+#!/usr/bin/env python3
+"""
+Complete Bot Scheduler Script - Top to Bottom with WhatsApp Integration
+"""
+
 import os
+import sys
 import subprocess
 import time
-import sys
-import firebase_admin
-from firebase_admin import credentials, db
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-import urllib.parse
-import gspread
-from google.oauth2.service_account import Credentials
-from datetime import datetime
-from selenium.webdriver.common.action_chains import ActionChains
-from PIL import Image
+import shutil
+import csv
+import requests
+import json
+import platform
+from pathlib import Path
 
-# ================================
-# CONFIGURATION SECTION
-# ================================
+# Install and import required packages
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+except ImportError:
+    print("Installing required Google packages...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "gspread", "google-auth", "google-api-python-client"])
+    import gspread
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
 
-# Auto-detect user home directory
-USER_HOME = os.path.expanduser("~")
-# Extract username from home directory path
-BASE_USER = os.path.basename(USER_HOME)
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    from selenium.webdriver.common.action_chains import ActionChains
+except ImportError:
+    print("Installing Selenium...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    from selenium.webdriver.common.action_chains import ActionChains
 
-# Base directory structure - Auto-detected
-BASE_DIR = os.path.join(USER_HOME, "bots")
-CURRENT_BOT_DIR = os.path.join(BASE_DIR, "facebook profile liker")
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+except ImportError:
+    print("Installing Firebase Admin...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "firebase-admin"])
+    import firebase_admin
+    from firebase_admin import credentials, db
 
-# All file and directory paths - CENTRALIZED
-PATHS = {
-    # Firebase
-    "firebase_credentials": os.path.join(CURRENT_BOT_DIR, "venv", "database access key.json"),
-    
-    # Google Sheets
-    "google_sheets_credentials": os.path.join(CURRENT_BOT_DIR, "venv", "spread sheet access key.json"),
-    
-    # Data files
-    "current_friends_file": os.path.join(CURRENT_BOT_DIR, "current friends"),
-    "waiting_for_proceed_file": os.path.join(CURRENT_BOT_DIR, "waiting for proceed"),
-    "report_number_file": os.path.join(CURRENT_BOT_DIR, "venv", "report number"),
-    
-    # Browser
-    "chrome_profile": os.path.join(USER_HOME, ".config", "chromium"),
-    "chromedriver": "/usr/bin/chromedriver"  # System path
-}
-
-# ================================
-# INITIALIZATION FUNCTIONS
-# ================================
-
-def create_required_directories():
-    """Create all required directories if they don't exist"""
-    directories = [
-        os.path.dirname(PATHS["current_friends_file"]),
-        os.path.dirname(PATHS["waiting_for_proceed_file"]),
-        os.path.dirname(PATHS["firebase_credentials"]),
-        os.path.dirname(PATHS["google_sheets_credentials"])
-    ]
-    
-    for directory in directories:
-        os.makedirs(directory, exist_ok=True)
-        print(f"✅ Ensured directory exists: {directory}")
-
-def verify_required_files():
-    """Check if required files exist"""
-    required_files = [
-        PATHS["firebase_credentials"],
-        PATHS["google_sheets_credentials"], 
-        PATHS["report_number_file"]
-    ]
-    
-    for file_path in required_files:
-        if not os.path.exists(file_path):
-            print(f"❌ Required file not found: {file_path}")
-            return False
-    
-    print("✅ All required files verified")
-    return True
-
-# ================================
-# ORIGINAL FUNCTIONS (MODIFIED FOR CUSTOM PATHS)
-# ================================
-
-# Global variables
-firebase_initialized = False
-driver = None
-
-def initialize_firebase():
-    """Initialize Firebase connection"""
-    global firebase_initialized
-    try:
-        cred_path = PATHS["firebase_credentials"]
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred, {
-            "databaseURL": "https://thaniyanki-xpath-manager-default-rtdb.firebaseio.com/"
-        })
-        firebase_initialized = True
-        print("✅ Firebase initialized successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Firebase initialization failed: {str(e)}")
-        return False
-
-def fetch_xpath_from_firebase(xpath_name, platform="Facebook"):
-    """Fetch XPath from Firebase with retry logic"""
-    while True:
-        try:
-            print(f"🔍 Fetching {xpath_name} from database...")
-            ref = db.reference(f"{platform}/Xpath")
-            xpaths = ref.get()
-            
-            if xpaths and xpath_name in xpaths:
-                print(f"✅ {xpath_name} fetched from database")
-                return xpaths[xpath_name]
-            else:
-                print(f"❌ {xpath_name} not found in database. Retrying in 1 second...")
-                time.sleep(1)
-        except Exception as e:
-            print(f"❌ Error accessing database for {xpath_name}: {str(e)}. Retrying in 1 second...")
-            time.sleep(1)
-
-def fetch_url_from_firebase(url_name, platform="Facebook"):
-    """Fetch URL from Firebase with retry logic"""
-    while True:
-        try:
-            print(f"🔍 Fetching {url_name} from database...")
-            ref = db.reference(f"{platform}/URL")
-            urls = ref.get()
-            
-            if urls and url_name in urls:
-                print(f"✅ {url_name} fetched from database")
-                return urls[url_name]
-            else:
-                print(f"❌ {url_name} not found in database. Retrying in 1 second...")
-                time.sleep(1)
-        except Exception as e:
-            print(f"❌ Error accessing database for {url_name}: {str(e)}. Retrying in 1 second...")
-            time.sleep(1)
-
-# ================================
-# STEP 1: INTERNET CHECK
-# ================================
-
-def check_internet():
-    """Check internet connection with ping method"""
-    retry_count = 0
-    while True:
-        try:
-            subprocess.run(['ping', '-c', '1', '-W', '1', '8.8.8.8'], 
-                          stdout=subprocess.PIPE, 
-                          stderr=subprocess.PIPE, 
-                          timeout=5,
-                          check=True)
-            sys.stdout.write('\r' + ' ' * 50 + '\r')
-            print("🌐 Internet is present good to go")
-            return True
-            
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            sys.stdout.write(f'\r🔄 Internet is not available waiting for connection {retry_count}sec...')
-            sys.stdout.flush()
-            retry_count += 1
-            time.sleep(1)
-
-# ================================
-# STEP 2: CHROME BROWSER CHECK
-# ================================
-
-def close_chrome():
-    """Close Chrome browser if already open"""
-    global driver
-    browsers = ['chromium', 'chrome']
-    
-    # Close Selenium driver if exists
-    if driver:
-        try:
-            driver.quit()
-            driver = None
-            print("✅ Chrome browser closed via Selenium")
-        except Exception as e:
-            print(f"⚠️ Error closing Selenium driver: {str(e)}")
-    
-    # Close any remaining Chrome/Chromium processes
-    for browser in browsers:
-        print(f"🔍 Checking for {browser} processes...")
-        try:
-            result = subprocess.run(['pgrep', '-f', browser], 
-                                  stdout=subprocess.PIPE, 
-                                  stderr=subprocess.PIPE,
-                                  timeout=5)
-            if result.stdout:
-                print(f"🛑 Closing {browser} processes...")
-                subprocess.run(['pkill', '-f', browser], 
-                              check=True,
-                              timeout=5)
-                print(f"✅ {browser.capitalize()} processes closed")
-        except Exception as e:
-            print(f"⚠️ Error cleaning {browser}: {str(e)}")
-
-def check_and_close_chrome():
-    """Check if Chrome is open and close it"""
-    print("🔍 Checking if Chrome browser is already open...")
-    
-    browsers = ['chromium', 'chrome']
-    browser_found = False
-    
-    for browser in browsers:
-        try:
-            result = subprocess.run(['pgrep', '-f', browser], 
-                                  stdout=subprocess.PIPE, 
-                                  stderr=subprocess.PIPE,
-                                  timeout=5)
-            if result.stdout:
-                browser_found = True
-                print(f"✅ {browser.capitalize()} browser is already open")
-                break
-        except Exception as e:
-            continue
-    
-    if browser_found:
-        close_chrome()
-        print("✅ Chrome browser closed, continuing with Step3")
-    else:
-        print("✅ Chrome browser not open, continuing with Step3")
-
-# ================================
-# STEP 3: LAUNCH CHROME
-# ================================
-
-def launch_chrome(url="https://www.facebook.com"):
-    """Launch Chrome browser with specified profile"""
-    global driver
-    try:
-        print("🚀 Launching Chrome browser...")
-        options = Options()
-        options.add_argument(f"--user-data-dir={PATHS['chrome_profile']}")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--start-maximized")
-        
-        driver = webdriver.Chrome(
-            service=Service(PATHS["chromedriver"]),
-            options=options
-        )
-        driver.set_page_load_timeout(300)
-        
-        print("✅ Chrome browser ready")
-        
-        print(f"🌐 Navigating to {url}...")
-        driver.get(url)
-        print(f"✅ Facebook loaded successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Browser error: {str(e)}")
-        return False
-
-# ================================
-# STEP 4: WAIT FOR STABILITY
-# ================================
-
-def wait_for_stability(seconds=10):
-    """Wait for specified seconds for stability"""
-    print(f"⏳ Waiting {seconds} seconds for stability...")
-    for i in range(seconds, 0, -1):
-        sys.stdout.write(f'\r⏳ {i} seconds remaining...')
-        sys.stdout.flush()
-        time.sleep(1)
-    sys.stdout.write('\r' + ' ' * 30 + '\r')
-    print(f"✅ {seconds} seconds wait completed")
-
-# ================================
-# STEP 5: CHECK AND CLICK XPATH012
-# ================================
-
-def check_and_click_xpath012_optimized(xpath012):
-    """Optimized version using pre-fetched XPath"""
-    print("⏳ Starting XPath012 check (50 seconds timeout)...")
-    start_time = time.time()
-    
-    while time.time() - start_time <= 50:
-        elapsed = int(time.time() - start_time)
-        
-        try:
-            element = driver.find_element("xpath", xpath012)
-            element.click()
-            print(f"\n✅ Xpath012 found and clicked at {elapsed} seconds")
-            return True
-            
-        except NoSuchElementException:
-            sys.stdout.write(f'\r🔍 Checking XPath012... ({elapsed}/50 seconds)')
-            sys.stdout.flush()
-            time.sleep(1)
-            
-        except Exception as e:
-            print(f"\n❌ Error clicking XPath012: {str(e)}")
-            return False
-    
-    print(f"\n❌ XPath012 not found within 50 seconds")
-    return False
-
-# ================================
-# STEP 6: WAIT FOR STABILITY
-# ================================
-
-def wait_3_seconds():
-    """Wait 3 seconds for stability"""
-    print("⏳ Waiting 3 seconds for stability...")
-    time.sleep(3)
-    print("✅ 3 seconds wait completed")
-
-# ================================
-# NEW FUNCTION: CHECK FOR "ADD TO STORY"
-# ================================
-
-def check_for_add_to_story():
-    """Check every second for 'Add to story' keyword for up to 30 seconds"""
-    print("🔍 Checking for 'Add to story' keyword...")
-    start_time = time.time()
-    
-    while time.time() - start_time <= 30:
-        elapsed = int(time.time() - start_time)
-        
-        try:
-            # Check if page contains "Add to story" text
-            page_source = driver.page_source.lower()
-            if "add to story" in page_source:
-                print(f"\n✅ 'Add to story' keyword found at {elapsed} seconds")
-                return True
-                
-            # If not found, wait 1 second and check again
-            sys.stdout.write(f'\r🔍 Checking for "Add to story"... ({elapsed}/30 seconds)')
-            sys.stdout.flush()
-            time.sleep(1)
-            
-        except Exception as e:
-            print(f"\n❌ Error checking for 'Add to story': {str(e)}")
-            return False
-    
-    # If we reach here, keyword wasn't found within 30 seconds
-    print(f"\n❌ 'Add to story' keyword not found within 30 seconds")
-    return False
-
-# ================================
-# STEP 7: COMBINE URL AND NAVIGATE
-# ================================
-
-def combine_url_and_navigate():
-    """Combine main profile URL with friend list URL and navigate"""
-    try:
-        # Get current URL (main profile URL)
-        current_url = driver.current_url
-        print(f"🌐 Current profile URL: {current_url}")
-        
-        # Fetch friend list URL from Firebase
-        print("🔍 Fetching Friend List URL from Firebase...")
-        friend_list_url = fetch_url_from_firebase("URL2")
-        
-        # Remove leading & if present and ensure it starts with &
-        if friend_list_url.startswith('&'):
-            friend_list_param = friend_list_url
-        else:
-            friend_list_param = '&' + friend_list_url
-        
-        # Combine URLs based on whether current URL already has parameters
-        if '?' in current_url:
-            # If URL already has query parameters, append with &
-            combined_url = current_url + friend_list_param
-        else:
-            # If no query parameters, replace & with ?
-            combined_url = current_url + '?' + friend_list_param.lstrip('&')
-        
-        print(f"🔗 Combined URL: {combined_url}")
-        
-        # Navigate to combined URL
-        print("🌐 Navigating to friend list page...")
-        driver.get(combined_url)
-        
-        # Wait for page to load
-        time.sleep(5)
-        print("✅ Successfully navigated to friend list page")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error combining URLs or navigating: {str(e)}")
-        return False
-
-# ================================
-# STEP 8: FIND XPATH013 WITH PAGE DOWN
-# ================================
-
-def find_xpath013_with_page_down_optimized(xpath013):
-    """Optimized version using pre-fetched XPath"""
-    print("⏳ Starting XPath013 search with Page Down (10 minutes timeout)...")
-    start_time = time.time()
-    attempt_count = 0
-    
-    while time.time() - start_time <= 600:
-        attempt_count += 1
-        elapsed = int(time.time() - start_time)
-        minutes = elapsed // 60
-        seconds = elapsed % 60
-        
-        try:
-            element = driver.find_element("xpath", xpath013)
-            print(f"\n✅ Xpath013 found at {minutes}m {seconds}s (attempt {attempt_count})")
-            return True
-            
-        except NoSuchElementException:
-            sys.stdout.write(f'\r🔍 XPath013 not found, pressing Page Down... ({minutes}m {seconds}s/10m, attempt {attempt_count})')
-            sys.stdout.flush()
-            
-            driver.find_element("tag name", "body").send_keys(Keys.PAGE_DOWN)
-            time.sleep(2)
-            
-        except Exception as e:
-            print(f"\n❌ Error searching for XPath013: {str(e)}")
-            return False
-    
-    print(f"\n❌ XPath013 not found within 10 minutes")
-    return False
-
-# ================================
-# STEP 9: MANAGE CURRENT FRIENDS FILE
-# ================================
-
-def manage_current_friends_file():
-    """Create or recreate Current Friends text file"""
-    file_path = PATHS["current_friends_file"]
-    
-    try:
-        # Check if file exists and delete it
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            print("✅ Old 'current friends' file deleted")
-        
-        # Create new file
-        with open(file_path, 'w') as f:
-            f.write("")  # Create empty file
-        
-        print("✅ New 'current friends' file created")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error managing 'current friends' file: {str(e)}")
-        return False
-
-# ================================
-# STEP 10: COLLECT FRIENDS DATA
-# ================================
-
-def extract_raw_picture_id(profile_picture_url):
-    """Extract raw picture ID from profile picture URL"""
-    try:
-        # Parse the URL
-        parsed_url = urllib.parse.urlparse(profile_picture_url)
-        
-        # Get the path and extract filename
-        path = parsed_url.path
-        filename = os.path.basename(path)
-        
-        # Remove any query parameters from filename if present
-        if '?' in filename:
-            filename = filename.split('?')[0]
-            
-        return filename
-    except Exception as e:
-        print(f"❌ Error extracting raw picture ID: {str(e)}")
-        return "Unknown"
-
-def collect_friends_data_optimized(base_xpath):
-    """Optimized version using pre-fetched XPath"""
-    print("📝 Starting to collect friends data...")
-    friend_count = 0
-    file_path = PATHS["current_friends_file"]
-    
-    # Remove [] from base xpath if present
-    if '[]' in base_xpath:
-        base_xpath = base_xpath.replace('[]', '')
-    
-    index = 1
-    
-    while True:
-        try:
-            current_xpath = f"({base_xpath})[{index}]"
-            profile_pic_element = driver.find_element("xpath", current_xpath)
-            profile_picture_url = profile_pic_element.get_attribute("src")
-            raw_picture_id = extract_raw_picture_id(profile_picture_url)
-            
-            try:
-                parent_container = profile_pic_element.find_element("xpath", "./ancestor::a[1]")
-                profile_link = parent_container.get_attribute("href")
-            except Exception as e:
-                profile_link = "Unknown"
-            
-            with open(file_path, 'a', encoding='utf-8') as f:
-                f.write(f"{index}\n")
-                f.write(f"profile link = {profile_link}\n")
-                f.write(f"profile picture link = {profile_picture_url}\n")
-                f.write(f"raw picture id = {raw_picture_id}\n")
-                f.write("remark = \n")
-                f.write("\n")
-            
-            friend_count += 1
-            print(f"✅ Collected data for friend {index}")
-            index += 1
-            
-        except NoSuchElementException:
-            if index == 1:
-                print("❌ No friends found with the given XPath")
-                return False
-            else:
-                print(f"✅ Finished collecting {friend_count} friends")
-                return True
-                
-        except Exception as e:
-            print(f"❌ Error collecting data for friend {index}: {str(e)}")
-            return False
-
-# ================================
-# STEP 11: FILTER AND CLICK DEFAULT PICTURES
-# ================================
-
-def step11_filter_and_click_default_pictures():
-    """Filter default profile pictures and unfriend deactivated accounts"""
-    print("\n" + "=" * 40)
-    print("STEP 11: Filtering and clicking default pictures...")
-    print("=" * 40)
-    
-    def is_default_picture(raw_picture_id):
-        """Check if the raw picture ID matches the default Facebook avatar"""
-        DEFAULT_PICTURE_ID = "453178253_471506465671661_2781666950760530985_n.png"
-        return raw_picture_id == DEFAULT_PICTURE_ID
-    
-    def is_valid_profile_link(profile_link):
-        """Check if the profile link is a valid Facebook profile URL"""
-        if not profile_link or profile_link.lower() == 'unknown':
-            return False
-            
-        valid_patterns = [
-            "https://www.facebook.com/",
-            "https://facebook.com/",
-            "https://web.facebook.com/",
-            "https://m.facebook.com/"
-        ]
-        
-        for pattern in valid_patterns:
-            if profile_link.startswith(pattern):
-                return True
-        return False
-    
-    def update_remarks_in_file():
-        """Update remarks in the Current Friends file - SIMPLE AND RELIABLE APPROACH"""
-        try:
-            file_path = PATHS["current_friends_file"]
-            
-            print("📖 Reading current friends file...")
-            
-            # Read the entire file
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            # Split by double newlines to get each friend block
-            friend_blocks = content.strip().split('\n\n')
-            updated_blocks = []
-            
-            print(f"🔍 Processing {len(friend_blocks)} friend blocks...")
-            
-            for block in friend_blocks:
-                if not block.strip():
-                    continue
-                    
-                lines = block.strip().split('\n')
-                friend_data = {}
-                new_block_lines = []
-                
-                # Parse the block and determine remark
-                for line in lines:
-                    line = line.strip()
-                    
-                    if line.isdigit():
-                        friend_data['serial_number'] = int(line)
-                        new_block_lines.append(line)
-                    elif line.startswith("profile link = "):
-                        friend_data['profile_link'] = line.replace("profile link = ", "").strip()
-                        new_block_lines.append(line)
-                    elif line.startswith("profile picture link = "):
-                        friend_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                        new_block_lines.append(line)
-                    elif line.startswith("raw picture id = "):
-                        friend_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                        new_block_lines.append(line)
-                    elif line.startswith("remark = "):
-                        # SKIP the original remark line completely
-                        continue
-                    else:
-                        new_block_lines.append(line)
-                
-                # Determine the correct remark
-                profile_link = friend_data.get('profile_link', '')
-                raw_picture_id = friend_data.get('raw_picture_id', '')
-                
-                if profile_link.lower() == 'unknown':
-                    remark = "Unknown"
-                elif is_default_picture(raw_picture_id):
-                    remark = "Default Profile Picture"
-                else:
-                    remark = "Unique Profile Picture"
-                
-                # Add the correct remark line
-                new_block_lines.append(f"remark = {remark}")
-                
-                # Add the updated block
-                updated_blocks.append('\n'.join(new_block_lines))
-            
-            # Write the completely rebuilt file
-            with open(file_path, 'w', encoding='utf-8') as file:
-                file.write('\n\n'.join(updated_blocks))
-            
-            print("✅ Successfully updated remarks in current friends file")
-            
-            # Count remarks for statistics
-            remark_counts = {"Unknown": 0, "Default Profile Picture": 0, "Unique Profile Picture": 0}
-            for block in updated_blocks:
-                for line in block.split('\n'):
-                    if line.startswith("remark = "):
-                        remark = line.replace("remark = ", "").strip()
-                        if remark in remark_counts:
-                            remark_counts[remark] += 1
-            
-            print(f"📊 Remark Statistics:")
-            for remark_type, count in remark_counts.items():
-                print(f"   - {remark_type}: {count}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error updating remarks in file: {str(e)}")
-            return False
-    
-    # STEP 1: Update remarks in the file FIRST
-    print("🔄 Step 1: Updating remarks in current friends file...")
-    if not update_remarks_in_file():
-        print("❌ Failed to update remarks in file")
-        return False
-    
-    print("ℹ️ No deactivated accounts (unknown profile links) found to unfriend")
-    return True
-
-# ================================
-# STEP 12: UPLOAD TO GOOGLE SHEETS
-# ================================
-
-def step12_upload_to_google_sheets():
-    """Upload data from Current Friends file to Google Sheets"""
-    print("\n" + "=" * 40)
-    print("STEP 12: Uploading data to Google Sheets...")
-    print("=" * 40)
-    
-    # Configuration - UPDATED NAMES
-    SPREADSHEET_NAME = "facebook profile liker"
-    CURRENT_FRIENDS_SHEET = "current friends"
-    
-    def setup_google_sheets_client():
-        """Setup and authenticate Google Sheets client"""
-        try:
-            # Define the scope
-            scope = [
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            
-            # Check if credentials file exists
-            if not os.path.exists(PATHS["google_sheets_credentials"]):
-                raise Exception(f"Credentials file not found: {PATHS['google_sheets_credentials']}")
-            
-            # Authenticate and create client
-            creds = Credentials.from_service_account_file(PATHS["google_sheets_credentials"], scopes=scope)
-            client = gspread.authorize(creds)
-            return client
-        except Exception as e:
-            raise Exception(f"Failed to setup Google Sheets client: {str(e)}")
-    
-    def parse_current_friends_file():
-        """Parse Current Friends file and extract friend data with serial numbers"""
-        file_path = PATHS["current_friends_file"]
-        
-        try:
-            if not os.path.exists(file_path):
-                print(f"❌ Current friends file not found: {file_path}")
-                return []
-            
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            friends_data = []
-            current_friend = {}
-            
-            lines = content.split('\n')
-            for line in lines:
-                line = line.strip()
-                
-                if not line:
-                    # Empty line indicates end of current friend data
-                    if current_friend:
-                        friends_data.append(current_friend)
-                        current_friend = {}
-                    continue
-                
-                # Check if line is a serial number (digits only)
-                if line.isdigit():
-                    current_friend['serial_number'] = int(line)
-                elif line.startswith("profile link = "):
-                    current_friend['profile_link'] = line.replace("profile link = ", "").strip()
-                elif line.startswith("profile picture link = "):
-                    current_friend['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                elif line.startswith("raw picture id = "):
-                    current_friend['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                elif line.startswith("remark = "):
-                    current_friend['remark'] = line.replace("remark = ", "").strip()
-            
-            # Add the last friend if exists
-            if current_friend:
-                friends_data.append(current_friend)
-            
-            print(f"✅ Parsed {len(friends_data)} friends from current friends file")
-            return friends_data
-            
-        except Exception as e:
-            raise Exception(f"Failed to parse current friends file: {str(e)}")
-    
-    def is_valid_profile_link(profile_link):
-        """Check if the profile link is a valid Facebook profile URL"""
-        if not profile_link or profile_link.lower() == 'unknown':
-            return False
-            
-        valid_patterns = [
-            "https://www.facebook.com/",
-            "https://facebook.com/",
-            "https://web.facebook.com/",
-            "https://m.facebook.com/"
-        ]
-        
-        for pattern in valid_patterns:
-            if profile_link.startswith(pattern):
-                return True
-        return False
-    
-    def prepare_data_for_upload(friends_data):
-        """Prepare data for Google Sheets upload with current timestamp"""
-        current_datetime = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-        
-        active_friends = []
-        
-        for friend in friends_data:
-            # Get data with defaults
-            serial_number = friend.get('serial_number', 0)
-            profile_link = friend.get('profile_link', 'Unknown')
-            profile_picture_link = friend.get('profile_picture_link', '')
-            raw_picture_id = friend.get('raw_picture_id', '')
-            remark = friend.get('remark', 'Unique Profile Picture')
-            
-            # Check if profile link is valid (active account)
-            has_valid_link = is_valid_profile_link(profile_link)
-            
-            # Only include active accounts (skip deactivated/unknown)
-            if has_valid_link:
-                # Prepare row data with Remark - UPDATED COLUMN NAMES
-                row_data = [
-                    current_datetime,      # date-time
-                    serial_number,         # serial number
-                    profile_link,          # profile link
-                    profile_picture_link,  # profile picture link
-                    raw_picture_id,        # raw picture id
-                    remark                 # remark
-                ]
-                
-                active_friends.append(row_data)
-        
-        # Print summary
-        print(f"📊 Account Analysis:")
-        print(f"   - Active accounts: {len(active_friends)}")
-        print(f"   - Deactivated accounts: {len(friends_data) - len(active_friends)}")
-        print(f"   - Total accounts processed: {len(friends_data)}")
-        
-        # Count remark types
-        remark_counts = {}
-        for friend in active_friends:
-            remark = friend[5]  # Remark is at index 5
-            remark_counts[remark] = remark_counts.get(remark, 0) + 1
-        
-        print(f"📊 Remark Analysis:")
-        for remark_type, count in remark_counts.items():
-            print(f"   - {remark_type}: {count}")
-        
-        return active_friends
-    
-    def clear_sheet_data(worksheet):
-        """Clear all data from worksheet except headers"""
-        try:
-            # Get all data from the worksheet
-            all_data = worksheet.get_all_values()
-            
-            if len(all_data) <= 1:  # Only headers or empty
-                print("ℹ️ No data to clear (only headers present)")
-                return True
-            
-            # Calculate range to clear (from row 2 to end)
-            rows_to_clear = len(all_data) - 1  # Exclude header row
-            
-            if rows_to_clear > 0:
-                # Clear data from row 2 onwards
-                range_to_clear = f"A2:F{len(all_data)}"
-                worksheet.batch_clear([range_to_clear])
-                print(f"✅ Cleared {rows_to_clear} rows of data from sheet")
-            
-            return True
-            
-        except Exception as e:
-            raise Exception(f"Failed to clear sheet data: {str(e)}")
-    
-    def upload_to_sheet(client, sheet_name, data):
-        """Upload data to specific worksheet after clearing existing data"""
-        try:
-            print(f"📤 Attempting to upload to {sheet_name}...")
-            
-            # Open the spreadsheet
-            try:
-                spreadsheet = client.open(SPREADSHEET_NAME)
-                print(f"✅ Opened spreadsheet: {SPREADSHEET_NAME}")
-            except gspread.exceptions.SpreadsheetNotFound:
-                raise Exception(f"Spreadsheet '{SPREADSHEET_NAME}' not found. Please check the name and sharing permissions.")
-            
-            # Try to get the worksheet, create if it doesn't exist
-            try:
-                worksheet = spreadsheet.worksheet(sheet_name)
-                print(f"✅ Found existing worksheet: {sheet_name}")
-                
-                # CLEAR EXISTING DATA before uploading new data
-                print(f"🗑️ Clearing existing data from {sheet_name}...")
-                if not clear_sheet_data(worksheet):
-                    raise Exception(f"Failed to clear data from {sheet_name}")
-                
-            except gspread.exceptions.WorksheetNotFound:
-                print(f"📝 Worksheet '{sheet_name}' not found, creating new one...")
-                worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
-                
-                # Add headers if it's a new worksheet - UPDATED HEADER NAMES
-                headers = ["date-time", "serial number", "profile link", "profile picture link", "raw picture id", "remark"]
-                worksheet.append_row(headers)
-                print(f"✅ Added headers to new worksheet: {sheet_name}")
-            
-            # Upload data to worksheet
-            if data:
-                print(f"📊 Uploading {len(data)} rows to {sheet_name}...")
-                
-                # Use simple append_rows method
-                worksheet.append_rows(data)
-                print(f"✅ Successfully uploaded {len(data)} rows to {sheet_name}")
-                return True
-            else:
-                print(f"ℹ️ No data to upload to {sheet_name}")
-                return True
-                
-        except Exception as e:
-            error_msg = str(e)
-            # Check if it's actually a success (200 response)
-            if "200" in error_msg:
-                print(f"✅ Data successfully uploaded to {sheet_name} (received 200 response)")
-                return True
-            else:
-                raise Exception(f"Failed to upload to {sheet_name}: {error_msg}")
-    
-    # Main execution with UNLIMITED retry logic
-    retry_count = 0
-    
-    while True:  # Unlimited retries
-        try:
-            retry_count += 1
-            print(f"🔄 Attempt {retry_count} to upload data to Google Sheets...")
-            
-            # Setup Google Sheets client
-            client = setup_google_sheets_client()
-            print("✅ Google Sheets client authenticated successfully")
-            
-            # Parse Current Friends file
-            friends_data = parse_current_friends_file()
-            if not friends_data:
-                print("❌ No friend data found to upload")
-                return False
-            
-            # Prepare data for upload (only active accounts)
-            active_friends = prepare_data_for_upload(friends_data)
-            
-            # Upload active friends to "current friends" sheet
-            upload_success = True
-            
-            if active_friends:
-                print(f"📊 Uploading {len(active_friends)} active friends...")
-                if not upload_to_sheet(client, CURRENT_FRIENDS_SHEET, active_friends):
-                    print("❌ Failed to upload active friends")
-                    upload_success = False
-                else:
-                    print("✅ Active friends uploaded successfully")
-            else:
-                print("ℹ️ No active friends to upload")
-            
-            if upload_success:
-                print("✅ Step 12 completed successfully!")
-                print("📋 Summary:")
-                print(f"   - Active friends uploaded: {len(active_friends)}")
-                print(f"   - Deactivated friends skipped: {len(friends_data) - len(active_friends)}")
-                print(f"   - Total friends processed: {len(friends_data)}")
-                return True
-            else:
-                raise Exception("Upload failure")
-            
-        except Exception as e:
-            error_message = str(e)
-            
-            # Check if it's actually a success (200 response)
-            if "200" in error_message:
-                print("✅ Step 12 completed successfully (200 response detected)!")
-                return True
-                
-            print(f"❌ Error during Step 12 (Attempt {retry_count}): {error_message}")
-            
-            wait_time = 10
-            print(f"🔄 Retrying in {wait_time} seconds... (Attempt {retry_count + 1} - Unlimited retries)")
-            time.sleep(wait_time)
-    
-    return False
-
-# ================================
-# STEP 13: COMPARE AND CREATE WAITING FILE
-# ================================
-
-def step13_compare_and_create_waiting_file():
-    """Compare Current Friends with Report sheet and create waiting file - OPTIMIZED VERSION"""
-    print("\n" + "=" * 40)
-    print("STEP 13: Comparing sheets and creating waiting file...")
-    print("=" * 40)
-    
-    # Configuration - UPDATED NAMES
-    SPREADSHEET_NAME = "facebook profile liker"
-    CURRENT_FRIENDS_SHEET = "current friends"
-    REPORT_SHEET = "report"
-    
-    def setup_google_sheets_client():
-        """Setup and authenticate Google Sheets client"""
-        try:
-            # Define the scope
-            scope = [
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            
-            # Check if credentials file exists
-            if not os.path.exists(PATHS["google_sheets_credentials"]):
-                raise Exception(f"Credentials file not found: {PATHS['google_sheets_credentials']}")
-            
-            # Authenticate and create client
-            creds = Credentials.from_service_account_file(PATHS["google_sheets_credentials"], scopes=scope)
-            client = gspread.authorize(creds)
-            return client
-        except Exception as e:
-            raise Exception(f"Failed to setup Google Sheets client: {str(e)}")
-    
-    def get_unique_profile_pictures(client):
-        """Get only Unique Profile Pictures from Current Friends sheet"""
-        try:
-            print("📖 Reading Unique Profile Pictures from current friends sheet...")
-            
-            # Open the spreadsheet and worksheet
-            spreadsheet = client.open(SPREADSHEET_NAME)
-            worksheet = spreadsheet.worksheet(CURRENT_FRIENDS_SHEET)
-            
-            # Get ALL data from the sheet
-            all_data = worksheet.get_all_values()
-            
-            if len(all_data) <= 1:  # Only headers or empty
-                print("ℹ️ No data found in current friends sheet")
-                return []
-            
-            # Filter only rows with "Unique Profile Picture" in remark column (Column F, index 5)
-            unique_profile_pictures = []
-            default_picture_count = 0
-            
-            for i, row in enumerate(all_data[1:], start=2):  # Skip header, start from row 2
-                if len(row) >= 6:  # Ensure row has all columns (A-F)
-                    remark = row[5].strip()  # Column F (index 5) - remark
-                    
-                    if remark == "Unique Profile Picture":
-                        serial_number = row[1].strip()  # Column B (index 1)
-                        profile_link = row[2].strip()   # Column C (index 2)
-                        profile_picture_link = row[3].strip()  # Column D (index 3)
-                        raw_picture_id = row[4].strip()  # Column E (index 4)
-                        
-                        # Only include if profile link is valid (not Unknown)
-                        if (profile_link and 
-                            profile_link.lower() != "unknown" and 
-                            raw_picture_id and 
-                            raw_picture_id.lower() != "raw picture id"):
-                            
-                            unique_profile_pictures.append({
-                                'serial_number': serial_number,
-                                'profile_link': profile_link,
-                                'profile_picture_link': profile_picture_link,
-                                'raw_picture_id': raw_picture_id
-                            })
-                    
-                    elif remark == "Default Profile Picture":
-                        default_picture_count += 1
-            
-            print(f"✅ Found {len(unique_profile_pictures)} Unique Profile Pictures")
-            print(f"📊 Default Profile Picture rows: {default_picture_count}")
-            
-            return unique_profile_pictures
-            
-        except gspread.exceptions.WorksheetNotFound:
-            print(f"❌ Worksheet '{CURRENT_FRIENDS_SHEET}' not found")
-            return []
-        except Exception as e:
-            raise Exception(f"Failed to get Unique Profile Pictures: {str(e)}")
-    
-    def get_report_raw_picture_ids(client):
-        """Get only Raw Picture IDs from Report sheet"""
-        try:
-            print("📖 Reading Raw Picture IDs from report sheet...")
-            
-            # Open the spreadsheet and worksheet
-            spreadsheet = client.open(SPREADSHEET_NAME)
-            worksheet = spreadsheet.worksheet(REPORT_SHEET)
-            
-            # Get ALL data from the sheet
-            all_data = worksheet.get_all_values()
-            
-            if len(all_data) <= 1:  # Only headers or empty
-                print("ℹ️ No data found in report sheet")
-                return set()
-            
-            # Extract only Raw Picture IDs from Column E
-            report_raw_picture_ids = set()
-            
-            for row in all_data[1:]:  # Skip header row
-                if len(row) >= 5:  # Ensure row has at least Column E
-                    raw_picture_id = row[4].strip()  # Column E (index 4)
-                    if (raw_picture_id and 
-                        raw_picture_id.lower() != "raw picture id" and 
-                        raw_picture_id.lower() != "unknown"):
-                        report_raw_picture_ids.add(raw_picture_id)
-            
-            print(f"✅ Found {len(report_raw_picture_ids)} unique Raw Picture IDs in report sheet")
-            return report_raw_picture_ids
-            
-        except gspread.exceptions.WorksheetNotFound:
-            print(f"❌ Worksheet '{REPORT_SHEET}' not found")
-            return set()
-        except Exception as e:
-            raise Exception(f"Failed to get Report Raw Picture IDs: {str(e)}")
-    
-    def filter_new_unique_pictures(unique_profile_pictures, report_raw_picture_ids):
-        """Filter out Unique Profile Pictures that are already in Report sheet"""
-        print("\n🔍 Comparing Unique Profile Pictures with report sheet...")
-        
-        new_unique_pictures = []
-        
-        for friend in unique_profile_pictures:
-            raw_picture_id = friend['raw_picture_id']
-            
-            # Only include if NOT found in Report sheet
-            if raw_picture_id not in report_raw_picture_ids:
-                new_unique_pictures.append(friend)
-        
-        print(f"📊 Comparison Results:")
-        print(f"   - Total Unique Profile Pictures: {len(unique_profile_pictures)}")
-        print(f"   - Already in report sheet: {len(unique_profile_pictures) - len(new_unique_pictures)}")
-        print(f"   - New Unique Profile Pictures: {len(new_unique_pictures)}")
-        
-        return new_unique_pictures
-    
-    def create_waiting_for_proceed_file(new_unique_pictures):
-        """Create waiting for proceed file with new unique friends"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            # Delete existing file if it exists
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                print("✅ Old 'waiting for proceed' file deleted")
-            
-            if not new_unique_pictures:
-                print("ℹ️ No new Unique Profile Pictures to process - creating empty waiting file")
-                # Create empty file
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write("")
-                return True
-            
-            # Create new file with friend data - UPDATED FIELD NAMES
-            with open(file_path, 'w', encoding='utf-8') as f:
-                for friend in new_unique_pictures:
-                    f.write(f"{friend['serial_number']}\n")
-                    f.write(f"profile link = {friend['profile_link']}\n")
-                    f.write(f"profile picture link = {friend['profile_picture_link']}\n")
-                    f.write(f"raw picture id = {friend['raw_picture_id']}\n")
-                    f.write("\n")  # Empty line between friends
-            
-            print(f"✅ Created 'waiting for proceed' file with {len(new_unique_pictures)} new friends")
-            print(f"📁 File location: {file_path}")
-            
-            # Print sample entries for verification
-            print(f"\n📋 Sample entries in waiting file:")
-            for i, friend in enumerate(new_unique_pictures[:3]):  # Show first 3
-                print(f"   {i+1}. Serial: {friend['serial_number']}")
-                print(f"      Profile: {friend['profile_link'][:50]}...")
-                print(f"      Raw ID: {friend['raw_picture_id'][:30]}...")
-            if len(new_unique_pictures) > 3:
-                print(f"   ... and {len(new_unique_pictures) - 3} more")
-            
-            return True
-            
-        except Exception as e:
-            raise Exception(f"Failed to create waiting file: {str(e)}")
-    
-    # Main execution with retry logic
-    retry_count = 0
-    max_retries = 3
-    
-    while retry_count < max_retries:
-        try:
-            retry_count += 1
-            print(f"🔄 Attempt {retry_count} to compare sheets and create waiting file...")
-            
-            # Setup Google Sheets client
-            client = setup_google_sheets_client()
-            print("✅ Google Sheets client authenticated successfully")
-            
-            # STEP 1: Get only Unique Profile Pictures from current friends sheet
-            unique_profile_pictures = get_unique_profile_pictures(client)
-            
-            if not unique_profile_pictures:
-                print("❌ No Unique Profile Pictures found in current friends sheet")
-                # Create empty waiting file
-                create_waiting_for_proceed_file([])
-                return True
-            
-            # STEP 2: Get only Raw Picture IDs from report sheet
-            report_raw_picture_ids = get_report_raw_picture_ids(client)
-            
-            # STEP 3: Filter out pictures that are already in report sheet
-            new_unique_pictures = filter_new_unique_pictures(unique_profile_pictures, report_raw_picture_ids)
-            
-            # STEP 4: Create waiting file
-            if create_waiting_for_proceed_file(new_unique_pictures):
-                print("✅ Step 13 completed successfully!")
-                if new_unique_pictures:
-                    print(f"🎯 {len(new_unique_pictures)} new friends waiting for processing")
-                else:
-                    print("🎯 No new friends to process - waiting file is empty")
-                return True
-            else:
-                raise Exception("Failed to create waiting file")
-            
-        except Exception as e:
-            error_message = str(e)
-            print(f"❌ Error during Step 13 (Attempt {retry_count}): {error_message}")
-            
-            if retry_count < max_retries:
-                wait_time = 10
-                print(f"🔄 Retrying in {wait_time} seconds... (Attempt {retry_count + 1}/{max_retries})")
-                time.sleep(wait_time)
-            else:
-                print(f"❌ Failed to complete Step 13 after {max_retries} attempts")
-                return False
-    
-    return False
-
-# ================================
-# STEP 14: PROCESS PROFILES FROM WAITING FILE
-# ================================
-
-def step14_process_profiles_from_waiting_file(XPATHS):
-    """Step 14: Process profiles from waiting for proceed file"""
-    print("\n" + "=" * 40)
-    print("STEP 14: Processing profiles from waiting file")
-    print("=" * 40)
-    
-    def wait_5_seconds():
-        """Wait 5 seconds for stability"""
-        print("⏳ Waiting 5 seconds for stability...")
-        for i in range(5, 0, -1):
-            sys.stdout.write(f'\r⏳ {i} seconds remaining...')
-            sys.stdout.flush()
-            time.sleep(1)
-        sys.stdout.write('\r' + ' ' * 30 + '\r')
-        print("✅ 5 seconds wait completed")
-    
-    def get_profiles_without_status():
-        """Get profiles that don't have status keyword"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            if not os.path.exists(file_path):
-                print("❌ waiting for proceed file not found")
-                return []
-            
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read().strip()
-            
-            # If file is empty, return empty list
-            if not content:
-                print("ℹ️ waiting for proceed file is empty")
-                return []
-            
-            profiles = []
-            current_profile = {}
-            lines = content.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                
-                if not line:
-                    # Empty line indicates end of current friend data
-                    if current_profile:
-                        profiles.append(current_profile)
-                        current_profile = {}
-                    continue
-                
-                if line.isdigit():
-                    current_profile['serial_number'] = line
-                elif line.startswith("profile link = "):
-                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
-                elif line.startswith("profile picture link = "):
-                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                elif line.startswith("raw picture id = "):
-                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                elif line.startswith("status = "):
-                    current_profile['status'] = line.replace("status = ", "").strip()
-            
-            # Add the last profile if exists
-            if current_profile:
-                profiles.append(current_profile)
-            
-            # Filter profiles without status (Category 1: 4 lines per person)
-            profiles_without_status = []
-            for profile in profiles:
-                # Check if profile has exactly 4 keys (serial_number, profile_link, profile_picture_link, raw_picture_id)
-                # and no status key
-                keys = list(profile.keys())
-                if len(keys) == 4 and 'status' not in keys:
-                    profiles_without_status.append(profile)
-            
-            print(f"📊 Found {len(profiles_without_status)} profiles without status (Category 1)")
-            return profiles_without_status
-            
-        except Exception as e:
-            print(f"❌ Error reading waiting file: {str(e)}")
-            return []
-    
-    def check_all_profiles_have_status():
-        """Check if all profiles in waiting file have status"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            if not os.path.exists(file_path):
-                return True  # No file means nothing to process
-            
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read().strip()
-            
-            if not content:
-                return True  # Empty file means nothing to process
-            
-            profiles = []
-            current_profile = {}
-            lines = content.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                
-                if not line:
-                    if current_profile:
-                        profiles.append(current_profile)
-                        current_profile = {}
-                    continue
-                
-                if line.isdigit():
-                    current_profile['serial_number'] = line
-                elif line.startswith("profile link = "):
-                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
-                elif line.startswith("profile picture link = "):
-                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                elif line.startswith("raw picture id = "):
-                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                elif line.startswith("status = "):
-                    current_profile['status'] = line.replace("status = ", "").strip()
-            
-            if current_profile:
-                profiles.append(current_profile)
-            
-            # Check if all profiles have status
-            for profile in profiles:
-                if 'status' not in profile:
-                    return False  # Found at least one profile without status
-            
-            return True  # All profiles have status
-            
-        except Exception as e:
-            print(f"❌ Error checking profiles status: {str(e)}")
-            return False
-    
-    def navigate_to_profile(profile_link):
-        """Navigate to profile link"""
-        try:
-            print(f"🌐 Navigating to profile: {profile_link}")
-            driver.get(profile_link)
-            
-            # Wait for page to load completely
-            WebDriverWait(driver, 30).until(
-                lambda driver: driver.execute_script("return document.readyState") == "complete"
-            )
-            print("✅ Page loaded successfully")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error navigating to profile: {str(e)}")
-            return False
-    
-    def check_xpaths_simultaneously(XPATHS):
-        """Check XPath017, XPath018, XPath020 simultaneously every second for 20 seconds"""
-        print("🔍 Checking XPath017, XPath018, XPath020 simultaneously...")
-        start_time = time.time()
-        check_count = 0
-        
-        while time.time() - start_time <= 20:
-            check_count += 1
-            elapsed = int(time.time() - start_time)
-            
-            # Check XPath017 first
-            try:
-                element_017 = driver.find_element("xpath", XPATHS['xpath017'])
-                print(f"✅ XPath017 found at {elapsed} seconds - User not put story")
-                element_017.click()
-                print("✅ XPath017 clicked")
-                return "xpath017_found"
-            except NoSuchElementException:
-                pass
-            
-            # Check XPath018 second
-            try:
-                element_018 = driver.find_element("xpath", XPATHS['xpath018'])
-                print(f"✅ XPath018 found at {elapsed} seconds - User put story not yet watched")
-                element_018.click()
-                print("✅ XPath018 clicked")
-                return "xpath018_found"
-            except NoSuchElementException:
-                pass
-            
-            # Check XPath020 third
-            try:
-                element_020 = driver.find_element("xpath", XPATHS['xpath020'])
-                print(f"✅ XPath020 found at {elapsed} seconds - User put story already watched")
-                element_020.click()
-                print("✅ XPath020 clicked")
-                return "xpath020_found"
-            except NoSuchElementException:
-                pass
-            
-            sys.stdout.write(f'\r🔍 Checking XPaths... ({elapsed}/20 seconds, check {check_count})')
-            sys.stdout.flush()
-            time.sleep(1)
-        
-        print(f"\n❌ All 3 XPaths not found within 20 seconds")
-        return "all_not_found"
-    
-    def step14c_initial_check(XPATHS):
-        """Step 14c: Initial check for XPaths"""
-        print("\n" + "-" * 30)
-        print("STEP 14c: Initial XPath check")
-        print("-" * 30)
-        
-        # Wait 5 seconds for stability
-        wait_5_seconds()
-        
-        # Check XPaths simultaneously
-        result = check_xpaths_simultaneously(XPATHS)
-        
-        if result == "xpath017_found":
-            print("🎯 Continuing with step 15...")
-            return "continue_step15"
-        elif result == "xpath018_found" or result == "xpath020_found":
-            print("🎯 Continuing with step 16...")
-            return "continue_step16"
-        else:
-            # All XPaths not found, check internet
-            print("🔄 All XPaths not found, checking internet connection...")
-            if check_internet():
-                print("✅ Internet is present, continuing with step14d")
-                return "continue_step14d"
-            else:
-                print("❌ Internet not available, waiting for connection...")
-                while not check_internet():
-                    print("⏳ Waiting 2 seconds for internet connection...")
-                    time.sleep(2)
-                print("✅ Internet connection restored, refreshing page...")
-                driver.refresh()
-                return "restart_step14c"
-    
-    def step14d_retry_check(XPATHS):
-        """Step 14d: Retry check after refresh"""
-        print("\n" + "-" * 30)
-        print("STEP 14d: Retry XPath check after refresh")
-        print("-" * 30)
-        
-        # Refresh page
-        print("🔄 Refreshing page...")
-        driver.refresh()
-        
-        # Wait 5 seconds for stability
-        wait_5_seconds()
-        
-        # Check XPaths simultaneously again
-        result = check_xpaths_simultaneously(XPATHS)
-        
-        if result == "xpath017_found":
-            print("🎯 Continuing with step 15...")
-            return "continue_step15"
-        elif result == "xpath018_found" or result == "xpath020_found":
-            print("🎯 Continuing with step 16...")
-            return "continue_step16"
-        else:
-            # All XPaths not found again, check internet
-            print("🔄 All XPaths not found again, checking internet connection...")
-            if check_internet():
-                print("✅ Internet is present, continuing with step17e")
-                return "continue_step17e"
-            else:
-                print("❌ Internet not available, waiting for connection...")
-                while not check_internet():
-                    print("⏳ Waiting 2 seconds for internet connection...")
-                    time.sleep(2)
-                print("✅ Internet connection restored, refreshing page...")
-                driver.refresh()
-                return "restart_step14c"
-    
-    def update_profile_status_in_file(profile_data, status):
-        """Update profile status in waiting file - FIXED SYNTAX ERROR"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            profiles = content.strip().split('\n\n')
-            
-            # Find the profile to update
-            for i, profile_block in enumerate(profiles):
-                lines = profile_block.strip().split('\n')
-                current_profile_data = {}
-                
-                for line in lines:
-                    line = line.strip()
-                    if line.isdigit():
-                        current_profile_data['serial_number'] = line
-                    elif line.startswith("profile link = "):
-                        current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
-                    elif line.startswith("profile picture link = "):
-                        current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                    elif line.startswith("raw picture id = "):
-                        current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                
-                # Check if this is the profile we want to update
-                if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
-                    current_profile_data.get('profile_link') == profile_data.get('profile_link') and
-                    current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
-                    
-                    # Remove existing status line if present
-                    new_lines = [line for line in lines if not line.startswith("status = ")]
-                    
-                    # Add new status line
-                    new_lines.append(f"status = {status}")
-                    
-                    profiles[i] = '\n'.join(new_lines)
-                    
-                    # Write the updated content back to file
-                    with open(file_path, 'w', encoding='utf-8') as file:
-                        file.write('\n\n'.join(profiles))
-                    
-                    print(f"✅ Updated status to: {status}")
-                    return True
-            
-            print(f"❌ Profile not found in file")
-            return False
-                
-        except Exception as e:
-            print(f"❌ Error updating status: {str(e)}")
-            return False
-    
-    # Step 14a: Check waiting file
-    print("STEP 14a: Checking waiting file...")
-    
-    # Check if all profiles already have status
-    if check_all_profiles_have_status():
-        print("✅ All profiles already have status, continuing with step18")
-        return "continue_step18"
-    
-    # Get profiles without status
-    profiles_to_process = get_profiles_without_status()
-    
-    if not profiles_to_process:
-        print("ℹ️ No profiles to process, continuing with step18")
-        return "continue_step18"
-    
-    print(f"🎯 Found {len(profiles_to_process)} profiles to process")
-    
-    # Process only the first profile without status
-    profile = profiles_to_process[0]
-    
-    print(f"\n{'='*50}")
-    print(f"Processing Profile: {profile['serial_number']}")
-    print(f"Profile Link: {profile['profile_link'][:50]}...")
-    print(f"{'='*50}")
-    
-    # Step 14b: Open profile
-    print("STEP 14b: Opening profile...")
-    if not navigate_to_profile(profile['profile_link']):
-        print("❌ Failed to navigate to profile")
-        return "continue_step14a"
-    
-    # Step 14c: Initial XPath check
-    result_14c = step14c_initial_check(XPATHS)
-    
-    if result_14c == "continue_step15":
-        # Continue with step 15
-        step15_result = step15_like_profile_picture(profile, profile, XPATHS)
-        return "continue_step14a"
-    
-    elif result_14c == "continue_step16":
-        # Continue with step 16
-        step16_result = step16_open_profile_picture(profile, profile, XPATHS)
-        return "continue_step14a"
-    
-    elif result_14c == "continue_step14d":
-        # Continue with step 14d
-        result_14d = step14d_retry_check(XPATHS)
-        
-        if result_14d == "continue_step15":
-            step15_result = step15_like_profile_picture(profile, profile, XPATHS)
-            return "continue_step14a"
-        
-        elif result_14d == "continue_step16":
-            step16_result = step16_open_profile_picture(profile, profile, XPATHS)
-            return "continue_step14a"
-        
-        elif result_14d == "continue_step17e":
-            # Update status for step17e
-            update_profile_status_in_file(profile, "Can't open profile picture or story")
-            print("🔄 Continuing with step 14a...")
-            return "continue_step14a"
-        
-        elif result_14d == "restart_step14c":
-            # Restart from step14c
-            return step14_process_profiles_from_waiting_file(XPATHS)
-    
-    elif result_14c == "restart_step14c":
-        # Restart from step14c
-        return step14_process_profiles_from_waiting_file(XPATHS)
-    
-    return "continue_step14a"
-
-# ================================
-# STEP 15: LIKE PROFILE PICTURE
-# ================================
-
-def step15_like_profile_picture(profile, profile_data, XPATHS):
-    """Step 15: Like profile picture after opening"""
-    print("\n" + "=" * 40)
-    print("STEP 15: Liking profile picture")
-    print("=" * 40)
-    
-    def wait_5_seconds():
-        """Wait 5 seconds for stability"""
-        print("⏳ Waiting 5 seconds for stability...")
-        for i in range(5, 0, -1):
-            sys.stdout.write(f'\r⏳ {i} seconds remaining...')
-            sys.stdout.flush()
-            time.sleep(1)
-        sys.stdout.write('\r' + ' ' * 30 + '\r')
-        print("✅ 5 seconds wait completed")
-    
-    def check_like_keyword():
-        """Check every second for 'Like' keyword on the web page"""
-        print("🔍 Checking for 'Like' keyword...")
-        start_time = time.time()
-        
-        while time.time() - start_time <= 30:
-            elapsed = int(time.time() - start_time)
-            
-            try:
-                page_source = driver.page_source
-                if "Like" in page_source:
-                    print(f"\n✅ 'Like' keyword found at {elapsed} seconds")
-                    return True
-                
-                sys.stdout.write(f'\r🔍 Checking for "Like"... ({elapsed}/30 seconds)')
-                sys.stdout.flush()
-                time.sleep(1)
-                
-            except Exception as e:
-                error_msg = str(e)
-                if "tab crashed" in error_msg.lower() or "session info" in error_msg.lower():
-                    print(f"\n❌ Browser tab crashed, need to restart browser")
-                    raise Exception("BROWSER_CRASHED")
-                else:
-                    print(f"\n❌ Error checking for 'Like' keyword: {str(e)}")
-                    return False
-        
-        print(f"\n❌ 'Like' keyword not found within 30 seconds")
-        return False
-    
-    def check_xpath021_and_xpath022_simultaneously():
-        """Check XPath021 and XPath022 simultaneously every second for 30 seconds"""
-        print("🔍 Checking XPath021 and XPath022 simultaneously...")
-        start_time = time.time()
-        
-        while time.time() - start_time <= 30:
-            elapsed = int(time.time() - start_time)
-            
-            # Check XPath021 first
-            try:
-                element_021 = driver.find_element("xpath", XPATHS['xpath021'])
-                print(f"\n✅ XPath021 found at {elapsed} seconds - Profile picture not yet liked")
-                return "xpath021_found"
-            except NoSuchElementException:
-                pass
-            except Exception as e:
-                error_msg = str(e)
-                if "tab crashed" in error_msg.lower() or "session info" in error_msg.lower():
-                    print(f"\n❌ Browser tab crashed, need to restart browser")
-                    raise Exception("BROWSER_CRASHED")
-            
-            # Check XPath022 second
-            try:
-                element_022 = driver.find_element("xpath", XPATHS['xpath022'])
-                print(f"\n✅ XPath022 found at {elapsed} seconds - Profile picture already liked")
-                return "xpath022_found"
-            except NoSuchElementException:
-                pass
-            except Exception as e:
-                error_msg = str(e)
-                if "tab crashed" in error_msg.lower() or "session info" in error_msg.lower():
-                    print(f"\n❌ Browser tab crashed, need to restart browser")
-                    raise Exception("BROWSER_CRASHED")
-            
-            sys.stdout.write(f'\r🔍 Checking XPath021 & XPath022... ({elapsed}/30 seconds)')
-            sys.stdout.flush()
-            time.sleep(1)
-        
-        print(f"\n❌ Both XPath021 and XPath022 not found within 30 seconds")
-        return "both_not_found"
-    
-    def click_xpath021():
-        """Click XPath021 to like the profile picture"""
-        try:
-            element = driver.find_element("xpath", XPATHS['xpath021'])
-            element.click()
-            print("✅ XPath021 clicked - Profile picture liked")
-            return True
-        except Exception as e:
-            print(f"❌ Error clicking XPath021: {str(e)}")
-            return False
-    
-    def handle_both_xpaths_not_found():
-        """Handle case when both XPaths are not found"""
-        print("🔄 Both XPaths not found, checking internet connection...")
-        
-        if check_internet():
-            print("✅ Internet is present, refreshing page...")
-            driver.refresh()
-            wait_5_seconds()
-            
-            # Check XPaths again after refresh
-            result = check_xpath021_and_xpath022_simultaneously()
-            
-            if result == "xpath021_found":
-                if click_xpath021():
-                    update_profile_status_in_file(profile_data, "Profile picture liked")
-                    print("🔄 Continuing with step 14a...")
-                    return True
-                else:
-                    return False
-            elif result == "xpath022_found":
-                update_profile_status_in_file(profile_data, "Already Liked")
-                print("🔄 Continuing with step 14a...")
-                return True
-            else:
-                update_profile_status_in_file(profile_data, "Like option not available user may restricted")
-                print("🔄 Continuing with step 14a...")
-                return True
-        else:
-            print("❌ Internet not available, waiting for connection...")
-            while not check_internet():
-                print("⏳ Waiting 2 seconds for internet connection...")
-                time.sleep(2)
-            print("✅ Internet connection restored, refreshing page...")
-            driver.refresh()
-            return step15_like_profile_picture(profile, profile_data, XPATHS)
-    
-    def handle_like_keyword_not_found():
-        """Handle case when Like keyword is not found"""
-        print("🔄 Like keyword not found after refresh, checking internet connection...")
-        
-        if check_internet():
-            print("✅ Internet is present, going to step17c")
-            update_profile_status_in_file(profile_data, "Like option not available user may restricted")
-            print("🔄 Continuing with step 14a...")
-            return True
-        else:
-            print("❌ Internet not available, waiting for connection...")
-            while not check_internet():
-                print("⏳ Waiting 2 seconds for internet connection...")
-                time.sleep(2)
-            print("✅ Internet connection restored, refreshing page...")
-            driver.refresh()
-            return step15_like_profile_picture(profile, profile_data, XPATHS)
-    
-    def handle_browser_crash():
-        """Handle browser crash by restarting from step14"""
-        print("🔄 Browser crashed, restarting from step14...")
-        try:
-            driver.quit()
-        except:
-            pass
-        
-        time.sleep(2)
-        
-        if not launch_chrome("https://www.facebook.com"):
-            print("❌ Failed to restart browser, need full restart")
-            raise Exception("BROWSER_RESTART_FAILED")
-        
-        print("✅ Browser restarted successfully, continuing from step14")
-        return "RESTART_FROM_STEP14"
-    
-    def update_profile_status_in_file(profile_data, status):
-        """Update profile status in waiting file - FIXED SYNTAX ERROR"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            profiles = content.strip().split('\n\n')
-            
-            # Find the profile to update
-            for i, profile_block in enumerate(profiles):
-                lines = profile_block.strip().split('\n')
-                current_profile_data = {}
-                
-                for line in lines:
-                    line = line.strip()
-                    if line.isdigit():
-                        current_profile_data['serial_number'] = line
-                    elif line.startswith("profile link = "):
-                        current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
-                    elif line.startswith("profile picture link = "):
-                        current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                    elif line.startswith("raw picture id = "):
-                        current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                
-                # Check if this is the profile we want to update
-                if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
-                    current_profile_data.get('profile_link') == profile_data.get('profile_link') and
-                    current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
-                    
-                    # Remove existing status line if present
-                    new_lines = [line for line in lines if not line.startswith("status = ")]
-                    
-                    # Add new status line
-                    new_lines.append(f"status = {status}")
-                    
-                    profiles[i] = '\n'.join(new_lines)
-                    
-                    # Write the updated content back to file
-                    with open(file_path, 'w', encoding='utf-8') as file:
-                        file.write('\n\n'.join(profiles))
-                    
-                    print(f"✅ Updated status to: {status}")
-                    return True
-            
-            print(f"❌ Profile not found in file")
-            return False
-                
-        except Exception as e:
-            print(f"❌ Error updating status: {str(e)}")
-            return False
-    
-    # Step 15: Wait 5 seconds for stability
-    try:
-        wait_5_seconds()
-    except Exception as e:
-        if "BROWSER_CRASHED" in str(e):
-            return handle_browser_crash()
-        else:
-            raise
-    
-    # Immediately check for "Like" keyword
-    try:
-        like_keyword_found = check_like_keyword()
-    except Exception as e:
-        if "BROWSER_CRASHED" in str(e):
-            return handle_browser_crash()
-        else:
-            raise
-    
-    if like_keyword_found:
-        # Step 15a: Check XPath021 and XPath022 simultaneously
-        try:
-            result = check_xpath021_and_xpath022_simultaneously()
-        except Exception as e:
-            if "BROWSER_CRASHED" in str(e):
-                return handle_browser_crash()
-            else:
-                raise
-        
-        if result == "xpath021_found":
-            # Step 15c: Click XPath021 and continue with step17a
-            try:
-                if click_xpath021():
-                    update_profile_status_in_file(profile_data, "Profile picture liked")
-                    print("🔄 Continuing with step 14a...")
-                    return True
-                else:
-                    return False
-            except Exception as e:
-                if "BROWSER_CRASHED" in str(e):
-                    return handle_browser_crash()
-                else:
-                    raise
-                
-        elif result == "xpath022_found":
-            # Continue with step17b
-            try:
-                update_profile_status_in_file(profile_data, "Already Liked")
-                print("🔄 Continuing with step 14a...")
-                return True
-            except Exception as e:
-                if "BROWSER_CRASHED" in str(e):
-                    return handle_browser_crash()
-                else:
-                    raise
-            
-        elif result == "both_not_found":
-            # Check internet and refresh if needed
-            try:
-                return handle_both_xpaths_not_found()
-            except Exception as e:
-                if "BROWSER_CRASHED" in str(e):
-                    return handle_browser_crash()
-                else:
-                    raise
-    
-    else:
-        # Step 15b: Refresh page and wait 5 seconds
-        print("🔄 Refreshing page...")
-        try:
-            driver.refresh()
-        except Exception as e:
-            if "tab crashed" in str(e).lower() or "session info" in str(e).lower():
-                return handle_browser_crash()
-            else:
-                raise
-        
-        # Wait 5 seconds for stability after refresh
-        try:
-            wait_5_seconds()
-        except Exception as e:
-            if "BROWSER_CRASHED" in str(e):
-                return handle_browser_crash()
-            else:
-                raise
-        
-        # Check for "Like" keyword again
-        try:
-            like_keyword_found_after_refresh = check_like_keyword()
-        except Exception as e:
-            if "BROWSER_CRASHED" in str(e):
-                return handle_browser_crash()
-            else:
-                raise
-        
-        if like_keyword_found_after_refresh:
-            # Continue with step15a
-            try:
-                result = check_xpath021_and_xpath022_simultaneously()
-            except Exception as e:
-                if "BROWSER_CRASHED" in str(e):
-                    return handle_browser_crash()
-                else:
-                    raise
-            
-            if result == "xpath021_found":
-                try:
-                    if click_xpath021():
-                        update_profile_status_in_file(profile_data, "Profile picture liked")
-                        print("🔄 Continuing with step 14a...")
-                        return True
-                    else:
-                        return False
-                except Exception as e:
-                    if "BROWSER_CRASHED" in str(e):
-                        return handle_browser_crash()
-                    else:
-                        raise
-                    
-            elif result == "xpath022_found":
-                try:
-                    update_profile_status_in_file(profile_data, "Already Liked")
-                    print("🔄 Continuing with step 14a...")
-                    return True
-                except Exception as e:
-                    if "BROWSER_CRASHED" in str(e):
-                        return handle_browser_crash()
-                    else:
-                        raise
-                    
-            elif result == "both_not_found":
-                try:
-                    return handle_both_xpaths_not_found()
-                except Exception as e:
-                    if "BROWSER_CRASHED" in str(e):
-                        return handle_browser_crash()
-                    else:
-                        raise
-                    
-        else:
-            # Like keyword not found after refresh - go to step17c
-            try:
-                return handle_like_keyword_not_found()
-            except Exception as e:
-                if "BROWSER_CRASHED" in str(e):
-                    return handle_browser_crash()
-                else:
-                    raise
-    
-    return True
-
-# ================================
-# STEP 16: OPEN PROFILE PICTURE
-# ================================
-
-def step16_open_profile_picture(profile, profile_data, XPATHS):
-    """Step 16: Open profile picture from story"""
-    print("\n" + "=" * 40)
-    print("STEP 16: Opening profile picture")
-    print("=" * 40)
-    
-    def wait_3_seconds():
-        """Wait 3 seconds for stability"""
-        print("⏳ Waiting 3 seconds for stability...")
-        time.sleep(3)
-        print("✅ 3 seconds wait completed")
-    
-    def check_see_profile_picture_keyword():
-        """Check every second for 'See profile picture' keyword"""
-        print("🔍 Checking for 'See profile picture' keyword...")
-        start_time = time.time()
-        
-        while time.time() - start_time <= 30:
-            elapsed = int(time.time() - start_time)
-            
-            try:
-                page_source = driver.page_source
-                if "See profile picture" in page_source:
-                    print(f"\n✅ 'See profile picture' keyword found at {elapsed} seconds")
-                    return True
-                
-                sys.stdout.write(f'\r🔍 Checking for "See profile picture"... ({elapsed}/30 seconds)')
-                sys.stdout.flush()
-                time.sleep(1)
-                
-            except Exception as e:
-                print(f"\n❌ Error checking for 'See profile picture' keyword: {str(e)}")
-                return False
-        
-        print(f"\n❌ 'See profile picture' keyword not found within 30 seconds")
-        return False
-    
-    def check_xpath019():
-        """Check for XPath019 every second for 30 seconds"""
-        print("🔍 Checking for XPath019...")
-        start_time = time.time()
-        
-        while time.time() - start_time <= 30:
-            elapsed = int(time.time() - start_time)
-            
-            try:
-                element = driver.find_element("xpath", XPATHS['xpath019'])
-                print(f"\n✅ XPath019 found at {elapsed} seconds - Profile picture open button found")
-                element.click()
-                print("✅ XPath019 clicked - Entered profile picture")
-                return True
-            except NoSuchElementException:
-                sys.stdout.write(f'\r🔍 Checking XPath019... ({elapsed}/30 seconds)')
-                sys.stdout.flush()
-                time.sleep(1)
-            except Exception as e:
-                print(f"\n❌ Error clicking XPath019: {str(e)}")
-                return False
-        
-        print(f"\n❌ XPath019 not found within 30 seconds")
-        return False
-    
-    def handle_keyword_not_found():
-        """Handle case when 'See profile picture' keyword is not found"""
-        print("🔄 'See profile picture' keyword not found, checking internet connection...")
-        
-        # Check internet connection
-        if check_internet():
-            print("✅ Internet is present, going to step17d")
-            update_profile_status_in_file(profile_data, "See profile picture option not available user may restricted")
-            print("🔄 Continuing with step 14a...")
-            return True
-        else:
-            print("❌ Internet not available, refreshing page and continuing with step14...")
-            driver.refresh()
-            # Continue with step14
-            return step14_process_profiles_from_waiting_file(XPATHS)
-    
-    def handle_xpath019_not_found():
-        """Handle case when XPath019 is not found"""
-        print("🔄 XPath019 not found, checking internet connection...")
-        
-        # Check internet connection
-        if check_internet():
-            print("✅ Internet is present, going to step17d")
-            update_profile_status_in_file(profile_data, "See profile picture option not available user may restricted")
-            print("🔄 Continuing with step 14a...")
-            return True
-        else:
-            print("❌ Internet not available, refreshing page and continuing with step14...")
-            driver.refresh()
-            # Continue with step14
-            return step14_process_profiles_from_waiting_file(XPATHS)
-    
-    def update_profile_status_in_file(profile_data, status):
-        """Update profile status in waiting file - FIXED SYNTAX ERROR"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            profiles = content.strip().split('\n\n')
-            
-            # Find the profile to update
-            for i, profile_block in enumerate(profiles):
-                lines = profile_block.strip().split('\n')
-                current_profile_data = {}
-                
-                for line in lines:
-                    line = line.strip()
-                    if line.isdigit():
-                        current_profile_data['serial_number'] = line
-                    elif line.startswith("profile link = "):
-                        current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
-                    elif line.startswith("profile picture link = "):
-                        current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                    elif line.startswith("raw picture id = "):
-                        current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                
-                # Check if this is the profile we want to update
-                if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
-                    current_profile_data.get('profile_link') == profile_data.get('profile_link') and
-                    current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
-                    
-                    # Remove existing status line if present
-                    new_lines = [line for line in lines if not line.startswith("status = ")]
-                    
-                    # Add new status line
-                    new_lines.append(f"status = {status}")
-                    
-                    profiles[i] = '\n'.join(new_lines)
-                    
-                    # Write the updated content back to file
-                    with open(file_path, 'w', encoding='utf-8') as file:
-                        file.write('\n\n'.join(profiles))
-                    
-                    print(f"✅ Updated status to: {status}")
-                    return True
-            
-            print(f"❌ Profile not found in file")
-            return False
-                
-        except Exception as e:
-            print(f"❌ Error updating status: {str(e)}")
-            return False
-    
-    # Step 16: Wait 3 seconds for stability
-    wait_3_seconds()
-    
-    # Check for "See profile picture" keyword
-    keyword_found = check_see_profile_picture_keyword()
-    
-    if keyword_found:
-        # Step 16a: Check for XPath019
-        xpath019_found = check_xpath019()
-        
-        if xpath019_found:
-            # Continue with step15
-            return step15_like_profile_picture(profile, profile_data, XPATHS)
-        else:
-            # XPath019 not found
-            return handle_xpath019_not_found()
-    else:
-        # Keyword not found
-        return handle_keyword_not_found()
-    
-    return True
-
-# ================================
-# STEP 17: UPDATE STATUS IN WAITING FILE
-# ================================
-
-def update_profile_status_in_file(profile_data, status):
-    """Update profile status in waiting file - Step 17 - FIXED SYNTAX ERROR"""
-    file_path = PATHS["waiting_for_proceed_file"]
-    
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-        
-        profiles = content.strip().split('\n\n')
-        
-        # Find the profile to update
-        for i, profile_block in enumerate(profiles):
-            lines = profile_block.strip().split('\n')
-            current_profile_data = {}
-            
-            for line in lines:
-                line = line.strip()
-                if line.isdigit():
-                    current_profile_data['serial_number'] = line
-                elif line.startswith("profile link = "):
-                    current_profile_data['profile_link'] = line.replace("profile link = ", "").strip()
-                elif line.startswith("profile picture link = "):
-                    current_profile_data['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                elif line.startswith("raw picture id = "):
-                    current_profile_data['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-            
-            # Check if this is the profile we want to update
-            if (current_profile_data.get('serial_number') == profile_data.get('serial_number') and
-                current_profile_data.get('profile_link') == profile_data.get('profile_link') and
-                current_profile_data.get('raw_picture_id') == profile_data.get('raw_picture_id')):
-                
-                # Remove existing status line if present
-                new_lines = [line for line in lines if not line.startswith("status = ")]
-                
-                # Add new status line
-                new_lines.append(f"status = {status}")
-                
-                profiles[i] = '\n'.join(new_lines)
-                
-                # Write the updated content back to file
-                with open(file_path, 'w', encoding='utf-8') as file:
-                    file.write('\n\n'.join(profiles))
-                
-                print(f"✅ Step 17: Updated status to: {status}")
-                return True
-        
-        print(f"❌ Profile not found in file")
-        return False
-            
-    except Exception as e:
-        print(f"❌ Error updating status: {str(e)}")
-        return False
-
-# ================================
-# STEP 18: WHATSAPP REPORT FOR INVALID DATA
-# ================================
-
-def step18_whatsapp_report_invalid_data():
-    """Step 18: Send WhatsApp report for invalid data in waiting file"""
-    print("\n" + "=" * 40)
-    print("STEP 18: WhatsApp Report for Invalid Data")
-    print("=" * 40)
-    
-    def check_waiting_file_condition():
-        """Check if waiting file is empty or has profiles without status"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            if not os.path.exists(file_path):
-                print("✅ Waiting file does not exist - continuing with step18")
-                return True
-            
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read().strip()
-            
-            if not content:
-                print("✅ Waiting file is empty - continuing with step18")
-                return True
-            
-            # Check if all profiles have status
-            profiles = []
-            current_profile = {}
-            lines = content.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                
-                if not line:
-                    if current_profile:
-                        profiles.append(current_profile)
-                        current_profile = {}
-                    continue
-                
-                if line.isdigit():
-                    current_profile['serial_number'] = line
-                elif line.startswith("profile link = "):
-                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
-                elif line.startswith("profile picture link = "):
-                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                elif line.startswith("raw picture id = "):
-                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                elif line.startswith("status = "):
-                    current_profile['status'] = line.replace("status = ", "").strip()
-            
-            if current_profile:
-                profiles.append(current_profile)
-            
-            # Check if any profile doesn't have status
-            for profile in profiles:
-                if 'status' not in profile:
-                    print("✅ Profiles without status found - continuing with step18")
-                    return True
-            
-            print("❌ All profiles have status - skipping step18, going to step19")
-            return False
-            
-        except Exception as e:
-            print(f"❌ Error checking waiting file: {str(e)}")
-            return True
-    
-    def step18a_close_and_reopen_browser():
-        """Step 18a: Close browser if open and reopen"""
-        print("\n" + "-" * 30)
-        print("STEP 18a: Closing and reopening browser")
-        print("-" * 30)
-        
-        close_chrome()
-        time.sleep(2)
-        
-        if not launch_chrome():
-            print("❌ Failed to launch Chrome")
-            return False
-        return True
-    
-    def step18b_check_internet():
-        """Step 18b: Check internet connection"""
-        print("\n" + "-" * 30)
-        print("STEP 18b: Checking internet connection")
-        print("-" * 30)
-        
-        return check_internet()
-    
-    def step18c_open_whatsapp():
-        """Step 18c: Open WhatsApp Web"""
-        print("\n" + "-" * 30)
-        print("STEP 18c: Opening WhatsApp Web")
-        print("-" * 30)
-        
-        try:
-            driver.get("https://web.whatsapp.com/")
-            print("✅ WhatsApp Web opened successfully")
-            return True
-        except Exception as e:
-            print(f"❌ Error opening WhatsApp: {str(e)}")
-            return False
-    
-    def step18d_check_xpath001():
-        """Step 18d: Check for XPath001 for 120 seconds"""
-        print("\n" + "-" * 30)
-        print("STEP 18d: Checking for XPath001 (search field)")
-        print("-" * 30)
-        
-        # Fetch only needed XPath
-        whatsapp_xpath001 = fetch_xpath_from_firebase("Xpath001", "WhatsApp")
-        
-        start_time = time.time()
-        
-        while time.time() - start_time <= 120:
-            elapsed = int(time.time() - start_time)
-            
-            try:
-                element = driver.find_element("xpath", whatsapp_xpath001)
-                print(f"✅ XPath001 found at {elapsed} seconds")
-                element.click()
-                print("✅ Clicked XPath001 - Entered mobile number search field")
-                return True
-            except NoSuchElementException:
-                sys.stdout.write(f'\r🔍 Checking XPath001... ({elapsed}/120 seconds)')
-                sys.stdout.flush()
-                time.sleep(1)
-            except Exception as e:
-                print(f"\n❌ Error with XPath001: {str(e)}")
-                return False
-        
-        print(f"\n❌ XPath001 not found within 120 seconds")
-        return False
-    
-    def step18e_check_report_number_file():
-        """Step 18e: Check Report number file"""
-        print("\n" + "-" * 30)
-        print("STEP 18e: Checking Report number file")
-        print("-" * 30)
-        
-        file_path = PATHS["report_number_file"]
-        
-        if not os.path.exists(file_path):
-            print("❌ Report number file not available")
-            return False
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                first_line = file.readline().strip()
-            
-            if first_line:
-                print("✅ Report number file available")
-                print(f"✅ Phone number is available: {first_line}")
-                return first_line
-            else:
-                print("❌ Phone number is not available in file")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Error reading report number file: {str(e)}")
-            return False
-    
-    def step18f_check_xpath011():
-        """Step 18f: Check for XPath011 (Loading chats)"""
-        print("\n" + "-" * 30)
-        print("STEP 18f: Checking for XPath011 (Loading chats)")
-        print("-" * 30)
-        
-        # Fetch only needed XPath
-        whatsapp_xpath011 = fetch_xpath_from_firebase("Xpath011", "WhatsApp")
-        
-        try:
-            element = driver.find_element("xpath", whatsapp_xpath011)
-            print("✅ XPath011 found - Loading your chats")
-            return True
-        except NoSuchElementException:
-            print("❌ XPath011 not found")
-            return False
-        except Exception as e:
-            print(f"❌ Error with XPath011: {str(e)}")
-            return False
-    
-    def step18g_paste_phone_number(phone_number):
-        """Step 18g: Paste phone number in search field"""
-        print("\n" + "-" * 30)
-        print("STEP 18g: Pasting phone number")
-        print("-" * 30)
-        
-        try:
-            # Clear any existing text and paste the number
-            actions = ActionChains(driver)
-            actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).send_keys(Keys.DELETE).perform()
-            actions.send_keys(phone_number).perform()
-            
-            print("✅ Phone number pasted successfully")
-            
-            # Wait 10 seconds for stability
-            print("⏳ Waiting 10 seconds for stability...")
-            time.sleep(10)
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error pasting phone number: {str(e)}")
-            return False
-    
-    def step18h_check_xpath004():
-        """Step 18h: Check for XPath004 (No chats found)"""
-        print("\n" + "-" * 30)
-        print("STEP 18h: Checking for XPath004 (No chats found)")
-        print("-" * 30)
-        
-        # Fetch only needed XPath
-        whatsapp_xpath004 = fetch_xpath_from_firebase("Xpath004", "WhatsApp")
-        
-        try:
-            element = driver.find_element("xpath", whatsapp_xpath004)
-            print("✅ XPath004 found - No chats, contacts or messages found")
-            
-            # Check internet connection
-            if check_internet():
-                print("❌ Invalid Mobile Number")
-                return "invalid_number"
-            else:
-                print("❌ Internet not available")
-                return "no_internet"
-                
-        except NoSuchElementException:
-            print("✅ XPath004 not found - valid number")
-            return "valid_number"
-        except Exception as e:
-            print(f"❌ Error with XPath004: {str(e)}")
-            return "error"
-    
-    def step18i_press_down_enter():
-        """Step 18i: Press down arrow and enter"""
-        print("\n" + "-" * 30)
-        print("STEP 18i: Pressing down arrow and enter")
-        print("-" * 30)
-        
-        try:
-            # Press down arrow
-            actions = ActionChains(driver)
-            actions.send_keys(Keys.ARROW_DOWN).perform()
-            print("✅ Down arrow pressed")
-            
-            # Wait 2 seconds
-            time.sleep(2)
-            
-            # Press enter
-            actions.send_keys(Keys.ENTER).perform()
-            print("✅ Enter pressed - Entered Message Field")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error pressing keys: {str(e)}")
-            return False
-    
-    def step18j_type_message():
-        """Step 18j: Type the message with Shift+Enter for newlines"""
-        print("\n" + "-" * 30)
-        print("STEP 18j: Typing message with proper formatting")
-        print("-" * 30)
-        
-        try:
-            current_date = datetime.now().strftime("%d-%m-%Y")
-            
-            # First line
-            first_line = f"Facebook profile liker ({current_date})"
-            # Second line
-            second_line = "There is no new picture available today"
-            
-            # Type first line
-            actions = ActionChains(driver)
-            actions.send_keys(first_line).perform()
-            print(f"✅ Typed: {first_line}")
-            
-            # Press Shift+Enter for newline (NOT send)
-            actions.key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT).perform()
-            print("✅ Pressed Shift+Enter for newline")
-            
-            # Type second line
-            actions.send_keys(second_line).perform()
-            print(f"✅ Typed: {second_line}")
-            
-            print("✅ Complete message typed with proper formatting")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error typing message: {str(e)}")
-            return False
-    
-    def step18k_press_enter():
-        """Step 18k: Press enter to send message"""
-        print("\n" + "-" * 30)
-        print("STEP 18k: Pressing enter to send message")
-        print("-" * 30)
-        
-        try:
-            # Wait 2 seconds
-            time.sleep(2)
-            
-            # Press enter to send the complete message
-            actions = ActionChains(driver)
-            actions.send_keys(Keys.ENTER).perform()
-            print("✅ Enter pressed - complete message sent")
-            
-            # Wait 2 seconds
-            time.sleep(2)
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error sending message: {str(e)}")
-            return False
-    
-    def step18l_check_message_sent():
-        """Step 18l: Check if message is sent (XPath003 disappears)"""
-        print("\n" + "-" * 30)
-        print("STEP 18l: Checking if message is sent")
-        print("-" * 30)
-        
-        # Fetch only needed XPath
-        whatsapp_xpath003 = fetch_xpath_from_firebase("Xpath003", "WhatsApp")
-        
-        start_time = time.time()
-        
-        while time.time() - start_time <= 300:  # 5 minutes timeout
-            elapsed = int(time.time() - start_time)
-            
-            try:
-                # Check if XPath003 (pending icon) exists
-                driver.find_element("xpath", whatsapp_xpath003)
-                sys.stdout.write(f'\r🔍 Message still pending... ({elapsed}/300 seconds)')
-                sys.stdout.flush()
-                time.sleep(1)
-            except NoSuchElementException:
-                print(f"\n✅ XPath003 disappeared - Report sent successfully at {elapsed} seconds")
-                return True
-            except Exception as e:
-                print(f"\n❌ Error checking message status: {str(e)}")
-                return False
-        
-        print(f"\n❌ Message still pending after 5 minutes")
-        return False
-    
-    # Main Step 18 execution
-    if not check_waiting_file_condition():
-        print("🔄 Skipping step18 - all profiles have status, going to step19")
-        return "continue_step19"
-    
-    # Step 18a: Close and reopen browser
-    if not step18a_close_and_reopen_browser():
-        return "error"
-    
-    # Step 18b: Check internet
-    if not step18b_check_internet():
-        return "error"
-    
-    # Step 18c: Open WhatsApp
-    if not step18c_open_whatsapp():
-        return "error"
-    
-    # Step 18d: Check XPath001
-    xpath001_found = step18d_check_xpath001()
-    
-    if not xpath001_found:
-        # Step 18f: Check XPath011
-        xpath011_found = step18f_check_xpath011()
-        if xpath011_found:
-            # Retry step18d
-            xpath001_found = step18d_check_xpath001()
-            if not xpath001_found:
-                # Restart from step18a
-                return step18_whatsapp_report_invalid_data()
-        else:
-            # Restart from step18a
-            return step18_whatsapp_report_invalid_data()
-    
-    # Step 18e: Check report number file
-    phone_number = step18e_check_report_number_file()
-    if not phone_number:
-        print("❌ Stopping script - Report number file issue")
-        return "stop_script"
-    
-    # Step 18g: Paste phone number
-    if not step18g_paste_phone_number(phone_number):
-        return "error"
-    
-    # Step 18h: Check XPath004
-    xpath004_result = step18h_check_xpath004()
-    
-    if xpath004_result == "invalid_number":
-        print("❌ Stopping script - Invalid mobile number")
-        return "stop_script"
-    elif xpath004_result == "no_internet":
-        # Restart from step18a
-        return step18_whatsapp_report_invalid_data()
-    elif xpath004_result == "error":
-        return "error"
-    
-    # Step 18i: Press down arrow and enter
-    if not step18i_press_down_enter():
-        return "error"
-    
-    # Step 18j: Type message
-    if not step18j_type_message():
-        return "error"
-    
-    # Step 18k: Press enter to send
-    if not step18k_press_enter():
-        return "error"
-    
-    # Step 18l: Check message sent
-    if not step18l_check_message_sent():
-        return "error"
-    
-    print("✅ Step 18 completed successfully!")
-    return "stop_script"
-
-# ================================
-# STEP 19: UPLOAD TO REPORT SHEET AND WHATSAPP
-# ================================
-
-def step19_upload_to_report_and_whatsapp():
-    """Step 19: Upload data to Report sheet and send WhatsApp summary"""
-    print("\n" + "=" * 40)
-    print("STEP 19: Upload to Report Sheet and WhatsApp")
-    print("=" * 40)
-    
-    def parse_waiting_file():
-        """Parse waiting for proceed file and extract all profiles with status"""
-        file_path = PATHS["waiting_for_proceed_file"]
-        
-        try:
-            if not os.path.exists(file_path):
-                print("❌ waiting for proceed file not found")
-                return []
-            
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read().strip()
-            
-            if not content:
-                print("ℹ️ waiting for proceed file is empty")
-                return []
-            
-            profiles = []
-            current_profile = {}
-            lines = content.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                
-                if not line:
-                    # Empty line indicates end of current friend data
-                    if current_profile:
-                        profiles.append(current_profile)
-                        current_profile = {}
-                    continue
-                
-                if line.isdigit():
-                    current_profile['serial_number'] = line
-                elif line.startswith("profile link = "):
-                    current_profile['profile_link'] = line.replace("profile link = ", "").strip()
-                elif line.startswith("profile picture link = "):
-                    current_profile['profile_picture_link'] = line.replace("profile picture link = ", "").strip()
-                elif line.startswith("raw picture id = "):
-                    current_profile['raw_picture_id'] = line.replace("raw picture id = ", "").strip()
-                elif line.startswith("status = "):
-                    current_profile['status'] = line.replace("status = ", "").strip()
-            
-            # Add the last profile if exists
-            if current_profile:
-                profiles.append(current_profile)
-            
-            print(f"✅ Parsed {len(profiles)} profiles from waiting file")
-            return profiles
-            
-        except Exception as e:
-            print(f"❌ Error parsing waiting file: {str(e)}")
-            return []
-    
-    def upload_to_report_sheet(profiles):
-        """Upload profiles data to Report sheet"""
-        print("\n" + "-" * 30)
-        print("Uploading to Report Sheet")
-        print("-" * 30)
-        
-        # Configuration - UPDATED NAMES
-        SPREADSHEET_NAME = "facebook profile liker"
-        REPORT_SHEET = "report"
-        
-        def setup_google_sheets_client():
-            """Setup and authenticate Google Sheets client"""
-            try:
-                scope = [
-                    "https://spreadsheets.google.com/feeds",
-                    "https://www.googleapis.com/auth/drive"
-                ]
-                
-                if not os.path.exists(PATHS["google_sheets_credentials"]):
-                    raise Exception(f"Credentials file not found: {PATHS['google_sheets_credentials']}")
-                
-                creds = Credentials.from_service_account_file(PATHS["google_sheets_credentials"], scopes=scope)
-                client = gspread.authorize(creds)
-                return client
-            except Exception as e:
-                raise Exception(f"Failed to setup Google Sheets client: {str(e)}")
-        
-        def prepare_data_for_upload(profiles):
-            """Prepare data for Report sheet upload"""
-            current_datetime = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-            
-            report_data = []
-            
-            for profile in profiles:
-                serial_number = profile.get('serial_number', '')
-                profile_link = profile.get('profile_link', '')
-                profile_picture_link = profile.get('profile_picture_link', '')
-                raw_picture_id = profile.get('raw_picture_id', '')
-                status = profile.get('status', '')
-                
-                # Prepare row data for Report sheet (7 columns) - UPDATED COLUMN NAMES
-                row_data = [
-                    current_datetime,      # date-time
-                    serial_number,         # serial number
-                    profile_link,          # profile link
-                    profile_picture_link,  # profile picture link
-                    raw_picture_id,        # raw picture id
-                    status,                # status
-                    ""                     # remark (leave empty)
-                ]
-                
-                report_data.append(row_data)
-            
-            print(f"📊 Prepared {len(report_data)} rows for report sheet")
-            return report_data
-        
-        # Unlimited retry logic for upload
-        retry_count = 0
+class CompleteBotScheduler:
+    def __init__(self):
+        self.username = os.getenv('USER') or os.getenv('USERNAME')
+        if not self.username:
+            print("Error: Could not determine username")
+            sys.exit(1)
+            
+        self.bots_base_path = Path(f"/home/{self.username}/bots")
+        self.scheduler_folder = "scheduler"
+        self.github_repo = "https://github.com/Thaniyanki/raspberry-pi-bots"
+        self.github_raw_base = "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
+        
+        # Colors for terminal output
+        self.YELLOW = '\033[93m'
+        self.GREEN = '\033[92m'
+        self.RED = '\033[91m'
+        self.BLUE = '\033[94m'
+        self.ENDC = '\033[0m'
+        self.BOLD = '\033[1m'
+        
+        # Selenium driver
+        self.driver = None
+        self.xpaths = {}
+        
+    def unlimited_retry_api_call(self, api_call_func, operation_name, max_retry_delay=300, initial_delay=5):
+        """Unlimited retry decorator for Google Sheets API calls"""
+        delay = initial_delay
+        attempt = 1
         
         while True:
             try:
-                retry_count += 1
-                print(f"🔄 Attempt {retry_count} to upload to report sheet...")
-                
-                # Setup client
-                client = setup_google_sheets_client()
-                print("✅ Google Sheets client authenticated")
-                
-                # Prepare data
-                report_data = prepare_data_for_upload(profiles)
-                if not report_data:
-                    print("❌ No data to upload")
-                    return False
-                
-                # Open spreadsheet and worksheet
-                spreadsheet = client.open(SPREADSHEET_NAME)
-                
-                try:
-                    worksheet = spreadsheet.worksheet(REPORT_SHEET)
-                    print("✅ Found existing report worksheet")
-                except gspread.exceptions.WorksheetNotFound:
-                    print("📝 Creating new report worksheet...")
-                    worksheet = spreadsheet.add_worksheet(title=REPORT_SHEET, rows=1000, cols=10)
-                    
-                    # Add headers - UPDATED HEADER NAMES
-                    headers = ["date-time", "serial number", "profile link", "profile picture link", "raw picture id", "status", "remark"]
-                    worksheet.append_row(headers)
-                    print("✅ Added headers to new report worksheet")
-                
-                # Upload data (append to existing data)
-                worksheet.append_rows(report_data)
-                print(f"✅ Successfully uploaded {len(report_data)} rows to report sheet")
-                return True
-                
-            except Exception as e:
-                error_message = str(e)
-                if "200" in error_message:
-                    print("✅ Upload successful (200 response detected)")
-                    return True
-                
-                print(f"❌ Error during upload (Attempt {retry_count}): {error_message}")
-                print("🔄 Retrying in 10 seconds...")
-                time.sleep(10)
-    
-    def analyze_status_counts(profiles):
-        """Analyze status counts for WhatsApp message"""
-        status_counts = {
-            "Profile picture liked": 0,
-            "Already Liked": 0,
-            "Like option not available user may restricted": 0,
-            "See profile picture option not available user may restricted": 0,
-            "Can't open profile picture or story": 0
-        }
-        
-        for profile in profiles:
-            status = profile.get('status', '')
-            if status in status_counts:
-                status_counts[status] += 1
-        
-        print("📊 Status Analysis:")
-        for status, count in status_counts.items():
-            print(f"   - {status}: {count}")
-        
-        return status_counts
-    
-    def step19_whatsapp_report(status_counts):
-        """Step 19 WhatsApp reporting with proper message formatting"""
-        print("\n" + "=" * 30)
-        print("STEP 19 WhatsApp Report")
-        print("=" * 30)
-        
-        def step19a_close_and_reopen_browser():
-            """Step 19a: Close browser if open and reopen"""
-            print("\n" + "-" * 20)
-            print("STEP 19a: Closing and reopening browser")
-            print("-" * 20)
-            
-            close_chrome()
-            time.sleep(2)
-            
-            if not launch_chrome():
-                print("❌ Failed to launch Chrome")
-                return False
-            return True
-        
-        def step19b_check_internet():
-            """Step 19b: Check internet connection"""
-            print("\n" + "-" * 20)
-            print("STEP 19b: Checking internet connection")
-            print("-" * 20)
-            
-            return check_internet()
-        
-        def step19c_open_whatsapp():
-            """Step 19c: Open WhatsApp Web"""
-            print("\n" + "-" * 20)
-            print("STEP 19c: Opening WhatsApp Web")
-            print("-" * 20)
-            
-            try:
-                driver.get("https://web.whatsapp.com/")
-                print("✅ WhatsApp Web opened successfully")
-                return True
-            except Exception as e:
-                print(f"❌ Error opening WhatsApp: {str(e)}")
-                return False
-        
-        def step19d_check_xpath001():
-            """Step 19d: Check for XPath001 for 120 seconds"""
-            print("\n" + "-" * 20)
-            print("STEP 19d: Checking for XPath001 (search field)")
-            print("-" * 20)
-            
-            # Fetch only needed XPath
-            whatsapp_xpath001 = fetch_xpath_from_firebase("Xpath001", "WhatsApp")
-            
-            start_time = time.time()
-            
-            while time.time() - start_time <= 120:
-                elapsed = int(time.time() - start_time)
-                
-                try:
-                    element = driver.find_element("xpath", whatsapp_xpath001)
-                    print(f"✅ XPath001 found at {elapsed} seconds")
-                    element.click()
-                    print("✅ Clicked XPath001 - Entered mobile number search field")
-                    return True
-                except NoSuchElementException:
-                    sys.stdout.write(f'\r🔍 Checking XPath001... ({elapsed}/120 seconds)')
-                    sys.stdout.flush()
-                    time.sleep(1)
-                except Exception as e:
-                    print(f"\n❌ Error with XPath001: {str(e)}")
-                    return False
-            
-            print(f"\n❌ XPath001 not found within 120 seconds")
-            return False
-        
-        def step19e_check_report_number_file():
-            """Step 19e: Check Report number file"""
-            print("\n" + "-" * 20)
-            print("STEP 19e: Checking Report number file")
-            print("-" * 20)
-            
-            file_path = PATHS["report_number_file"]
-            
-            if not os.path.exists(file_path):
-                print("❌ Report number file not available")
-                return False
-            
-            try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    first_line = file.readline().strip()
-                
-                if first_line:
-                    print("✅ Report number file available")
-                    print(f"✅ Phone number is available: {first_line}")
-                    return first_line
+                return api_call_func()
+            except HttpError as e:
+                if e.resp.status in [503, 500, 429]:
+                    print(f"{self.YELLOW}⚠ {operation_name} - Attempt {attempt}: API temporarily unavailable ({e.resp.status}){self.ENDC}")
+                    print(f"{self.YELLOW}   Retrying in {delay} seconds...{self.ENDC}")
+                    time.sleep(delay)
+                    delay = min(delay * 2, max_retry_delay)
+                    attempt += 1
                 else:
-                    print("❌ Phone number is not available in file")
-                    return False
-                    
+                    print(f"{self.RED}❌ {operation_name} - HTTP Error {e.resp.status}: {e}{self.ENDC}")
+                    raise
             except Exception as e:
-                print(f"❌ Error reading report number file: {str(e)}")
-                return False
-        
-        def step19f_check_xpath011():
-            """Step 19f: Check for XPath011 (Loading chats)"""
-            print("\n" + "-" * 20)
-            print("STEP 19f: Checking for XPath011 (Loading chats)")
-            print("-" * 20)
+                print(f"{self.RED}❌ {operation_name} - Attempt {attempt}: {e}{self.ENDC}")
+                if attempt >= 3:
+                    raise
+                print(f"{self.YELLOW}   Retrying in {delay} seconds...{self.ENDC}")
+                time.sleep(delay)
+                delay = min(delay * 2, max_retry_delay)
+                attempt += 1
+
+    def run_curl_command(self):
+        """Run the curl command to setup bots with LIVE output"""
+        print("Setting up bots using curl command...")
+        try:
+            print("Starting bot installation... This may take several minutes.")
+            print("=" * 60)
             
-            # Fetch only needed XPath
-            whatsapp_xpath011 = fetch_xpath_from_firebase("Xpath011", "WhatsApp")
+            process = subprocess.run(
+                'curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/all-in-one-venv/all%20in%20one%20venv.py" | python3',
+                shell=True,
+                stdout=None,
+                stderr=None,
+                text=True
+            )
             
-            try:
-                element = driver.find_element("xpath", whatsapp_xpath011)
-                print("✅ XPath011 found - Loading your chats")
-                return True
-            except NoSuchElementException:
-                print("❌ XPath011 not found")
-                return False
-            except Exception as e:
-                print(f"❌ Error with XPath011: {str(e)}")
-                return False
-        
-        def step19g_paste_phone_number(phone_number):
-            """Step 19g: Paste phone number in search field"""
-            print("\n" + "-" * 20)
-            print("STEP 19g: Pasting phone number")
-            print("-" * 20)
+            print("=" * 60)
             
-            try:
-                # Clear any existing text and paste the number
-                actions = ActionChains(driver)
-                actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).send_keys(Keys.DELETE).perform()
-                actions.send_keys(phone_number).perform()
-                
-                print("✅ Phone number pasted successfully")
-                
-                # Wait 10 seconds for stability
-                print("⏳ Waiting 10 seconds for stability...")
-                time.sleep(10)
-                
-                return True
-                
-            except Exception as e:
-                print(f"❌ Error pasting phone number: {str(e)}")
-                return False
-        
-        def step19h_check_xpath004():
-            """Step 19h: Check for XPath004 (No chats found)"""
-            print("\n" + "-" * 20)
-            print("STEP 19h: Checking for XPath004 (No chats found)")
-            print("-" * 20)
-            
-            # Fetch only needed XPath
-            whatsapp_xpath004 = fetch_xpath_from_firebase("Xpath004", "WhatsApp")
-            
-            try:
-                element = driver.find_element("xpath", whatsapp_xpath004)
-                print("✅ XPath004 found - No chats, contacts or messages found")
-                
-                # Check internet connection
-                if check_internet():
-                    print("❌ Invalid Mobile Number")
-                    return "invalid_number"
-                else:
-                    print("❌ Internet not available")
-                    return "no_internet"
-                    
-            except NoSuchElementException:
-                print("✅ XPath004 not found - valid number")
-                return "valid_number"
-            except Exception as e:
-                print(f"❌ Error with XPath004: {str(e)}")
-                return "error"
-        
-        def step19i_press_down_enter():
-            """Step 19i: Press down arrow and enter"""
-            print("\n" + "-" * 20)
-            print("STEP 19i: Pressing down arrow and enter")
-            print("-" * 20)
-            
-            try:
-                # Press down arrow
-                actions = ActionChains(driver)
-                actions.send_keys(Keys.ARROW_DOWN).perform()
-                print("✅ Down arrow pressed")
-                
-                # Wait 2 seconds
-                time.sleep(2)
-                
-                # Press enter
-                actions.send_keys(Keys.ENTER).perform()
-                print("✅ Enter pressed - Entered Message Field")
-                
-                return True
-                
-            except Exception as e:
-                print(f"❌ Error pressing keys: {str(e)}")
-                return False
-        
-        def step19j_type_message(status_counts):
-            """Step 19j: Type the summary message with Shift+Enter for newlines"""
-            print("\n" + "-" * 20)
-            print("STEP 19j: Typing summary message with proper formatting")
-            print("-" * 20)
-            
-            try:
-                current_date = datetime.now().strftime("%d-%m-%Y")
-                
-                # Use double quotes for the f-string to avoid single quote issues
-                cant_open_key = "Can't open profile picture or story"
-                
-                # Build message lines
-                message_lines = [
-                    f"Facebook profile liker ({current_date})",
-                    f"Profile picture liked = {status_counts['Profile picture liked']}",
-                    f"Already Liked = {status_counts['Already Liked']}",
-                    f"Like option not available user may restricted = {status_counts['Like option not available user may restricted']}",
-                    f"See profile picture option not available user may restricted = {status_counts['See profile picture option not available user may restricted']}",
-                    f"Can't open profile picture or story = {status_counts[cant_open_key]}"
-                ]
-                
-                # Type each line with Shift+Enter for newlines
-                actions = ActionChains(driver)
-                
-                # Type first line
-                actions.send_keys(message_lines[0]).perform()
-                print(f"✅ Typed: {message_lines[0]}")
-                
-                # Type remaining lines with Shift+Enter before each
-                for i in range(1, len(message_lines)):
-                    # Press Shift+Enter for newline (NOT send)
-                    actions.key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT).perform()
-                    print("✅ Pressed Shift+Enter for newline")
-                    
-                    # Type the line
-                    actions.send_keys(message_lines[i]).perform()
-                    print(f"✅ Typed: {message_lines[i]}")
-                
-                print("✅ Complete summary message typed with proper formatting")
-                return True
-                
-            except Exception as e:
-                print(f"❌ Error typing message: {str(e)}")
-                return False
-        
-        def step19k_press_enter():
-            """Step 19k: Press enter to send message"""
-            print("\n" + "-" * 20)
-            print("STEP 19k: Pressing enter to send message")
-            print("-" * 20)
-            
-            try:
-                # Wait 2 seconds
-                time.sleep(2)
-                
-                # Press enter to send the complete message
-                actions = ActionChains(driver)
-                actions.send_keys(Keys.ENTER).perform()
-                print("✅ Enter pressed - complete summary message sent")
-                
-                # Wait 2 seconds
-                time.sleep(2)
-                
-                return True
-                
-            except Exception as e:
-                print(f"❌ Error sending message: {str(e)}")
-                return False
-        
-        def step19l_check_message_sent():
-            """Step 19l: Check if message is sent (XPath003 disappears)"""
-            print("\n" + "-" * 20)
-            print("STEP 19l: Checking if message is sent")
-            print("-" * 20)
-            
-            # Fetch only needed XPath
-            whatsapp_xpath003 = fetch_xpath_from_firebase("Xpath003", "WhatsApp")
-            
-            start_time = time.time()
-            
-            while time.time() - start_time <= 300:  # 5 minutes timeout
-                elapsed = int(time.time() - start_time)
-                
-                try:
-                    # Check if XPath003 (pending icon) exists
-                    driver.find_element("xpath", whatsapp_xpath003)
-                    sys.stdout.write(f'\r🔍 Message still pending... ({elapsed}/300 seconds)')
-                    sys.stdout.flush()
-                    time.sleep(1)
-                except NoSuchElementException:
-                    print(f"\n✅ XPath003 disappeared - Summary report sent successfully at {elapsed} seconds")
-                    return True
-                except Exception as e:
-                    print(f"\n❌ Error checking message status: {str(e)}")
-                    return False
-            
-            print(f"\n❌ Message still pending after 5 minutes")
-            return False
-        
-        # Step 19a: Close and reopen browser
-        if not step19a_close_and_reopen_browser():
-            return False
-        
-        # Step 19b: Check internet
-        if not step19b_check_internet():
-            return False
-        
-        # Step 19c: Open WhatsApp
-        if not step19c_open_whatsapp():
-            return False
-        
-        # Step 19d: Check XPath001
-        xpath001_found = step19d_check_xpath001()
-        
-        if not xpath001_found:
-            # Step 19f: Check XPath011
-            xpath011_found = step19f_check_xpath011()
-            if xpath011_found:
-                # Retry step19d
-                xpath001_found = step19d_check_xpath001()
-                if not xpath001_found:
-                    # Restart from step19a
-                    return step19_whatsapp_report(status_counts)
+            if process.returncode == 0:
+                print("Bots setup completed successfully")
             else:
-                # Restart from step19a
-                return step19_whatsapp_report(status_counts)
-        
-        # Step 19e: Check report number file
-        phone_number = step19e_check_report_number_file()
-        if not phone_number:
-            print("❌ Stopping script - Report number file issue")
+                print(f"Setup completed with return code: {process.returncode}")
+                
+        except Exception as e:
+            print(f"Error executing setup: {e}")
+            
+        sys.exit(0)
+    
+    def check_bots_folder(self):
+        """Check if bots folder exists and has valid content"""
+        if not self.bots_base_path.exists():
+            print("Bots folder not found. Running setup...")
+            self.run_curl_command()
             return False
+            
+        items = list(self.bots_base_path.iterdir())
+        folders = [item for item in items if item.is_dir()]
         
-        # Step 19g: Paste phone number
-        if not step19g_paste_phone_number(phone_number):
+        if not folders:
+            print("Bots folder is empty. Running setup...")
+            self.run_curl_command()
             return False
-        
-        # Step 19h: Check XPath004
-        xpath004_result = step19h_check_xpath004()
-        
-        if xpath004_result == "invalid_number":
-            print("❌ Stopping script - Invalid mobile number")
-            return False
-        elif xpath004_result == "no_internet":
-            # Restart from step19a
-            return step19_whatsapp_report(status_counts)
-        elif xpath004_result == "error":
-            return False
-        
-        # Step 19i: Press down arrow and enter
-        if not step19i_press_down_enter():
-            return False
-        
-        # Step 19j: Type message
-        if not step19j_type_message(status_counts):
-            return False
-        
-        # Step 19k: Press enter to send
-        if not step19k_press_enter():
-            return False
-        
-        # Step 19l: Check message sent
-        if not step19l_check_message_sent():
-            return False
-        
-        print("✅ Step 19 WhatsApp report completed successfully!")
+            
         return True
     
-    # Main Step 19 execution
-    # Step 1: Parse waiting file
-    profiles = parse_waiting_file()
-    if not profiles:
-        print("❌ No profiles found in waiting file")
-        return False
+    def get_bot_folders(self):
+        """Get all bot folders INCLUDING scheduler folder"""
+        if not self.bots_base_path.exists():
+            return []
+            
+        items = list(self.bots_base_path.iterdir())
+        bot_folders = [item for item in items if item.is_dir()]
+        return bot_folders
     
-    # Step 2: Upload to Report sheet
-    if not upload_to_report_sheet(profiles):
-        print("❌ Failed to upload to report sheet")
-        return False
+    def get_working_bot_folders(self):
+        """Get all bot folders that need database keys (EXCLUDING scheduler)"""
+        bot_folders = self.get_bot_folders()
+        return [folder for folder in bot_folders if folder.name != self.scheduler_folder]
     
-    # Step 3: Analyze status counts
-    status_counts = analyze_status_counts(profiles)
+    def get_venv_path(self, bot_folder):
+        """Get the venv path for a bot folder"""
+        venv_path = bot_folder / "venv"
+        return venv_path if venv_path.exists() and venv_path.is_dir() else None
     
-    # Step 4: Send WhatsApp report
-    if not step19_whatsapp_report(status_counts):
-        print("❌ Failed to send WhatsApp report")
-        return False
+    def check_report_numbers_exist(self, bot_folders):
+        """Check if report number files exist in ALL bot folders' venv (INCLUDING scheduler)"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if not venv_path:
+                return False
+            report_file = venv_path / "report number"
+            if not report_file.exists():
+                return False
+        return True
     
-    print("✅ Step 19 completed successfully!")
-    return True
+    def check_report_numbers_valid(self, bot_folders):
+        """Check if all report number files have valid content (not empty) - INCLUDING scheduler"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if not content:
+                            return False
+                    except:
+                        return False
+        return True
+    
+    def get_valid_report_number_from_bots(self, bot_folders):
+        """Get a valid report number from any bot that has one (INCLUDING scheduler)"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            return content, folder.name
+                    except:
+                        continue
+        return None, None
+    
+    def copy_report_numbers_from_valid_bots(self, bot_folders):
+        """Copy report numbers from bots that have them to bots that don't (INCLUDING scheduler)"""
+        print("Automatically copying report numbers from bots that have them...")
+        
+        valid_report_numbers = {}
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            valid_report_numbers[folder.name] = content
+                    except:
+                        continue
+        
+        if not valid_report_numbers:
+            print("No valid report numbers found in any bot.")
+            return False
+        
+        source_bot, report_number = next(iter(valid_report_numbers.items()))
+        print(f"Found valid report number '{report_number}' in {source_bot}")
+        
+        copied_count = 0
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                needs_copy = False
+                
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if not content or not self.is_valid_phone_number(content):
+                            needs_copy = True
+                    except:
+                        needs_copy = True
+                else:
+                    needs_copy = True
+                
+                if needs_copy:
+                    try:
+                        with open(report_file, 'w') as f:
+                            f.write(report_number)
+                        print(f"  ✓ Copied to {folder.name}/venv/")
+                        copied_count += 1
+                    except Exception as e:
+                        print(f"  ✗ Failed to copy to {folder.name}/venv/: {e}")
+        
+        print(f"Successfully copied report number to {copied_count} bots")
+        return True
+    
+    def delete_all_report_numbers(self, bot_folders):
+        """Delete all report number files from venv folders (INCLUDING scheduler)"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    report_file.unlink()
+                    print(f"Deleted report number from {folder.name}/venv/")
+    
+    def create_report_numbers(self, bot_folders, report_number):
+        """Create report number files in all bot folders' venv (INCLUDING scheduler)"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                try:
+                    with open(report_file, 'w') as f:
+                        f.write(report_number)
+                    print(f"Created report number in {folder.name}/venv/")
+                except Exception as e:
+                    print(f"Error creating report number in {folder.name}/venv/: {e}")
+    
+    def is_valid_phone_number(self, phone_number):
+        """Validate that the input contains only digits"""
+        if not phone_number:
+            return False
+        
+        cleaned_number = phone_number.replace(' ', '').replace('-', '').replace('+', '').replace('(', '').replace(')', '')
+        
+        if not cleaned_number.isdigit():
+            return False
+        
+        if len(cleaned_number) < 10 or len(cleaned_number) > 15:
+            return False
+        
+        return True
+    
+    def get_report_number_input(self):
+        """Get report number input with validation and fallback for piped input"""
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            if not sys.stdin.isatty():
+                try:
+                    print(f"{self.YELLOW}Enter the report number (phone number): {self.ENDC}", end='', flush=True)
+                    with open('/dev/tty', 'r') as tty:
+                        report_number = tty.readline().strip()
+                    
+                    if self.is_valid_phone_number(report_number):
+                        return report_number
+                    elif report_number:
+                        print(f"Error: '{report_number}' is not a valid phone number. Please enter only digits.")
+                        if attempt < max_attempts - 1:
+                            print(f"Attempt {attempt + 1} of {max_attempts}")
+                        continue
+                    else:
+                        return None
+                        
+                except:
+                    print("\nCannot read input from pipe.")
+                    print("Please download and run the script directly:")
+                    print("curl -sL 'https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/scheduler/scheduler.py' -o scheduler.py && python3 scheduler.py")
+                    return None
+            else:
+                try:
+                    print(f"{self.YELLOW}Enter the report number (phone number): {self.ENDC}", end='', flush=True)
+                    report_number = input().strip()
+                    
+                    if self.is_valid_phone_number(report_number):
+                        return report_number
+                    elif report_number:
+                        print(f"Error: '{report_number}' is not a valid phone number. Please enter only digits.")
+                        if attempt < max_attempts - 1:
+                            print(f"Attempt {attempt + 1} of {max_attempts}")
+                        continue
+                    else:
+                        return None
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return None
+        
+        print("Maximum attempts reached. Please run the script again.")
+        return None
+    
+    def handle_report_numbers(self, bot_folders):
+        """Handle report number creation/modification - AUTO COPY from existing bots (INCLUDING scheduler)"""
+        all_have_report_numbers = self.check_report_numbers_exist(bot_folders)
+        all_report_numbers_valid = self.check_report_numbers_valid(bot_folders)
+        
+        if not all_have_report_numbers or not all_report_numbers_valid:
+            if not all_have_report_numbers:
+                print("Some bots are missing report numbers in their venv folders.")
+            if not all_report_numbers_valid:
+                print("Some bots have empty or invalid report numbers in their venv folders.")
+            
+            print("Attempting to auto-copy report numbers from bots that have them...")
+            if self.copy_report_numbers_from_valid_bots(bot_folders):
+                print("Auto-copy completed successfully!")
+                return
+            
+            print("No valid report numbers found to copy from.")
+            report_number = self.get_report_number_input()
+            
+            if report_number:
+                self.create_report_numbers(bot_folders, report_number)
+                print(f"Report number '{report_number}' set for all bots in their venv folders.")
+            else:
+                print("No valid report number provided. Please run the script again to set report numbers.")
+                sys.exit(1)
+            return
+        
+        print("Report number already available in all bots folder's venv folders.")
+        
+        if not sys.stdin.isatty():
+            print("Waiting 10 seconds... (Press Ctrl+C to modify)")
+            try:
+                for i in range(10, 0, -1):
+                    print(f"\rContinuing in {i} seconds... ", end='', flush=True)
+                    time.sleep(1)
+                print("\r" + " " * 30 + "\r", end='', flush=True)
+                print("Continuing with existing report numbers...")
+            except KeyboardInterrupt:
+                print("\n\nModification requested...")
+                self.delete_all_report_numbers(bot_folders)
+                report_number = self.get_report_number_input()
+                if report_number:
+                    self.create_report_numbers(bot_folders, report_number)
+                    print(f"Report number updated to '{report_number}' in all venv folders")
+                else:
+                    print("No valid report number provided. Keeping existing setup.")
+        else:
+            try:
+                response = input("Do you want to modify? y/n: ").strip().lower()
+                if response == 'y':
+                    self.delete_all_report_numbers(bot_folders)
+                    report_number = self.get_report_number_input()
+                    if report_number:
+                        self.create_report_numbers(bot_folders, report_number)
+                        print(f"Report number updated to '{report_number}' in all venv folders")
+                else:
+                    print("Continuing with existing report numbers...")
+            except (KeyboardInterrupt, EOFError):
+                print("\nContinuing with existing report numbers...")
+    
+    def list_bot_folders(self, bot_folders):
+        """List all available bot folders with venv status"""
+        if bot_folders:
+            print("\nAvailable bot folders:")
+            for folder in bot_folders:
+                venv_path = self.get_venv_path(folder)
+                if venv_path:
+                    report_file = venv_path / "report number"
+                    if report_file.exists():
+                        try:
+                            with open(report_file, 'r') as f:
+                                content = f.read().strip()
+                            if content and self.is_valid_phone_number(content):
+                                status = f"✓ ({content})"
+                            elif content:
+                                status = "✗ (invalid)"
+                            else:
+                                status = "✗ (empty)"
+                        except:
+                            status = "✗ (error)"
+                    else:
+                        status = "✗"
+                    venv_status = "✓"
+                else:
+                    status = "✗"
+                    venv_status = "✗"
+                
+                print(f"  - {folder.name} [venv: {venv_status}] [report number: {status}]")
+    
+    def verify_report_numbers(self, bot_folders):
+        """Verify that report numbers are properly set in venv folders (INCLUDING scheduler)"""
+        print("\nVerifying report numbers in venv folders...")
+        all_set = True
+        empty_files_found = False
+        
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            print(f"  ✓ {folder.name}/venv/: {content}")
+                        else:
+                            print(f"  ✗ {folder.name}/venv/: {'Empty' if not content else 'Invalid'} report number")
+                            all_set = False
+                            empty_files_found = True
+                    except Exception as e:
+                        print(f"  ✗ {folder.name}/venv/: Error reading - {e}")
+                        all_set = False
+                else:
+                    print(f"  ✗ {folder.name}/venv/: No report number file")
+                    all_set = False
+            else:
+                print(f"  ✗ {folder.name}: No venv folder found")
+                all_set = False
+        
+        if empty_files_found:
+            print("\nSome bots have empty or invalid report numbers. Attempting auto-copy...")
+            if self.copy_report_numbers_from_valid_bots(bot_folders):
+                print("Auto-copy completed successfully!")
+                print("\nRe-verifying report numbers...")
+                return self.verify_report_numbers(bot_folders)
+            else:
+                print("No valid report numbers found to copy from.")
+                report_number = self.get_report_number_input()
+                if report_number:
+                    self.create_report_numbers(bot_folders, report_number)
+                    print(f"Report number '{report_number}' updated for all bots.")
+                    print("\nRe-verifying report numbers...")
+                    return self.verify_report_numbers(bot_folders)
+                else:
+                    print("No valid report number provided. Some bots may not work correctly.")
+        
+        return all_set
 
-# ================================
-# IMPROVED MAIN EXECUTION FLOW
-# ================================
+    def check_database_key_exists(self, bot_folders):
+        """Check if database access key exists in any bot folder's venv (EXCLUDING scheduler)"""
+        working_bots = [folder for folder in bot_folders if folder.name != self.scheduler_folder]
+        
+        for folder in working_bots:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                db_key_file = venv_path / "database access key.json"
+                if db_key_file.exists():
+                    return True, folder, db_key_file
+        return False, None, None
+
+    def check_all_bots_have_database_key(self, bot_folders):
+        """Check if all bots have database access key (EXCLUDING scheduler)"""
+        working_bots = [folder for folder in bot_folders if folder.name != self.scheduler_folder]
+        
+        for folder in working_bots:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                db_key_file = venv_path / "database access key.json"
+                if not db_key_file.exists():
+                    return False
+            else:
+                return False
+        return True
+
+    def copy_database_key_to_all_bots(self, source_key_file, bot_folders):
+        """Copy database access key to all bot folders (EXCLUDING scheduler)"""
+        print(f"Copying database access key to all bots (excluding scheduler)...")
+        success_count = 0
+        
+        working_bots = [folder for folder in bot_folders if folder.name != self.scheduler_folder]
+        
+        for folder in working_bots:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                target_key_file = venv_path / "database access key.json"
+                try:
+                    if source_key_file != target_key_file:
+                        shutil.copy2(source_key_file, target_key_file)
+                        print(f"  ✓ Copied to {folder.name}/venv/")
+                        success_count += 1
+                    else:
+                        print(f"  ✓ Source folder: {folder.name}/venv/")
+                        success_count += 1
+                except Exception as e:
+                    print(f"  ✗ Failed to copy to {folder.name}/venv/: {e}")
+        
+        return success_count
+
+    def wait_for_database_key(self, bot_folders):
+        """Wait for database access key to be available in any bot folder (EXCLUDING scheduler)"""
+        print(f"{self.YELLOW}Database access key not available. Please paste 'database access key.json' in any bot folder's venv (excluding scheduler).{self.ENDC}")
+        print("Waiting for database access key... (Checking every 2 seconds)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Database access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(2)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
+    def run_step2(self):
+        """Step 2: Database Access Key Management (EXCLUDING scheduler)"""
+        print("\n" + "=" * 50)
+        print("STEP 2: Database Access Key Management")
+        print("=" * 50)
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        if self.check_all_bots_have_database_key(bot_folders):
+            print(f"{self.GREEN}✓ All bots (excluding scheduler) already have 'database access key.json' in their venv folders{self.ENDC}")
+            return True
+        
+        key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+        
+        if key_exists:
+            print(f"{self.GREEN}✓ Database access key found in {source_folder.name}/venv/{self.ENDC}")
+            print("Copying to all other bots (excluding scheduler)...")
+        else:
+            source_key_file = self.wait_for_database_key(bot_folders)
+            if not source_key_file:
+                return False
+        
+        working_bots = [folder for folder in bot_folders if folder.name != self.scheduler_folder]
+        success_count = self.copy_database_key_to_all_bots(source_key_file, bot_folders)
+        
+        if success_count == len(working_bots):
+            print(f"{self.GREEN}✓ Successfully copied database access key to all {len(working_bots)} bots (excluding scheduler){self.ENDC}")
+            return True
+        else:
+            print(f"{self.YELLOW}⚠ Database access key copied to {success_count} out of {len(working_bots)} bots (excluding scheduler){self.ENDC}")
+            return True
+
+    def check_spreadsheet_key_exists(self, bot_folders):
+        """Check if spreadsheet access key exists in any bot folder's venv (INCLUDING scheduler)"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                spreadsheet_key_file = venv_path / "spread sheet access key.json"
+                if spreadsheet_key_file.exists():
+                    return True, folder, spreadsheet_key_file
+        return False, None, None
+
+    def check_all_bots_have_spreadsheet_key(self, bot_folders):
+        """Check if all bots have spreadsheet access key (INCLUDING scheduler)"""
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                spreadsheet_key_file = venv_path / "spread sheet access key.json"
+                if not spreadsheet_key_file.exists():
+                    return False
+            else:
+                return False
+        return True
+
+    def copy_spreadsheet_key_to_all_bots(self, source_key_file, bot_folders):
+        """Copy spreadsheet access key to all bot folders (INCLUDING scheduler)"""
+        print(f"Copying spreadsheet access key to all bots...")
+        success_count = 0
+        
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                target_key_file = venv_path / "spread sheet access key.json"
+                try:
+                    if source_key_file != target_key_file:
+                        shutil.copy2(source_key_file, target_key_file)
+                        print(f"  ✓ Copied to {folder.name}/venv/")
+                        success_count += 1
+                    else:
+                        print(f"  ✓ Source folder: {folder.name}/venv/")
+                        success_count += 1
+                except Exception as e:
+                    print(f"  ✗ Failed to copy to {folder.name}/venv/: {e}")
+        
+        return success_count
+
+    def wait_for_spreadsheet_key(self, bot_folders):
+        """Wait for spreadsheet access key to be available in any bot folder (INCLUDING scheduler)"""
+        print(f"{self.YELLOW}Spreadsheet access key not available. Please paste 'spread sheet access key.json' in any bot folder's venv.{self.ENDC}")
+        print("Waiting for spreadsheet access key... (Checking every 1 second)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(1)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
+    def run_step3(self):
+        """Step 3: Spreadsheet Access Key Management (INCLUDING scheduler)"""
+        print("\n" + "=" * 50)
+        print("STEP 3: Spreadsheet Access Key Management")
+        print("=" * 50)
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        if self.check_all_bots_have_spreadsheet_key(bot_folders):
+            print(f"{self.GREEN}✓ All bots (including scheduler) already have 'spread sheet access key.json' in their venv folders{self.ENDC}")
+            return True
+        
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+        
+        if key_exists:
+            print(f"{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+            print("Copying to all other bots (including scheduler)...")
+        else:
+            source_key_file = self.wait_for_spreadsheet_key(bot_folders)
+            if not source_key_file:
+                return False
+        
+        success_count = self.copy_spreadsheet_key_to_all_bots(source_key_file, bot_folders)
+        
+        if success_count == len(bot_folders):
+            print(f"{self.GREEN}✓ Successfully copied spreadsheet access key to all {len(bot_folders)} bots (including scheduler){self.ENDC}")
+            return True
+        else:
+            print(f"{self.YELLOW}⚠ Spreadsheet access key copied to {success_count} out of {len(bot_folders)} bots{self.ENDC}")
+            return True
+
+    def wait_for_spreadsheet_key_for_step4(self, bot_folders):
+        """Wait for spreadsheet access key to be available for Step 4 (continuous checking)"""
+        print(f"{self.YELLOW}Spreadsheet access key not available for Step 4.{self.ENDC}")
+        print("Waiting for spreadsheet access key... (Checking every 1 second)")
+        print("Press Ctrl+C to cancel and exit.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+                
+                if key_exists:
+                    print(f"\n{self.GREEN}✓ Spreadsheet access key found in {source_folder.name}/venv/{self.ENDC}")
+                    return source_key_file
+                
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rChecking{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(1)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return None
+
+    def run_step4(self):
+        """Step 4: List Google Sheets with unlimited retry"""
+        print("\n" + "=" * 50)
+        print("STEP 4: Listing Google Sheets")
+        print("=" * 50)
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False
+        
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+        
+        if not key_exists:
+            print(f"{self.YELLOW}Spreadsheet access key not found. Waiting for it to become available...{self.ENDC}")
+            source_key_file = self.wait_for_spreadsheet_key_for_step4(bot_folders)
+            if not source_key_file:
+                return False
+        
+        print(f"{self.GREEN}✓ Using spreadsheet access key from {source_folder.name}/venv/{self.ENDC}")
+        
+        def list_sheets():
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/drive.readonly"
+            ]
+            
+            print("Authorizing with Google Sheets API...")
+            
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            drive = build("drive", "v3", credentials=creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            print("\nSheets accessible by the Service Account:\n")
+            
+            query = "mimeType='application/vnd.google-apps.spreadsheet'"
+            
+            page_token = None
+            sheet_count = 0
+            available_sheets = []
+            
+            while True:
+                response = drive.files().list(
+                    q=query,
+                    spaces='drive',
+                    fields="nextPageToken, files(id, name)",
+                    pageToken=page_token
+                ).execute()
+                
+                for file in response.get('files', []):
+                    sheet_count += 1
+                    sheet_info = {
+                        'name': file['name'],
+                        'id': file['id'],
+                        'number': sheet_count
+                    }
+                    available_sheets.append(sheet_info)
+                    print(f"{sheet_count:2d}. {file['name']}  ->  {file['id']}")
+                
+                page_token = response.get('nextPageToken', None)
+                if not page_token:
+                    break
+            
+            if sheet_count == 0:
+                print(f"{self.YELLOW}No Google Sheets found accessible by this service account.{self.ENDC}")
+            else:
+                print(f"\n{self.GREEN}✓ Found {sheet_count} Google Sheet(s){self.ENDC}")
+            
+            self.available_sheets = available_sheets
+            return True
+        
+        return self.unlimited_retry_api_call(
+            list_sheets, 
+            "Listing Google Sheets",
+            max_retry_delay=300,
+            initial_delay=5
+        )
+
+    def run_step5(self):
+        """Step 5: Compare Bot Folders with Google Sheets (EXACT alphabetical match)"""
+        print("\n" + "=" * 50)
+        print("STEP 5: Comparing Bot Folders with Google Sheets")
+        print("=" * 50)
+        print(f"{self.YELLOW}NOTE: Requiring EXACT alphabetical match (case-sensitive){self.ENDC}")
+        
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found!")
+            return False, False
+        
+        if not hasattr(self, 'available_sheets') or not self.available_sheets:
+            print(f"{self.RED}❌ No Google Sheets data available from Step 4{self.ENDC}")
+            return False, False
+        
+        print("Bot folders on Raspberry Pi:")
+        bot_folder_names = []
+        for i, folder in enumerate(bot_folders, 1):
+            print(f"  {i:2d}. {folder.name}")
+            bot_folder_names.append(folder.name)
+        
+        print("\nGoogle Sheets available:")
+        sheet_names = []
+        for sheet in self.available_sheets:
+            print(f"  {sheet['number']:2d}. {sheet['name']}")
+            sheet_names.append(sheet['name'])
+        
+        print(f"\n{self.BOLD}Comparing bot folders with Google Sheets (EXACT match required)...{self.ENDC}")
+        
+        missing_sheets = []
+        all_match = True
+        
+        for bot_name in bot_folder_names:
+            found = False
+            matching_sheet = None
+            
+            for sheet_name in sheet_names:
+                if bot_name == sheet_name:
+                    found = True
+                    matching_sheet = sheet_name
+                    break
+            
+            if found:
+                print(f"{self.GREEN}  ✓ '{bot_name}' matches sheet '{matching_sheet}'{self.ENDC}")
+            else:
+                all_match = False
+                missing_sheets.append(bot_name)
+                case_insensitive_match = None
+                for sheet_name in sheet_names:
+                    if bot_name.lower() == sheet_name.lower():
+                        case_insensitive_match = sheet_name
+                        break
+                
+                if case_insensitive_match:
+                    print(f"{self.RED}  ✗ '{bot_name}' - No EXACT match (found '{case_insensitive_match}' but case doesn't match){self.ENDC}")
+                else:
+                    print(f"{self.RED}  ✗ '{bot_name}' - No matching Google Sheet found{self.ENDC}")
+        
+        extra_sheets = []
+        for sheet_name in sheet_names:
+            found = False
+            
+            for bot_name in bot_folder_names:
+                if sheet_name == bot_name:
+                    found = True
+                    break
+            
+            if not found and sheet_name != "scheduler":
+                extra_sheets.append(sheet_name)
+        
+        print(f"\n{self.BOLD}Comparison Results:{self.ENDC}")
+        
+        if all_match and not extra_sheets:
+            print(f"{self.GREEN}✓ All bots have EXACT matching Google Sheets!{self.ENDC}")
+            print(f"{self.GREEN}✓ No extra sheets found{self.ENDC}")
+            return True, True
+        
+        else:
+            if missing_sheets:
+                print(f"{self.YELLOW}⚠ Missing EXACT Google Sheets for these bots:{self.ENDC}")
+                for missing in missing_sheets:
+                    suggestions = []
+                    for sheet_name in sheet_names:
+                        if missing.lower() == sheet_name.lower():
+                            suggestions.append(sheet_name)
+                    
+                    if suggestions:
+                        print(f"  - '{missing}' (suggest renaming sheet to: {', '.join(suggestions)})")
+                    else:
+                        print(f"  - '{missing}'")
+            
+            if extra_sheets:
+                print(f"{self.BLUE}ℹ️  Extra Google Sheets (no corresponding bot):{self.ENDC}")
+                for extra in extra_sheets:
+                    print(f"  - '{extra}'")
+            
+            print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTLY (case-sensitive){self.ENDC}")
+            print(f"{self.YELLOW}   Please rename your Google Sheets to match the bot folder names exactly.{self.ENDC}")
+            
+            self.missing_sheets = missing_sheets
+            return True, False
+
+    def get_github_bot_folders(self):
+        """Get list of bot folders from GitHub repository"""
+        print("Fetching bot information from GitHub repository...")
+        
+        try:
+            api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"Error accessing GitHub repository: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            bot_folders = []
+            
+            for item in contents:
+                if item['type'] == 'dir':
+                    folder_name = item['name']
+                    if folder_name in ['all-in-one-venv', '.github']:
+                        continue
+                    
+                    folder_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{folder_name}"
+                    folder_response = requests.get(folder_url)
+                    
+                    if folder_response.status_code == 200:
+                        folder_contents = folder_response.json()
+                        has_sheets_format = any(content['name'] == 'sheets format' and content['type'] == 'dir' for content in folder_contents)
+                        has_venv_sh = any(content['name'] == 'venv.sh' for content in folder_contents)
+                        
+                        if has_sheets_format and has_venv_sh:
+                            bot_folders.append(folder_name)
+                            print(f"  ✓ Found bot: {folder_name}")
+        
+            print(f"{self.GREEN}✓ Found {len(bot_folders)} bots on GitHub{self.ENDC}")
+            return bot_folders
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching GitHub repository: {e}{self.ENDC}")
+            return []
+
+    def get_sheets_format_files(self, bot_folder_name):
+        """Get the list of CSV files from the 'sheets format' folder for a bot"""
+        try:
+            api_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{bot_folder_name}/sheets%20format"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"  Error accessing sheets format for {bot_folder_name}: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            csv_files = []
+            
+            for item in contents:
+                if item['name'].endswith('.csv'):
+                    csv_files.append(item['name'])
+                    print(f"    - Found CSV: {item['name']}")
+            
+            return csv_files
+            
+        except Exception as e:
+            print(f"  Error getting sheets format for {bot_folder_name}: {e}")
+            return []
+
+    def download_csv_file(self, bot_folder_name, csv_file):
+        """Download a CSV file from GitHub"""
+        try:
+            encoded_file = csv_file.replace(' ', '%20')
+            csv_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format/{encoded_file}"
+            
+            response = requests.get(csv_url)
+            if response.status_code == 200:
+                return response.text
+            else:
+                print(f"    Error downloading {csv_file}: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"    Error downloading {csv_file}: {e}")
+            return None
+
+    def get_google_sheet_worksheets(self, sheet_name, gc):
+        """Get all worksheets from a Google Sheet with unlimited retry"""
+        def get_worksheets():
+            sheet = gc.open(sheet_name)
+            worksheets = sheet.worksheets()
+            return [worksheet.title for worksheet in worksheets]
+        
+        return self.unlimited_retry_api_call(
+            lambda: get_worksheets(),
+            f"Getting worksheets from '{sheet_name}'",
+            max_retry_delay=300,
+            initial_delay=5
+        )
+
+    def update_worksheet_from_csv(self, sheet_name, worksheet_name, csv_content, gc):
+        """Update existing worksheet header row with CSV content with unlimited retry"""
+        def update_worksheet():
+            sheet = gc.open(sheet_name)
+            worksheet = sheet.worksheet(worksheet_name)
+            
+            current_data = worksheet.get_all_values()
+            
+            csv_reader = csv.reader(csv_content.strip().splitlines())
+            new_data = list(csv_reader)
+            
+            if not current_data:
+                print(f"      ⚠ Worksheet '{worksheet_name}' is empty, updating with new format...")
+                worksheet.update(range_name='A1', values=new_data)
+                print(f"      ✓ Updated worksheet '{worksheet_name}' with new format")
+                return True
+            
+            if not new_data:
+                print(f"      ⚠ CSV file for '{worksheet_name}' is empty, skipping update")
+                return False
+            
+            current_header = current_data[0]
+            new_header = new_data[0]
+            
+            if current_header != new_header:
+                print(f"      ⚠ Headers differ in '{worksheet_name}', updating header row only...")
+                
+                worksheet.update(range_name='A1', values=[new_header])
+                
+                print(f"      ✓ Updated header row in worksheet '{worksheet_name}'")
+                print(f"      Old header: {current_header}")
+                print(f"      New header: {new_header}")
+                return True
+            else:
+                print(f"      ✓ Worksheet '{worksheet_name}' already has correct header format")
+                return False
+        
+        return self.unlimited_retry_api_call(
+            update_worksheet,
+            f"Updating worksheet '{worksheet_name}' in '{sheet_name}'",
+            max_retry_delay=300,
+            initial_delay=5
+        )
+
+    def create_worksheet_if_missing(self, sheet_name, worksheet_name, csv_content, gc):
+        """Create a missing worksheet within an existing Google Sheet with unlimited retry"""
+        def create_worksheet():
+            sheet = gc.open(sheet_name)
+            
+            try:
+                sheet.worksheet(worksheet_name)
+                print(f"      ✓ Worksheet '{worksheet_name}' already exists")
+                return False
+            except gspread.WorksheetNotFound:
+                print(f"      ⚠ Worksheet '{worksheet_name}' not found, creating...")
+                
+                csv_reader = csv.reader(csv_content.strip().splitlines())
+                new_data = list(csv_reader)
+                
+                worksheet = sheet.add_worksheet(title=worksheet_name, rows=100, cols=20)
+                
+                if new_data:
+                    worksheet.update(range_name='A1', values=new_data)
+                
+                print(f"      ✓ Created worksheet '{worksheet_name}' with {len(new_data)} rows")
+                return True
+        
+        return self.unlimited_retry_api_call(
+            create_worksheet,
+            f"Creating worksheet '{worksheet_name}' in '{sheet_name}'",
+            max_retry_delay=300,
+            initial_delay=5
+        )
+
+    def run_step6(self):
+        """Step 6: Verify Google Sheets Format with unlimited retry"""
+        print("\n" + "=" * 50)
+        print("STEP 6: Verifying Google Sheets Format")
+        print("=" * 50)
+        
+        github_bots = self.get_github_bot_folders()
+        if not github_bots:
+            print(f"{self.RED}❌ No bots found on GitHub repository{self.ENDC}")
+            return False, False
+        
+        local_bot_folders = self.get_bot_folders()
+        local_bot_names = [folder.name for folder in local_bot_folders]
+        
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(local_bot_folders)
+        if not key_exists:
+            print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
+            return False, False
+        
+        def process_sheets():
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            
+            updated_count = 0
+            created_count = 0
+            missing_sheets = []
+            all_sheets_available = True
+            
+            for github_bot in github_bots:
+                local_bot_name = github_bot.replace('-', ' ')
+                
+                if local_bot_name in local_bot_names:
+                    print(f"\n{self.BOLD}Processing: {local_bot_name}{self.ENDC}")
+                    
+                    sheet_exists = False
+                    try:
+                        gc.open(local_bot_name)
+                        sheet_exists = True
+                        print(f"  ✓ Google Sheet found: {local_bot_name}")
+                    except gspread.SpreadsheetNotFound:
+                        print(f"  ✗ Google Sheet not found: {local_bot_name}")
+                        missing_sheets.append(local_bot_name)
+                        all_sheets_available = False
+                        continue
+                    
+                    csv_files = self.get_sheets_format_files(github_bot)
+                    if not csv_files:
+                        print(f"  ⚠ No CSV files found in sheets format for {github_bot}")
+                        continue
+                    
+                    existing_worksheets = self.get_google_sheet_worksheets(local_bot_name, gc)
+                    print(f"  Existing worksheets: {existing_worksheets}")
+                    
+                    for csv_file in csv_files:
+                        worksheet_name = csv_file.replace('.csv', '')
+                        print(f"  Processing: {worksheet_name}")
+                        
+                        csv_content = self.download_csv_file(github_bot, csv_file)
+                        if not csv_content:
+                            print(f"    ✗ Failed to download {csv_file}")
+                            continue
+                        
+                        if worksheet_name in existing_worksheets:
+                            if self.update_worksheet_from_csv(local_bot_name, worksheet_name, csv_content, gc):
+                                updated_count += 1
+                        else:
+                            if self.create_worksheet_if_missing(local_bot_name, worksheet_name, csv_content, gc):
+                                created_count += 1
+            
+            print("\n" + "=" * 50)
+            print("STEP 6 SUMMARY:")
+            print("=" * 50)
+            
+            if updated_count > 0:
+                print(f"{self.GREEN}✓ Updated {updated_count} worksheet(s) across all bots{self.ENDC}")
+            
+            if created_count > 0:
+                print(f"{self.GREEN}✓ Created {created_count} missing worksheet(s) across all bots{self.ENDC}")
+            
+            if updated_count == 0 and created_count == 0:
+                print(f"{self.GREEN}✓ All worksheets are up-to-date{self.ENDC}")
+            
+            if missing_sheets:
+                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
+                for missing in missing_sheets:
+                    print(f"  - {missing}")
+                all_sheets_available = False
+            
+            if all_sheets_available:
+                print(f"{self.GREEN}✓ All required sheets and worksheets are available{self.ENDC}")
+                return True, True
+            else:
+                print(f"{self.YELLOW}⚠ Some sheets or worksheets are missing{self.ENDC}")
+                return True, False
+        
+        try:
+            return self.unlimited_retry_api_call(
+                process_sheets,
+                "Step 6: Verifying Google Sheets Format",
+                max_retry_delay=300,
+                initial_delay=10
+            )
+        except Exception as e:
+            print(f"{self.RED}❌ Step 6 failed after unlimited retries: {e}{self.ENDC}")
+            return False, False
+
+    def fetch_xpaths_from_database(self):
+        """Fetch all XPaths from Firebase database"""
+        print("Fetching XPaths from Firebase database...")
+        
+        bot_folders = self.get_bot_folders()
+        key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+        
+        if not key_exists:
+            print(f"{self.RED}❌ Database access key not found in any bot folder{self.ENDC}")
+            return False
+        
+        try:
+            if not firebase_admin._apps:
+                cred = credentials.Certificate(str(source_key_file))
+                firebase_admin.initialize_app(cred, {
+                    'databaseURL': 'https://thaniyanki-xpath-manager-default-rtdb.firebaseio.com/'
+                })
+            
+            ref = db.reference('WhatsApp/Xpath')
+            xpaths_data = ref.get()
+            
+            if xpaths_data:
+                self.xpaths = xpaths_data
+                print(f"{self.GREEN}✓ Successfully fetched {len(xpaths_data)} XPaths from database{self.ENDC}")
+                
+                temp_file = Path("/tmp/whatsapp_xpaths.json")
+                with open(temp_file, 'w') as f:
+                    json.dump(xpaths_data, f, indent=2)
+                print(f"{self.GREEN}✓ XPaths saved to temporary storage: {temp_file}{self.ENDC}")
+                return True
+            else:
+                print(f"{self.RED}❌ No XPaths found in database{self.ENDC}")
+                return False
+                
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching XPaths from database: {e}{self.ENDC}")
+            return False
+
+    def check_internet_connection(self):
+        """Check internet connection using ping"""
+        try:
+            param = "-n" if platform.system().lower() == "windows" else "-c"
+            result = subprocess.run(
+                ["ping", param, "1", "8.8.8.8"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except:
+            return False
+
+    def wait_for_internet(self):
+        """Wait for internet connection to become available"""
+        print("Waiting for internet connection...")
+        check_count = 0
+        while True:
+            check_count += 1
+            if self.check_internet_connection():
+                print(f"{self.GREEN}✓ Internet connection available{self.ENDC}")
+                return True
+            
+            dots = "." * (check_count % 4)
+            spaces = " " * (3 - len(dots))
+            print(f"\rChecking internet{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+            time.sleep(2)
+
+    def setup_selenium_driver(self):
+        """Setup Selenium WebDriver"""
+        try:
+            options = webdriver.ChromeOptions()
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            
+            self.driver = webdriver.Chrome(options=options)
+            print(f"{self.GREEN}✓ Selenium WebDriver initialized{self.ENDC}")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error initializing WebDriver: {e}{self.ENDC}")
+            return False
+
+    def close_browser(self):
+        """Close the browser if open"""
+        if self.driver:
+            try:
+                self.driver.quit()
+                print("Browser closed")
+            except:
+                pass
+            self.driver = None
+
+    def wait_for_xpath(self, xpath, timeout=120):
+        """Wait for XPath to be present"""
+        try:
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((By.XPATH, xpath))
+            )
+            return element
+        except TimeoutException:
+            return None
+
+    def check_xpath_present(self, xpath):
+        """Check if XPath is present"""
+        try:
+            self.driver.find_element(By.XPATH, xpath)
+            return True
+        except NoSuchElementException:
+            return False
+
+    def get_report_number(self):
+        """Get report number from venv folder"""
+        bot_folders = self.get_bot_folders()
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            return content
+                    except:
+                        continue
+        return None
+
+    def send_whatsapp_message(self, missing_bots):
+        """Send WhatsApp message about missing sheets - FROM REFERENCE CODE"""
+        try:
+            # Create message exactly as in reference code
+            if len(missing_bots) == 1:
+                message = f"""Google Sheet Error - {missing_bots[0]}
+---------------------------------------------
+Sheet is not available [or]
+Name is mismatch [or]
+Not share with service account 
+
+Kindly check
+---------------------------------------------"""
+            else:
+                bot_names = " and ".join(missing_bots)
+                message = f"""Google Sheet Error - {bot_names}
+---------------------------------------------
+Sheets are not available [or]
+Names are mismatched [or]
+Not shared with service account 
+
+Kindly check
+---------------------------------------------"""
+            
+            # Type the message exactly as in reference code
+            actions = ActionChains(self.driver)
+            
+            # Type message with Shift+Enter for new lines
+            lines = message.split('\n')
+            for i, line in enumerate(lines):
+                if i > 0:
+                    # Press Shift+Enter for new line
+                    actions.key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT)
+                actions.send_keys(line)
+            
+            actions.perform()
+            
+            print("Message typed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error sending message: {e}{self.ENDC}")
+            return False
+
+    def run_step7(self, missing_bots):
+        """Step 7: Send WhatsApp notification for missing sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 7: Sending WhatsApp Notification")
+        print("=" * 50)
+        
+        if not self.fetch_xpaths_from_database():
+            return False
+        
+        self.close_browser()
+        if not self.setup_selenium_driver():
+            return False
+        
+        if not self.check_internet_connection():
+            print("Internet not available, waiting...")
+            if not self.wait_for_internet():
+                return False
+        
+        print("Opening WhatsApp Web...")
+        try:
+            self.driver.get("https://web.whatsapp.com/")
+            print("WhatsApp Web opened")
+        except Exception as e:
+            print(f"{self.RED}❌ Error opening WhatsApp: {e}{self.ENDC}")
+            return False
+        
+        print("Waiting for search field (XPath001)...")
+        xpath001 = self.xpaths.get('Xpath001')
+        if not xpath001:
+            print(f"{self.RED}❌ XPath001 not found in database{self.ENDC}")
+            return False
+        
+        search_field = self.wait_for_xpath(xpath001, 120)
+        if not search_field:
+            print("Search field not found within 120 seconds")
+            
+            xpath011 = self.xpaths.get('Xpath011')
+            if xpath011 and self.check_xpath_present(xpath011):
+                print("Loading indicator found, retrying...")
+                return self.run_step7(missing_bots)
+            else:
+                print("No loading indicator, restarting...")
+                return self.run_step7(missing_bots)
+        
+        print("Entered Mobile number search field")
+        search_field.click()
+        
+        report_number = self.get_report_number()
+        if not report_number:
+            print("Report number file not available")
+            return False
+        print("Report number file available")
+        
+        if not self.is_valid_phone_number(report_number):
+            print("Phone number is not available or invalid")
+            return False
+        print("Phone number is available")
+        
+        search_field.send_keys(report_number)
+        print("Phone number entered")
+        time.sleep(10)
+        
+        xpath004 = self.xpaths.get('Xpath004')
+        if xpath004 and self.check_xpath_present(xpath004):
+            print("Contact not found (XPath004 present)")
+            if self.check_internet_connection():
+                print("Invalid Mobile Number")
+                return False
+            else:
+                print("No internet, restarting...")
+                return self.run_step7(missing_bots)
+        
+        search_field.send_keys(Keys.ARROW_DOWN)
+        time.sleep(2)
+        search_field.send_keys(Keys.ENTER)
+        print("Entered Message Field")
+        
+        if not self.send_whatsapp_message(missing_bots):
+            return False
+        
+        time.sleep(2)
+        search_field = self.driver.find_element(By.XPATH, xpath001)
+        search_field.send_keys(Keys.ENTER)
+        print("Message sent")
+        
+        print("Waiting for message delivery...")
+        xpath003 = self.xpaths.get('Xpath003')
+        if xpath003:
+            while self.check_xpath_present(xpath003):
+                time.sleep(1)
+        
+        print("Error message sent successfully")
+        return True
+
+    def run_step8(self):
+        """Step 8: All sheets available with correct format"""
+        print("\n" + "=" * 50)
+        print("STEP 8: All Sheets Available with Correct Format")
+        print("=" * 50)
+        print(f"{self.GREEN}✓ All Google Sheets are available with correct format!{self.ENDC}")
+        print("Continuing with bot execution setup...")
+        return True
+
+    def run(self):
+        """Main execution function"""
+        print("=" * 50)
+        print("Complete Bot Scheduler Starting...")
+        print(f"Username: {self.username}")
+        print(f"Bots path: {self.bots_base_path}")
+        print("=" * 50)
+        
+        if not self.check_bots_folder():
+            return
+            
+        bot_folders = self.get_bot_folders()
+        if not bot_folders:
+            print("No bot folders found. Running setup...")
+            self.run_curl_command()
+            return
+        
+        self.list_bot_folders(bot_folders)
+        self.handle_report_numbers(bot_folders)
+        report_numbers_ok = self.verify_report_numbers(bot_folders)
+        
+        print("\n" + "=" * 50)
+        if report_numbers_ok:
+            print("✓ Step 1 completed successfully!")
+            print("✓ All report numbers are properly set in venv folders (including scheduler)")
+        else:
+            print("⚠ Step 1 completed with warnings")
+            print("⚠ Some report numbers may not be set correctly in venv folders")
+        
+        print("=" * 50)
+        
+        step2_success = self.run_step2()
+        
+        if step2_success:
+            print("\n" + "=" * 50)
+            print("✓ Step 2 completed successfully!")
+            print("✓ All database access keys are properly set in venv folders (excluding scheduler)")
+            print("=" * 50)
+            
+            step3_success = self.run_step3()
+            
+            if step3_success:
+                print("\n" + "=" * 50)
+                print("✓ Step 3 completed successfully!")
+                print("✓ All spreadsheet access keys are properly set in venv folders (including scheduler)")
+                print("=" * 50)
+                
+                step4_success = self.run_step4()
+                
+                if step4_success:
+                    print("\n" + "=" * 50)
+                    print("✓ Step 4 completed successfully!")
+                    print("✓ Google Sheets listed successfully")
+                    print("=" * 50)
+                    
+                    step5_success, all_match = self.run_step5()
+                    
+                    if step5_success:
+                        print("\n" + "=" * 50)
+                        print("✓ Step 5 completed successfully!")
+                        print("=" * 50)
+                        
+                        if all_match:
+                            step6_success, all_sheets_available = self.run_step6()
+                            if step6_success:
+                                print("\n" + "=" * 50)
+                                print("✓ Step 6 completed successfully!")
+                                print("=" * 50)
+                                
+                                if all_sheets_available:
+                                    step8_success = self.run_step8()
+                                    if step8_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ Step 8 completed successfully!")
+                                        print("✓ All Google Sheets verified and updated")
+                                        print("=" * 50)
+                                    else:
+                                        print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                        sys.exit(1)
+                                else:
+                                    missing_bots = getattr(self, 'missing_sheets', [])
+                                    if not missing_bots:
+                                        missing_bots = ["Unknown bot"]
+                                    step7_success = self.run_step7(missing_bots)
+                                    if step7_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ Step 7 completed successfully!")
+                                        print("✓ WhatsApp notification sent")
+                                        print("=" * 50)
+                                        step8_success = self.run_step8()
+                                        if step8_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Step 8 completed successfully!")
+                                            print("=" * 50)
+                                    else:
+                                        print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                        sys.exit(1)
+                            else:
+                                print(f"\n{self.RED}❌ Step 6 failed.{self.ENDC}")
+                                sys.exit(1)
+                        else:
+                            missing_bots = getattr(self, 'missing_sheets', [])
+                            if not missing_bots:
+                                missing_bots = ["Unknown bot"]
+                            step7_success = self.run_step7(missing_bots)
+                            if step7_success:
+                                print("\n" + "=" * 50)
+                                print("✓ Step 7 completed successfully!")
+                                print("✓ WhatsApp notification sent")
+                                print("=" * 50)
+                                step8_success = self.run_step8()
+                                if step8_success:
+                                    print("\n" + "=" * 50)
+                                    print("✓ Step 8 completed successfully!")
+                                    print("=" * 50)
+                            else:
+                                print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                sys.exit(1)
+                    else:
+                        print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
+                        sys.exit(1)
+                else:
+                    print(f"\n{self.RED}❌ Step 4 failed. Cannot continue to Step 5.{self.ENDC}")
+                    sys.exit(1)
+            else:
+                print(f"\n{self.RED}❌ Step 3 failed. Cannot continue to Step 4.{self.ENDC}")
+                sys.exit(1)
+        else:
+            print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
+            sys.exit(1)
 
 def main():
-    """Main execution flow for Facebook Profile Liker Bot"""
-    print("=" * 60)
-    print("🚀 STARTING FACEBOOK PROFILE LIKER BOT")
-    print("=" * 60)
-    
-    # Create required directories first
-    create_required_directories()
-    
-    # Verify required files exist
-    if not verify_required_files():
-        print("❌ Required files missing. Please check configuration.")
-        sys.exit(1)
-    
-    # Initialize Firebase
-    if not initialize_firebase():
-        print("❌ Cannot continue without Firebase connection")
-        return
-    
-    # Fetch ONLY NEEDED XPaths to avoid unnecessary Firebase calls
-    print("🔍 Fetching required XPaths from Firebase...")
+    """Main function"""
     try:
-        XPATHS = {
-            'xpath012': fetch_xpath_from_firebase("Xpath012"),
-            'xpath013': fetch_xpath_from_firebase("Xpath013"),
-            'xpath014': fetch_xpath_from_firebase("Xpath014"),
-            'xpath017': fetch_xpath_from_firebase("Xpath017"),
-            'xpath018': fetch_xpath_from_firebase("Xpath018"),
-            'xpath019': fetch_xpath_from_firebase("Xpath019"),
-            'xpath020': fetch_xpath_from_firebase("Xpath020"),
-            'xpath021': fetch_xpath_from_firebase("Xpath021"),
-            'xpath022': fetch_xpath_from_firebase("Xpath022")
-        }
-        print("✅ Required XPaths fetched successfully")
+        scheduler = CompleteBotScheduler()
+        scheduler.run()
+    except KeyboardInterrupt:
+        print("\n\nScript interrupted by user. Exiting...")
+        sys.exit(1)
     except Exception as e:
-        print(f"❌ Failed to fetch XPaths: {str(e)}")
-        return
-    
-    # Track if we need to restart from step14
-    restart_from_step14 = False
-    
-    # Main loop - restart from Step1 if needed
-    while True:
-        try:
-            if not restart_from_step14:
-                # Normal flow - start from Step 1
-                # STEP 1: Check internet connection
-                print("\n" + "=" * 40)
-                print("STEP 1: Checking internet connection...")
-                print("=" * 40)
-                check_internet()
-                
-                # STEP 2: Check and close Chrome if open
-                print("\n" + "=" * 40)
-                print("STEP 2: Checking Chrome browser status...")
-                print("=" * 40)
-                check_and_close_chrome()
-                
-                # STEP 3: Launch Chrome with Facebook
-                print("\n" + "=" * 40)
-                print("STEP 3: Launching Chrome browser...")
-                print("=" * 40)
-                if not launch_chrome():
-                    print("❌ Failed to launch Chrome, restarting from Step 1...")
-                    continue
-                
-                # STEP 4: Wait for stability
-                print("\n" + "=" * 40)
-                print("STEP 4: Waiting for stability...")
-                print("=" * 40)
-                wait_for_stability(10)
-                
-                # STEP 5: Check and click XPath012
-                print("\n" + "=" * 40)
-                print("STEP 5: Checking XPath012 availability...")
-                print("=" * 40)
-                xpath012_clicked = check_and_click_xpath012_optimized(XPATHS['xpath012'])
-                
-                if not xpath012_clicked:
-                    print("❌ XPath012 not found within 50 seconds, restarting from Step 1...")
-                    close_chrome()
-                    continue
-                
-                # STEP 6: Wait for stability
-                print("\n" + "=" * 40)
-                print("STEP 6: Waiting for stability...")
-                print("=" * 40)
-                wait_3_seconds()
-                
-                # NEW CHECK: Look for "Add to story" keyword
-                print("\n" + "=" * 40)
-                print("CHECKING FOR 'ADD TO STORY' KEYWORD...")
-                print("=" * 40)
-                add_to_story_found = check_for_add_to_story()
-                
-                if not add_to_story_found:
-                    print("❌ 'Add to story' keyword not found within 30 seconds, restarting from Step 1...")
-                    close_chrome()
-                    continue
-                
-                # STEP 7: Combine URLs and navigate
-                print("\n" + "=" * 40)
-                print("STEP 7: Combining URLs and navigating...")
-                print("=" * 40)
-                if not combine_url_and_navigate():
-                    print("❌ Failed to combine URLs, restarting from Step 1...")
-                    close_chrome()
-                    continue
-                
-                # STEP 8: Find XPath013 with Page Down
-                print("\n" + "=" * 40)
-                print("STEP 8: Finding XPath013 with Page Down...")
-                print("=" * 40)
-                xpath013_found = find_xpath013_with_page_down_optimized(XPATHS['xpath013'])
-                
-                if not xpath013_found:
-                    print("❌ XPath013 not found within 10 minutes, restarting from Step 1...")
-                    close_chrome()
-                    continue
-                
-                # STEP 9: Manage Current Friends File
-                print("\n" + "=" * 40)
-                print("STEP 9: Managing current friends file...")
-                print("=" * 40)
-                if not manage_current_friends_file():
-                    print("❌ Failed to manage current friends file, restarting from Step 1...")
-                    close_chrome()
-                    continue
-                
-                # STEP 10: Collect Friends Data
-                print("\n" + "=" * 40)
-                print("STEP 10: Collecting friends data...")
-                print("=" * 40)
-                if not collect_friends_data_optimized(XPATHS['xpath014']):
-                    print("❌ Failed to collect friends data, restarting from Step 1...")
-                    close_chrome()
-                    continue
-
-                # STEP 11: Filter and click default pictures
-                print("\n" + "=" * 40)
-                print("STEP 11: Filtering and clicking default pictures...")
-                print("=" * 40)
-                if not step11_filter_and_click_default_pictures():
-                    print("❌ Failed to process default pictures, restarting from Step 1...")
-                    close_chrome()
-                    continue
-
-                # STEP 12: Upload to Google Sheets
-                print("\n" + "=" * 40)
-                print("STEP 12: Uploading to Google Sheets...")
-                print("=" * 40)
-                if not step12_upload_to_google_sheets():
-                    print("❌ Failed to upload to Google Sheets, restarting from Step 1...")
-                    close_chrome()
-                    continue
-
-                # STEP 13: Compare and create waiting file
-                print("\n" + "=" * 40)
-                print("STEP 13: Comparing sheets and creating waiting file...")
-                print("=" * 40)
-                if not step13_compare_and_create_waiting_file():
-                    print("❌ Failed to compare sheets and create waiting file, restarting from Step 1...")
-                    close_chrome()
-                    continue
-
-            # Reset the flag
-            restart_from_step14 = False
-
-            # STEP 14-17: Process profiles from waiting file
-            print("\n" + "=" * 40)
-            print("STEP 14-17: Processing profiles from waiting file...")
-            print("=" * 40)
-            
-            # Keep processing profiles until all have status
-            while True:
-                result = step14_process_profiles_from_waiting_file(XPATHS)
-                
-                if result == "continue_step18":
-                    print("✅ All profiles processed, continuing with step18")
-                    break
-                elif result == "continue_step14a":
-                    print("🔄 Continuing to process next profile...")
-                    continue
-                elif result == "RESTART_FROM_STEP14":
-                    print("🔄 Browser crashed, restarting from step14...")
-                    restart_from_step14 = True
-                    break
-                else:
-                    print("🔄 Continuing to process profiles...")
-                    continue
-            
-            # If we need to restart from step14, continue the outer loop
-            if restart_from_step14:
-                continue
-
-            print(f"\n🎉 BOT COMPLETED SUCCESSFULLY UP TO STEP 17!")
-            print("📊 All profiles processed and status updated in waiting file")
-            
-            # STEP 18: WhatsApp Report for Invalid Data
-            print("\n" + "=" * 40)
-            print("STEP 18: WhatsApp Report for Invalid Data")
-            print("=" * 40)
-            
-            step18_result = step18_whatsapp_report_invalid_data()
-            
-            if step18_result == "continue_step19":
-                print("🔄 Continuing with step19...")
-            elif step18_result == "stop_script":
-                print("🛑 Script stopped as requested")
-                break
-            elif step18_result == "error":
-                print("❌ Error in step18, restarting from step1...")
-                continue
-            
-            # STEP 19: Upload to Report Sheet and WhatsApp Summary
-            print("\n" + "=" * 40)
-            print("STEP 19: Upload to Report Sheet and WhatsApp Summary")
-            print("=" * 40)
-            
-            if step19_upload_to_report_and_whatsapp():
-                print("🎉 BOT COMPLETED ALL STEPS SUCCESSFULLY!")
-                break
-            else:
-                print("❌ Error in step19, restarting from step1...")
-                continue
-            
-        except KeyboardInterrupt:
-            print("\n🛑 Process interrupted by user")
-            break
-        except Exception as e:
-            error_msg = str(e)
-            if "BROWSER_CRASHED" in error_msg:
-                print("🔄 Browser crashed, restarting from step14...")
-                restart_from_step14 = True
-                continue
-            elif "tab crashed" in error_msg.lower() or "session info" in error_msg.lower():
-                print("🔄 Browser tab crashed, restarting from step14...")
-                restart_from_step14 = True
-                continue
-            else:
-                print(f"❌ Unexpected error in main flow: {str(e)}")
-                print("🔄 Restarting from Step 1...")
-                close_chrome()
-                continue
-
-# ================================
-# CLEANUP FUNCTION
-# ================================
-
-def cleanup():
-    """Cleanup function to close browser and exit"""
-    print("\n🧹 Performing cleanup...")
-    close_chrome()
-    print("✅ Cleanup completed")
-
-# ================================
-# EXECUTION
-# ================================
+        print(f"Unexpected error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n🛑 Script stopped by user")
-    except Exception as e:
-        print(f"❌ Fatal error: {str(e)}")
-    finally:
-        cleanup()
+    main()
