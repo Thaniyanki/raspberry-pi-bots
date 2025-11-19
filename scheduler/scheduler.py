@@ -8,7 +8,12 @@ import sys
 import subprocess
 import time
 import shutil
+import csv
+import requests
 from pathlib import Path
+import gspread
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 class BotScheduler:
     def __init__(self):
@@ -19,6 +24,8 @@ class BotScheduler:
             
         self.bots_base_path = Path(f"/home/{self.username}/bots")
         self.scheduler_folder = "scheduler"
+        self.github_repo = "https://github.com/Thaniyanki/raspberry-pi-bots"
+        self.github_raw_base = "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
         
         # Colors for terminal output
         self.YELLOW = '\033[93m'
@@ -889,14 +896,255 @@ class BotScheduler:
             
             return True, False  # Success but not all match
 
+    def get_github_bot_folders(self):
+        """Get list of bot folders from GitHub repository"""
+        print("Fetching bot information from GitHub repository...")
+        
+        try:
+            # Get the main repository structure
+            api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"Error accessing GitHub repository: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            bot_folders = []
+            
+            for item in contents:
+                if item['type'] == 'dir':
+                    folder_name = item['name']
+                    # Skip non-bot folders
+                    if folder_name in ['all-in-one-venv', 'scheduler', '.github']:
+                        continue
+                    
+                    # Check if this folder has both 'sheets format' folder and 'venv.sh'
+                    folder_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{folder_name}"
+                    folder_response = requests.get(folder_url)
+                    
+                    if folder_response.status_code == 200:
+                        folder_contents = folder_response.json()
+                        has_sheets_format = any(content['name'] == 'sheets format' and content['type'] == 'dir' for content in folder_contents)
+                        has_venv_sh = any(content['name'] == 'venv.sh' for content in folder_contents)
+                        
+                        if has_sheets_format and has_venv_sh:
+                            bot_folders.append(folder_name)
+                            print(f"  ✓ Found bot: {folder_name}")
+            
+            print(f"{self.GREEN}✓ Found {len(bot_folders)} bots on GitHub{self.ENDC}")
+            return bot_folders
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching GitHub repository: {e}{self.ENDC}")
+            return []
+
+    def get_sheets_format_files(self, bot_folder_name):
+        """Get the list of CSV files from the 'sheets format' folder for a bot"""
+        try:
+            sheets_format_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format"
+            
+            # Try to get the directory listing from GitHub
+            api_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{bot_folder_name}/sheets%20format"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"  Error accessing sheets format for {bot_folder_name}: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            csv_files = []
+            
+            for item in contents:
+                if item['name'].endswith('.csv'):
+                    csv_files.append(item['name'])
+                    print(f"    - Found CSV: {item['name']}")
+            
+            return csv_files
+            
+        except Exception as e:
+            print(f"  Error getting sheets format for {bot_folder_name}: {e}")
+            return []
+
+    def download_csv_file(self, bot_folder_name, csv_file):
+        """Download a CSV file from GitHub"""
+        try:
+            # URL encode the file name properly
+            encoded_file = csv_file.replace(' ', '%20')
+            csv_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format/{encoded_file}"
+            
+            response = requests.get(csv_url)
+            if response.status_code == 200:
+                return response.text
+            else:
+                print(f"    Error downloading {csv_file}: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"    Error downloading {csv_file}: {e}")
+            return None
+
+    def get_google_sheet_worksheets(self, sheet_name, gc):
+        """Get all worksheets from a Google Sheet"""
+        try:
+            sheet = gc.open(sheet_name)
+            worksheets = sheet.worksheets()
+            return [worksheet.title for worksheet in worksheets]
+        except Exception as e:
+            print(f"    Error accessing Google Sheet '{sheet_name}': {e}")
+            return []
+
+    def update_worksheet_from_csv(self, sheet_name, worksheet_name, csv_content, gc):
+        """Update existing worksheet with CSV content if structure differs"""
+        try:
+            sheet = gc.open(sheet_name)
+            worksheet = sheet.worksheet(worksheet_name)
+            
+            # Get current data from worksheet
+            current_data = worksheet.get_all_values()
+            
+            # Parse CSV content
+            csv_reader = csv.reader(csv_content.strip().splitlines())
+            new_data = list(csv_reader)
+            
+            # Compare headers (first row)
+            if not current_data or current_data[0] != new_data[0]:
+                print(f"      ⚠ Headers differ in '{worksheet_name}', updating...")
+                worksheet.clear()
+                worksheet.update(range_name='A1', values=new_data)
+                print(f"      ✓ Updated worksheet '{worksheet_name}' with new format")
+                return True
+            else:
+                print(f"      ✓ Worksheet '{worksheet_name}' already has correct format")
+                return False
+                
+        except Exception as e:
+            print(f"      ✗ Error updating worksheet '{worksheet_name}': {e}")
+            return False
+
     def run_step6(self):
-        """Step 6: All bots have matching sheets"""
+        """Step 6: Verify Google Sheets Format (Only update existing worksheets, don't create new ones)"""
         print("\n" + "=" * 50)
-        print("STEP 6: All Bots Have Matching Sheets")
+        print("STEP 6: Verifying Google Sheets Format")
         print("=" * 50)
-        print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
-        print("Continuing with bot execution setup...")
-        # Step 6 implementation will go here
+        
+        # Get bot folders from GitHub
+        github_bots = self.get_github_bot_folders()
+        if not github_bots:
+            print(f"{self.RED}❌ No bots found on GitHub repository{self.ENDC}")
+            return False, False  # Return False for both success and all_sheets_available
+        
+        # Get local bot folders
+        local_bot_folders = self.get_bot_folders()
+        local_bot_names = [folder.name for folder in local_bot_folders]
+        
+        # Get spreadsheet key
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(local_bot_folders)
+        if not key_exists:
+            print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
+            return False, False
+        
+        try:
+            # Authorize with Google Sheets
+            import gspread
+            from google.oauth2.service_account import Credentials
+            
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            
+            # Process each GitHub bot that has a matching local folder
+            updated_count = 0
+            missing_sheets = []
+            all_sheets_available = True
+            
+            for github_bot in github_bots:
+                # Convert GitHub folder name to local folder name format
+                # GitHub: facebook-birthday-wisher -> Local: facebook birthday wisher
+                local_bot_name = github_bot.replace('-', ' ')
+                
+                if local_bot_name in local_bot_names:
+                    print(f"\n{self.BOLD}Processing: {local_bot_name}{self.ENDC}")
+                    
+                    # Check if Google Sheet exists for this bot
+                    sheet_exists = False
+                    try:
+                        gc.open(local_bot_name)
+                        sheet_exists = True
+                        print(f"  ✓ Google Sheet found: {local_bot_name}")
+                    except gspread.SpreadsheetNotFound:
+                        print(f"  ✗ Google Sheet not found: {local_bot_name}")
+                        missing_sheets.append(local_bot_name)
+                        all_sheets_available = False
+                        continue
+                    
+                    # Get required CSV files from GitHub
+                    csv_files = self.get_sheets_format_files(github_bot)
+                    if not csv_files:
+                        print(f"  ⚠ No CSV files found in sheets format for {github_bot}")
+                        continue
+                    
+                    # Get existing worksheets from Google Sheet
+                    existing_worksheets = self.get_google_sheet_worksheets(local_bot_name, gc)
+                    print(f"  Existing worksheets: {existing_worksheets}")
+                    
+                    # Process each required CSV file
+                    for csv_file in csv_files:
+                        worksheet_name = csv_file.replace('.csv', '')
+                        print(f"  Processing: {worksheet_name}")
+                        
+                        if worksheet_name not in existing_worksheets:
+                            print(f"    ⚠ Worksheet '{worksheet_name}' not found - skipping (free tier limitation)")
+                            all_sheets_available = False
+                            continue
+                        
+                        # Download CSV content from GitHub
+                        csv_content = self.download_csv_file(github_bot, csv_file)
+                        if not csv_content:
+                            print(f"    ✗ Failed to download {csv_file}")
+                            continue
+                        
+                        # Worksheet exists, check and update if needed
+                        if self.update_worksheet_from_csv(local_bot_name, worksheet_name, csv_content, gc):
+                            updated_count += 1
+            
+            # Summary
+            print("\n" + "=" * 50)
+            print("STEP 6 SUMMARY:")
+            print("=" * 50)
+            
+            if updated_count > 0:
+                print(f"{self.GREEN}✓ Updated {updated_count} worksheet(s) across all bots{self.ENDC}")
+            else:
+                print(f"{self.GREEN}✓ All worksheets are up-to-date{self.ENDC}")
+            
+            if missing_sheets:
+                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
+                for missing in missing_sheets:
+                    print(f"  - {missing}")
+            
+            if all_sheets_available:
+                print(f"{self.GREEN}✓ All required sheets and worksheets are available{self.ENDC}")
+                return True, True  # Success and all sheets available
+            else:
+                print(f"{self.YELLOW}⚠ Some sheets or worksheets are missing{self.ENDC}")
+                return True, False  # Success but some sheets missing
+            
+        except ImportError as e:
+            print(f"{self.RED}❌ Required libraries not installed: {e}{self.ENDC}")
+            return False, False
+        except Exception as e:
+            print(f"{self.RED}❌ Error in Step 6: {e}{self.ENDC}")
+            return False, False
 
     def run_step7(self):
         """Step 7: Some bots missing matching sheets"""
@@ -906,6 +1154,17 @@ class BotScheduler:
         print(f"{self.YELLOW}⚠ Some bots are missing matching Google Sheets{self.ENDC}")
         print("Please create the missing sheets or check the bot folder names.")
         # Step 7 implementation will go here
+        return True
+
+    def run_step8(self):
+        """Step 8: All sheets available with correct format"""
+        print("\n" + "=" * 50)
+        print("STEP 8: All Sheets Available with Correct Format")
+        print("=" * 50)
+        print(f"{self.GREEN}✓ All Google Sheets are available with correct format!{self.ENDC}")
+        print("Continuing with bot execution setup...")
+        # Step 8 implementation will go here
+        return True
 
     def run(self):
         """Main execution function"""
@@ -975,10 +1234,47 @@ class BotScheduler:
                         
                         if all_match:
                             # All bots have matching sheets - continue to Step 6
-                            self.run_step6()
+                            step6_success, all_sheets_available = self.run_step6()
+                            if step6_success:
+                                print("\n" + "=" * 50)
+                                print("✓ Step 6 completed successfully!")
+                                print("=" * 50)
+                                
+                                if all_sheets_available:
+                                    # All sheets available with correct format - continue to Step 8
+                                    step8_success = self.run_step8()
+                                    if step8_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ Step 8 completed successfully!")
+                                        print("✓ All Google Sheets verified and updated")
+                                        print("=" * 50)
+                                        # Continue to next steps...
+                                    else:
+                                        print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                        sys.exit(1)
+                                else:
+                                    # Some sheets missing - continue to Step 7
+                                    step7_success = self.run_step7()
+                                    if step7_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ Step 7 completed successfully!")
+                                        print("=" * 50)
+                                    else:
+                                        print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                        sys.exit(1)
+                            else:
+                                print(f"\n{self.RED}❌ Step 6 failed.{self.ENDC}")
+                                sys.exit(1)
                         else:
                             # Some bots missing matching sheets - continue to Step 7
-                            self.run_step7()
+                            step7_success = self.run_step7()
+                            if step7_success:
+                                print("\n" + "=" * 50)
+                                print("✓ Step 7 completed successfully!")
+                                print("=" * 50)
+                            else:
+                                print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                sys.exit(1)
                     else:
                         print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
                         sys.exit(1)
