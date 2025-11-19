@@ -995,7 +995,7 @@ class BotScheduler:
             return []
 
     def update_worksheet_from_csv(self, sheet_name, worksheet_name, csv_content, gc):
-        """Update existing worksheet with CSV content if structure differs"""
+        """Update existing worksheet header row with CSV content if structure differs"""
         try:
             sheet = gc.open(sheet_name)
             worksheet = sheet.worksheet(worksheet_name)
@@ -1007,15 +1007,33 @@ class BotScheduler:
             csv_reader = csv.reader(csv_content.strip().splitlines())
             new_data = list(csv_reader)
             
-            # Compare headers (first row)
-            if not current_data or current_data[0] != new_data[0]:
-                print(f"      ⚠ Headers differ in '{worksheet_name}', updating...")
-                worksheet.clear()
+            # Check if we have at least a header row in both current and new data
+            if not current_data:
+                print(f"      ⚠ Worksheet '{worksheet_name}' is empty, updating with new format...")
                 worksheet.update(range_name='A1', values=new_data)
                 print(f"      ✓ Updated worksheet '{worksheet_name}' with new format")
                 return True
+            
+            if not new_data:
+                print(f"      ⚠ CSV file for '{worksheet_name}' is empty, skipping update")
+                return False
+            
+            # Compare headers (first row) only
+            current_header = current_data[0]
+            new_header = new_data[0]
+            
+            if current_header != new_header:
+                print(f"      ⚠ Headers differ in '{worksheet_name}', updating header row only...")
+                
+                # Update only the header row (first row)
+                worksheet.update(range_name='A1', values=[new_header])
+                
+                print(f"      ✓ Updated header row in worksheet '{worksheet_name}'")
+                print(f"      Old header: {current_header}")
+                print(f"      New header: {new_header}")
+                return True
             else:
-                print(f"      ✓ Worksheet '{worksheet_name}' already has correct format")
+                print(f"      ✓ Worksheet '{worksheet_name}' already has correct header format")
                 return False
                 
         except Exception as e:
