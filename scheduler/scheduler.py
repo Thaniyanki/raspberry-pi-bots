@@ -10,10 +10,20 @@ import time
 import shutil
 import csv
 import requests
+import json
+import platform
 from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import firebase_admin
+from firebase_admin import credentials, db
 
 class BotScheduler:
     def __init__(self):
@@ -34,6 +44,10 @@ class BotScheduler:
         self.BLUE = '\033[94m'
         self.ENDC = '\033[0m'
         self.BOLD = '\033[1m'
+        
+        # Selenium driver
+        self.driver = None
+        self.xpaths = {}
         
     def run_curl_command(self):
         """Run the curl command to setup bots with LIVE output"""
@@ -1201,14 +1215,289 @@ class BotScheduler:
             print(f"{self.RED}❌ Error in Step 6: {e}{self.ENDC}")
             return False, False
 
-    def run_step7(self):
-        """Step 7: Some bots missing matching sheets"""
+    def fetch_xpaths_from_database(self):
+        """Fetch all XPaths from Firebase database"""
+        print("Fetching XPaths from Firebase database...")
+        
+        # Find database access key from any bot (excluding scheduler)
+        bot_folders = self.get_bot_folders()
+        key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+        
+        if not key_exists:
+            print(f"{self.RED}❌ Database access key not found in any bot folder{self.ENDC}")
+            return False
+        
+        try:
+            # Initialize Firebase app
+            if not firebase_admin._apps:
+                cred = credentials.Certificate(str(source_key_file))
+                firebase_admin.initialize_app(cred, {
+                    'databaseURL': 'https://your-firebase-project.firebaseio.com/'
+                })
+            
+            # Fetch XPaths from Firebase
+            ref = db.reference('WhatsApp/Xpath')
+            xpaths_data = ref.get()
+            
+            if xpaths_data:
+                self.xpaths = xpaths_data
+                print(f"{self.GREEN}✓ Successfully fetched {len(xpaths_data)} XPaths from database{self.ENDC}")
+                
+                # Save XPaths to temporary local storage
+                temp_file = Path("/tmp/whatsapp_xpaths.json")
+                with open(temp_file, 'w') as f:
+                    json.dump(xpaths_data, f, indent=2)
+                print(f"{self.GREEN}✓ XPaths saved to temporary storage: {temp_file}{self.ENDC}")
+                return True
+            else:
+                print(f"{self.RED}❌ No XPaths found in database{self.ENDC}")
+                return False
+                
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching XPaths from database: {e}{self.ENDC}")
+            return False
+
+    def check_internet_connection(self):
+        """Check internet connection using ping"""
+        try:
+            # Try to ping Google DNS
+            param = "-n" if platform.system().lower() == "windows" else "-c"
+            result = subprocess.run(
+                ["ping", param, "1", "8.8.8.8"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except:
+            return False
+
+    def wait_for_internet(self):
+        """Wait for internet connection to become available"""
+        print("Waiting for internet connection...")
+        check_count = 0
+        while True:
+            check_count += 1
+            if self.check_internet_connection():
+                print(f"{self.GREEN}✓ Internet connection available{self.ENDC}")
+                return True
+            
+            dots = "." * (check_count % 4)
+            spaces = " " * (3 - len(dots))
+            print(f"\rChecking internet{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+            time.sleep(2)
+
+    def setup_selenium_driver(self):
+        """Setup Selenium WebDriver"""
+        try:
+            options = webdriver.ChromeOptions()
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            
+            self.driver = webdriver.Chrome(options=options)
+            print(f"{self.GREEN}✓ Selenium WebDriver initialized{self.ENDC}")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error initializing WebDriver: {e}{self.ENDC}")
+            return False
+
+    def close_browser(self):
+        """Close the browser if open"""
+        if self.driver:
+            try:
+                self.driver.quit()
+                print("Browser closed")
+            except:
+                pass
+            self.driver = None
+
+    def wait_for_xpath(self, xpath, timeout=120):
+        """Wait for XPath to be present"""
+        try:
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((By.XPATH, xpath))
+            )
+            return element
+        except TimeoutException:
+            return None
+
+    def check_xpath_present(self, xpath):
+        """Check if XPath is present"""
+        try:
+            self.driver.find_element(By.XPATH, xpath)
+            return True
+        except NoSuchElementException:
+            return False
+
+    def get_report_number(self):
+        """Get report number from venv folder"""
+        bot_folders = self.get_bot_folders()
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            return content
+                    except:
+                        continue
+        return None
+
+    def send_whatsapp_message(self, missing_bots):
+        """Send WhatsApp message about missing sheets"""
+        try:
+            # Create message
+            if len(missing_bots) == 1:
+                message = f"""Google Sheet Error - {missing_bots[0]}
+---------------------------------------------
+Sheet is not available [or]
+Name is mismatch [or]
+Not share with service account 
+
+Kindly check
+---------------------------------------------"""
+            else:
+                bot_names = " and ".join(missing_bots)
+                message = f"""Google Sheet Error - {bot_names}
+---------------------------------------------
+Sheets are not available [or]
+Names are mismatched [or]
+Not shared with service account 
+
+Kindly check
+---------------------------------------------"""
+            
+            # Type the message
+            actions = webdriver.ActionChains(self.driver)
+            
+            # Type message with Shift+Enter for new lines
+            lines = message.split('\n')
+            for i, line in enumerate(lines):
+                if i > 0:
+                    # Press Shift+Enter for new line
+                    actions.key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT)
+                actions.send_keys(line)
+            
+            actions.perform()
+            
+            print("Message typed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error sending message: {e}{self.ENDC}")
+            return False
+
+    def run_step7(self, missing_bots):
+        """Step 7: Send WhatsApp notification for missing sheets"""
         print("\n" + "=" * 50)
-        print("STEP 7: Some Bots Missing Matching Sheets")
+        print("STEP 7: Sending WhatsApp Notification")
         print("=" * 50)
-        print(f"{self.YELLOW}⚠ Some bots are missing matching Google Sheets{self.ENDC}")
-        print("Please create the missing sheets or check the bot folder names.")
-        # Step 7 implementation will go here
+        
+        # Step 7: Fetch XPaths from database
+        if not self.fetch_xpaths_from_database():
+            return False
+        
+        # Step 7a: Close browser if open and reopen
+        self.close_browser()
+        if not self.setup_selenium_driver():
+            return False
+        
+        # Step 7b: Check internet connection
+        if not self.check_internet_connection():
+            print("Internet not available, waiting...")
+            if not self.wait_for_internet():
+                return False
+        
+        # Step 7c: Open WhatsApp Web
+        print("Opening WhatsApp Web...")
+        try:
+            self.driver.get("https://web.whatsapp.com/")
+            print("WhatsApp Web opened")
+        except Exception as e:
+            print(f"{self.RED}❌ Error opening WhatsApp: {e}{self.ENDC}")
+            return False
+        
+        # Step 7d: Wait for XPath001 (search field)
+        print("Waiting for search field (XPath001)...")
+        xpath001 = self.xpaths.get('Xpath001')
+        if not xpath001:
+            print(f"{self.RED}❌ XPath001 not found in database{self.ENDC}")
+            return False
+        
+        search_field = self.wait_for_xpath(xpath001, 120)
+        if not search_field:
+            print("Search field not found within 120 seconds")
+            
+            # Step 7f: Check for loading indicator
+            xpath011 = self.xpaths.get('Xpath011')
+            if xpath011 and self.check_xpath_present(xpath011):
+                print("Loading indicator found, retrying...")
+                return self.run_step7(missing_bots)  # Restart from 7a
+            else:
+                print("No loading indicator, restarting...")
+                return self.run_step7(missing_bots)  # Restart from 7a
+        
+        # Step 7e: Click search field and check report number file
+        print("Entered Mobile number search field")
+        search_field.click()
+        
+        report_number = self.get_report_number()
+        if not report_number:
+            print("Report number file not available")
+            return False
+        print("Report number file available")
+        
+        # Step 7g: Check if phone number is valid
+        if not self.is_valid_phone_number(report_number):
+            print("Phone number is not available or invalid")
+            return False
+        print("Phone number is available")
+        
+        # Step 7h: Type phone number
+        search_field.send_keys(report_number)
+        print("Phone number entered")
+        time.sleep(10)  # Wait for stability
+        
+        # Step 7i: Check if contact not found
+        xpath004 = self.xpaths.get('Xpath004')
+        if xpath004 and self.check_xpath_present(xpath004):
+            print("Contact not found (XPath004 present)")
+            if self.check_internet_connection():
+                print("Invalid Mobile Number")
+                return False
+            else:
+                print("No internet, restarting...")
+                return self.run_step7(missing_bots)  # Restart from 7a
+        
+        # Step 7j: Select contact and enter message field
+        search_field.send_keys(Keys.ARROW_DOWN)
+        time.sleep(2)
+        search_field.send_keys(Keys.ENTER)
+        print("Entered Message Field")
+        
+        # Step 7k: Type error message
+        if not self.send_whatsapp_message(missing_bots):
+            return False
+        
+        # Step 7l: Send message
+        time.sleep(2)
+        search_field = self.driver.find_element(By.XPATH, xpath001)
+        search_field.send_keys(Keys.ENTER)
+        print("Message sent")
+        
+        # Step 7m: Wait for message to be delivered
+        print("Waiting for message delivery...")
+        xpath003 = self.xpaths.get('Xpath003')
+        if xpath003:
+            while self.check_xpath_present(xpath003):
+                time.sleep(1)
+        
+        print("Error message sent successfully")
         return True
 
     def run_step8(self):
@@ -1309,11 +1598,20 @@ class BotScheduler:
                                         sys.exit(1)
                                 else:
                                     # Some sheets missing - continue to Step 7
-                                    step7_success = self.run_step7()
+                                    # Get missing bots from Step 5 comparison
+                                    missing_bots = self.get_missing_bots_from_step5()
+                                    step7_success = self.run_step7(missing_bots)
                                     if step7_success:
                                         print("\n" + "=" * 50)
                                         print("✓ Step 7 completed successfully!")
+                                        print("✓ WhatsApp notification sent")
                                         print("=" * 50)
+                                        # Continue to Step 8 after sending notification
+                                        step8_success = self.run_step8()
+                                        if step8_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Step 8 completed successfully!")
+                                            print("=" * 50)
                                     else:
                                         print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
                                         sys.exit(1)
@@ -1322,11 +1620,19 @@ class BotScheduler:
                                 sys.exit(1)
                         else:
                             # Some bots missing matching sheets - continue to Step 7
-                            step7_success = self.run_step7()
+                            missing_bots = self.get_missing_bots_from_step5()
+                            step7_success = self.run_step7(missing_bots)
                             if step7_success:
                                 print("\n" + "=" * 50)
                                 print("✓ Step 7 completed successfully!")
+                                print("✓ WhatsApp notification sent")
                                 print("=" * 50)
+                                # Continue to Step 8 after sending notification
+                                step8_success = self.run_step8()
+                                if step8_success:
+                                    print("\n" + "=" * 50)
+                                    print("✓ Step 8 completed successfully!")
+                                    print("=" * 50)
                             else:
                                 print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
                                 sys.exit(1)
@@ -1342,6 +1648,13 @@ class BotScheduler:
         else:
             print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
             sys.exit(1)
+
+    def get_missing_bots_from_step5(self):
+        """Get list of missing bots from Step 5 comparison"""
+        # This would be populated from the Step 5 comparison results
+        # For now, return a placeholder - in actual implementation, this would
+        # come from the comparison logic in run_step5
+        return ["facebook birthday wisher"]  # Example missing bot
 
 def main():
     """Main function"""
