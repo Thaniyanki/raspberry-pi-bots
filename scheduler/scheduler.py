@@ -1040,8 +1040,39 @@ class BotScheduler:
             print(f"      ✗ Error updating worksheet '{worksheet_name}': {e}")
             return False
 
+    def create_worksheet_if_missing(self, sheet_name, worksheet_name, csv_content, gc):
+        """Create a missing worksheet within an existing Google Sheet"""
+        try:
+            sheet = gc.open(sheet_name)
+            
+            # Check if worksheet already exists
+            try:
+                sheet.worksheet(worksheet_name)
+                print(f"      ✓ Worksheet '{worksheet_name}' already exists")
+                return False  # Worksheet already exists
+            except gspread.WorksheetNotFound:
+                # Worksheet doesn't exist, create it
+                print(f"      ⚠ Worksheet '{worksheet_name}' not found, creating...")
+                
+                # Parse CSV content
+                csv_reader = csv.reader(csv_content.strip().splitlines())
+                new_data = list(csv_reader)
+                
+                # Create new worksheet with CSV data
+                worksheet = sheet.add_worksheet(title=worksheet_name, rows=100, cols=20)
+                
+                if new_data:
+                    worksheet.update(range_name='A1', values=new_data)
+                
+                print(f"      ✓ Created worksheet '{worksheet_name}' with {len(new_data)} rows")
+                return True
+                
+        except Exception as e:
+            print(f"      ✗ Error creating worksheet '{worksheet_name}': {e}")
+            return False
+
     def run_step6(self):
-        """Step 6: Verify Google Sheets Format (Only update existing worksheets, don't create new ones)"""
+        """Step 6: Verify Google Sheets Format (Create missing worksheets within existing sheets)"""
         print("\n" + "=" * 50)
         print("STEP 6: Verifying Google Sheets Format")
         print("=" * 50)
@@ -1082,6 +1113,7 @@ class BotScheduler:
             
             # Process each GitHub bot that has a matching local folder
             updated_count = 0
+            created_count = 0
             missing_sheets = []
             all_sheets_available = True
             
@@ -1120,20 +1152,20 @@ class BotScheduler:
                         worksheet_name = csv_file.replace('.csv', '')
                         print(f"  Processing: {worksheet_name}")
                         
-                        if worksheet_name not in existing_worksheets:
-                            print(f"    ⚠ Worksheet '{worksheet_name}' not found - skipping (free tier limitation)")
-                            all_sheets_available = False
-                            continue
-                        
                         # Download CSV content from GitHub
                         csv_content = self.download_csv_file(github_bot, csv_file)
                         if not csv_content:
                             print(f"    ✗ Failed to download {csv_file}")
                             continue
                         
-                        # Worksheet exists, check and update if needed
-                        if self.update_worksheet_from_csv(local_bot_name, worksheet_name, csv_content, gc):
-                            updated_count += 1
+                        if worksheet_name in existing_worksheets:
+                            # Worksheet exists, check and update header if needed
+                            if self.update_worksheet_from_csv(local_bot_name, worksheet_name, csv_content, gc):
+                                updated_count += 1
+                        else:
+                            # Worksheet doesn't exist, create it
+                            if self.create_worksheet_if_missing(local_bot_name, worksheet_name, csv_content, gc):
+                                created_count += 1
             
             # Summary
             print("\n" + "=" * 50)
@@ -1142,13 +1174,18 @@ class BotScheduler:
             
             if updated_count > 0:
                 print(f"{self.GREEN}✓ Updated {updated_count} worksheet(s) across all bots{self.ENDC}")
-            else:
+            
+            if created_count > 0:
+                print(f"{self.GREEN}✓ Created {created_count} missing worksheet(s) across all bots{self.ENDC}")
+            
+            if updated_count == 0 and created_count == 0:
                 print(f"{self.GREEN}✓ All worksheets are up-to-date{self.ENDC}")
             
             if missing_sheets:
                 print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
                 for missing in missing_sheets:
                     print(f"  - {missing}")
+                all_sheets_available = False
             
             if all_sheets_available:
                 print(f"{self.GREEN}✓ All required sheets and worksheets are available{self.ENDC}")
