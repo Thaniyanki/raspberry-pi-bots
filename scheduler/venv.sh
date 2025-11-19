@@ -11,8 +11,6 @@ BOTS_DIR="$HOME_DIR/bots"
 BOT_NAME="scheduler"
 BOT_PATH="$BOTS_DIR/$BOT_NAME"
 VENV_PATH="$BOT_PATH/venv"
-REPORT_FILE="$VENV_PATH/report number"
-PHONE_NUMBER="9940585709"
 
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -43,13 +41,13 @@ source "$VENV_PATH/bin/activate"
 
 pip install --upgrade pip setuptools wheel
 
-# === Step 4: Install EXACT Python Dependencies from Your Code ===
-echo "[INFO] Installing Python dependencies from scheduler code..."
+# === Step 4: Install Python Dependencies ===
+echo "[INFO] Installing Python dependencies..."
 
 # Core Python standard library (already available)
 echo "[OK] Python standard libraries: os, time, json, subprocess, shutil, re, sys, pathlib"
 
-# Google Sheets API (from your try/except block)
+# Google Sheets API
 pip install gspread oauth2client
 
 # Additional Google API packages for Google Sheets
@@ -62,26 +60,18 @@ pip install firebase_admin google-auth-oauthlib \
 
 echo "[OK] All Python dependencies installed"
 
-# === Step 5: Create Phone Number File ===
-echo "$PHONE_NUMBER" > "$REPORT_FILE"
-echo "[OK] Created phone number file: $REPORT_FILE"
-
-# === Step 6: Summary ===
+# === Step 5: Summary ===
 echo "------------------------------------------------------------"
 echo "✅ SCHEDULER SETUP COMPLETE!"
 echo "📁 Bot Path: $BOT_PATH"
 echo "📂 Virtual Environment: $VENV_PATH"
-echo "📄 Phone number file: $REPORT_FILE"
-echo
 echo "🐍 Python Dependencies Installed:"
 echo "   ✅ gspread, oauth2client (Google Sheets API)"
 echo "   ✅ google-auth, google-api-python-client (Google Auth)"
 echo "   ✅ firebase_admin, google-cloud-* (Firebase)"
-echo "   ✅ selenium (Web automation)"
 echo "   ✅ psutil, pyautogui, python3-xlib (System control)"
 echo "   ✅ requests, Pillow (HTTP & Image processing)"
 echo "   ✅ python-dateutil (Date utilities)"
-echo
 echo "💡 Ready for scheduler operation!"
 echo "📝 The scheduler will handle all bot management automatically"
 echo "------------------------------------------------------------"
