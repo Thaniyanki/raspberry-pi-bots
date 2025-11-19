@@ -13,17 +13,44 @@ import requests
 import json
 import platform
 from pathlib import Path
-import gspread
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-import firebase_admin
-from firebase_admin import credentials, db
+
+# Try to import required packages, install if missing
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+except ImportError:
+    print("Installing required Google packages...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "gspread", "google-auth", "google-api-python-client"])
+    import gspread
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+except ImportError:
+    print("Installing Selenium...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+except ImportError:
+    print("Installing Firebase Admin...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "firebase-admin"])
+    import firebase_admin
+    from firebase_admin import credentials, db
 
 class BotScheduler:
     def __init__(self):
@@ -908,6 +935,8 @@ class BotScheduler:
             print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTLY (case-sensitive){self.ENDC}")
             print(f"{self.YELLOW}   Please rename your Google Sheets to match the bot folder names exactly.{self.ENDC}")
             
+            # Store missing sheets for Step 7
+            self.missing_sheets = missing_sheets
             return True, False  # Success but not all match
 
     def get_github_bot_folders(self):
@@ -1598,8 +1627,9 @@ Kindly check
                                         sys.exit(1)
                                 else:
                                     # Some sheets missing - continue to Step 7
-                                    # Get missing bots from Step 5 comparison
-                                    missing_bots = self.get_missing_bots_from_step5()
+                                    missing_bots = getattr(self, 'missing_sheets', [])
+                                    if not missing_bots:
+                                        missing_bots = ["Unknown bot"]
                                     step7_success = self.run_step7(missing_bots)
                                     if step7_success:
                                         print("\n" + "=" * 50)
@@ -1620,7 +1650,9 @@ Kindly check
                                 sys.exit(1)
                         else:
                             # Some bots missing matching sheets - continue to Step 7
-                            missing_bots = self.get_missing_bots_from_step5()
+                            missing_bots = getattr(self, 'missing_sheets', [])
+                            if not missing_bots:
+                                missing_bots = ["Unknown bot"]
                             step7_success = self.run_step7(missing_bots)
                             if step7_success:
                                 print("\n" + "=" * 50)
@@ -1648,13 +1680,6 @@ Kindly check
         else:
             print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
             sys.exit(1)
-
-    def get_missing_bots_from_step5(self):
-        """Get list of missing bots from Step 5 comparison"""
-        # This would be populated from the Step 5 comparison results
-        # For now, return a placeholder - in actual implementation, this would
-        # come from the comparison logic in run_step5
-        return ["facebook birthday wisher"]  # Example missing bot
 
 def main():
     """Main function"""
