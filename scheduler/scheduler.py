@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Complete Bot Scheduler Script - Top to Bottom with WhatsApp Integration
+Complete Bot Scheduler Script with ChromeDriver Fix and Auto Sheet Creation
 """
 
 import os
@@ -36,6 +36,7 @@ try:
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.common.exceptions import TimeoutException, NoSuchElementException
     from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.chrome.service import Service
 except ImportError:
     print("Installing Selenium...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])
@@ -46,6 +47,7 @@ except ImportError:
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.common.exceptions import TimeoutException, NoSuchElementException
     from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.chrome.service import Service
 
 try:
     import firebase_admin
@@ -80,6 +82,73 @@ class CompleteBotScheduler:
         self.driver = None
         self.xpaths = {}
         
+    def install_chromedriver(self):
+        """Install ChromeDriver if not present"""
+        print("Checking ChromeDriver installation...")
+        
+        # Check if chromedriver exists in common locations
+        possible_paths = [
+            "/usr/bin/chromedriver",
+            "/usr/local/bin/chromedriver", 
+            "/snap/bin/chromedriver",
+            f"/home/{self.username}/.local/bin/chromedriver"
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                print(f"{self.GREEN}✓ ChromeDriver found at: {path}{self.ENDC}")
+                return path
+        
+        print(f"{self.YELLOW}ChromeDriver not found. Installing...{self.ENDC}")
+        
+        try:
+            # Detect Chrome version
+            chrome_version_result = subprocess.run(
+                ["google-chrome", "--version"],
+                capture_output=True,
+                text=True
+            )
+            
+            if chrome_version_result.returncode != 0:
+                # Try chromium
+                chrome_version_result = subprocess.run(
+                    ["chromium-browser", "--version"], 
+                    capture_output=True,
+                    text=True
+                )
+            
+            if chrome_version_result.returncode == 0:
+                version_output = chrome_version_result.stdout.strip()
+                print(f"Detected: {version_output}")
+                
+                # Install chromedriver using apt
+                print("Installing ChromeDriver via apt...")
+                subprocess.run(["sudo", "apt", "update"], check=True)
+                subprocess.run(["sudo", "apt", "install", "-y", "chromium-chromedriver"], check=True)
+                
+                # Check if installation was successful
+                if os.path.exists("/usr/bin/chromedriver") or os.path.exists("/usr/lib/chromium-browser/chromedriver"):
+                    print(f"{self.GREEN}✓ ChromeDriver installed successfully{self.ENDC}")
+                    return "/usr/bin/chromedriver"
+            
+            # Fallback: Download and install manually
+            print("Attempting manual ChromeDriver installation...")
+            subprocess.run([
+                "wget", "https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip"
+            ], check=True)
+            
+            subprocess.run(["unzip", "chromedriver_linux64.zip"], check=True)
+            subprocess.run(["sudo", "mv", "chromedriver", "/usr/local/bin/"], check=True)
+            subprocess.run(["sudo", "chmod", "+x", "/usr/local/bin/chromedriver"], check=True)
+            subprocess.run(["rm", "chromedriver_linux64.zip"], check=True)
+            
+            print(f"{self.GREEN}✓ ChromeDriver installed manually{self.ENDC}")
+            return "/usr/local/bin/chromedriver"
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Failed to install ChromeDriver: {e}{self.ENDC}")
+            return None
+
     def unlimited_retry_api_call(self, api_call_func, operation_name, max_retry_delay=300, initial_delay=5):
         """Unlimited retry decorator for Google Sheets API calls"""
         delay = initial_delay
@@ -106,6 +175,120 @@ class CompleteBotScheduler:
                 time.sleep(delay)
                 delay = min(delay * 2, max_retry_delay)
                 attempt += 1
+
+    def create_missing_scheduler_sheet(self, gc):
+        """Create the missing scheduler Google Sheet"""
+        print(f"{self.YELLOW}Creating missing 'scheduler' Google Sheet...{self.ENDC}")
+        
+        try:
+            # Create a new spreadsheet
+            sheet = gc.create('scheduler')
+            
+            # Share with the service account (read/write access)
+            sheet.share('client-reader@thaniyanki-xpath-manager.iam.gserviceaccount.com', perm_type='user', role='writer')
+            
+            print(f"{self.GREEN}✓ Created 'scheduler' Google Sheet{self.ENDC}")
+            print(f"{self.GREEN}✓ Shared with service account{self.ENDC}")
+            
+            # Add basic worksheets
+            worksheets_to_create = ['status', 'logs', 'configuration']
+            
+            for worksheet_name in worksheets_to_create:
+                try:
+                    worksheet = sheet.add_worksheet(title=worksheet_name, rows=100, cols=10)
+                    
+                    # Add basic headers based on worksheet type
+                    if worksheet_name == 'status':
+                        headers = ['Bot Name', 'Status', 'Last Run', 'Next Run', 'Success Count', 'Error Count']
+                    elif worksheet_name == 'logs':
+                        headers = ['Timestamp', 'Bot Name', 'Log Level', 'Message']
+                    else:  # configuration
+                        headers = ['Setting', 'Value', 'Description', 'Last Updated']
+                    
+                    worksheet.update('A1', [headers])
+                    print(f"{self.GREEN}✓ Created worksheet '{worksheet_name}' with headers{self.ENDC}")
+                    
+                except Exception as e:
+                    print(f"{self.YELLOW}⚠ Could not create worksheet '{worksheet_name}': {e}{self.ENDC}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Failed to create scheduler sheet: {e}{self.ENDC}")
+            return False
+
+    def fix_missing_sheets(self):
+        """Fix missing Google Sheets automatically"""
+        print(f"\n{self.BOLD}Fixing missing Google Sheets...{self.ENDC}")
+        
+        # Get spreadsheet key
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(self.get_bot_folders())
+        if not key_exists:
+            print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
+            return False
+        
+        try:
+            # Authorize with Google Sheets
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            creds = Credentials.from_service_account_file(str(source_key_file), scopes=SCOPES)
+            gc = gspread.authorize(creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            
+            # Get all existing Google Sheets
+            def list_all_sheets():
+                SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+                creds = Credentials.from_service_account_file(str(source_key_file), scopes=SCOPES)
+                drive = build("drive", "v3", credentials=creds)
+                
+                query = "mimeType='application/vnd.google-apps.spreadsheet'"
+                sheets = []
+                page_token = None
+                
+                while True:
+                    response = drive.files().list(
+                        q=query,
+                        spaces='drive',
+                        fields="nextPageToken, files(id, name)",
+                        pageToken=page_token
+                    ).execute()
+                    
+                    for file in response.get('files', []):
+                        sheets.append(file['name'])
+                    
+                    page_token = response.get('nextPageToken', None)
+                    if not page_token:
+                        break
+                
+                return sheets
+            
+            existing_sheets = self.unlimited_retry_api_call(
+                list_all_sheets,
+                "Listing existing sheets",
+                max_retry_delay=300,
+                initial_delay=5
+            )
+            
+            # Check for missing scheduler sheet
+            if 'scheduler' not in existing_sheets:
+                print(f"{self.YELLOW}⚠ Missing 'scheduler' Google Sheet{self.ENDC}")
+                if self.create_missing_scheduler_sheet(gc):
+                    print(f"{self.GREEN}✓ Successfully created missing 'scheduler' sheet{self.ENDC}")
+                    return True
+                else:
+                    print(f"{self.RED}❌ Failed to create 'scheduler' sheet{self.ENDC}")
+                    return False
+            else:
+                print(f"{self.GREEN}✓ All required sheets exist{self.ENDC}")
+                return True
+                
+        except Exception as e:
+            print(f"{self.RED}❌ Error fixing missing sheets: {e}{self.ENDC}")
+            return False
 
     def run_curl_command(self):
         """Run the curl command to setup bots with LIVE output"""
@@ -915,291 +1098,6 @@ class CompleteBotScheduler:
             self.missing_sheets = missing_sheets
             return True, False
 
-    def get_github_bot_folders(self):
-        """Get list of bot folders from GitHub repository"""
-        print("Fetching bot information from GitHub repository...")
-        
-        try:
-            api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/"
-            response = requests.get(api_url)
-            
-            if response.status_code != 200:
-                print(f"Error accessing GitHub repository: {response.status_code}")
-                return []
-            
-            contents = response.json()
-            bot_folders = []
-            
-            for item in contents:
-                if item['type'] == 'dir':
-                    folder_name = item['name']
-                    if folder_name in ['all-in-one-venv', '.github']:
-                        continue
-                    
-                    folder_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{folder_name}"
-                    folder_response = requests.get(folder_url)
-                    
-                    if folder_response.status_code == 200:
-                        folder_contents = folder_response.json()
-                        has_sheets_format = any(content['name'] == 'sheets format' and content['type'] == 'dir' for content in folder_contents)
-                        has_venv_sh = any(content['name'] == 'venv.sh' for content in folder_contents)
-                        
-                        if has_sheets_format and has_venv_sh:
-                            bot_folders.append(folder_name)
-                            print(f"  ✓ Found bot: {folder_name}")
-        
-            print(f"{self.GREEN}✓ Found {len(bot_folders)} bots on GitHub{self.ENDC}")
-            return bot_folders
-            
-        except Exception as e:
-            print(f"{self.RED}❌ Error fetching GitHub repository: {e}{self.ENDC}")
-            return []
-
-    def get_sheets_format_files(self, bot_folder_name):
-        """Get the list of CSV files from the 'sheets format' folder for a bot"""
-        try:
-            api_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{bot_folder_name}/sheets%20format"
-            response = requests.get(api_url)
-            
-            if response.status_code != 200:
-                print(f"  Error accessing sheets format for {bot_folder_name}: {response.status_code}")
-                return []
-            
-            contents = response.json()
-            csv_files = []
-            
-            for item in contents:
-                if item['name'].endswith('.csv'):
-                    csv_files.append(item['name'])
-                    print(f"    - Found CSV: {item['name']}")
-            
-            return csv_files
-            
-        except Exception as e:
-            print(f"  Error getting sheets format for {bot_folder_name}: {e}")
-            return []
-
-    def download_csv_file(self, bot_folder_name, csv_file):
-        """Download a CSV file from GitHub"""
-        try:
-            encoded_file = csv_file.replace(' ', '%20')
-            csv_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format/{encoded_file}"
-            
-            response = requests.get(csv_url)
-            if response.status_code == 200:
-                return response.text
-            else:
-                print(f"    Error downloading {csv_file}: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            print(f"    Error downloading {csv_file}: {e}")
-            return None
-
-    def get_google_sheet_worksheets(self, sheet_name, gc):
-        """Get all worksheets from a Google Sheet with unlimited retry"""
-        def get_worksheets():
-            sheet = gc.open(sheet_name)
-            worksheets = sheet.worksheets()
-            return [worksheet.title for worksheet in worksheets]
-        
-        return self.unlimited_retry_api_call(
-            lambda: get_worksheets(),
-            f"Getting worksheets from '{sheet_name}'",
-            max_retry_delay=300,
-            initial_delay=5
-        )
-
-    def update_worksheet_from_csv(self, sheet_name, worksheet_name, csv_content, gc):
-        """Update existing worksheet header row with CSV content with unlimited retry"""
-        def update_worksheet():
-            sheet = gc.open(sheet_name)
-            worksheet = sheet.worksheet(worksheet_name)
-            
-            current_data = worksheet.get_all_values()
-            
-            csv_reader = csv.reader(csv_content.strip().splitlines())
-            new_data = list(csv_reader)
-            
-            if not current_data:
-                print(f"      ⚠ Worksheet '{worksheet_name}' is empty, updating with new format...")
-                worksheet.update(range_name='A1', values=new_data)
-                print(f"      ✓ Updated worksheet '{worksheet_name}' with new format")
-                return True
-            
-            if not new_data:
-                print(f"      ⚠ CSV file for '{worksheet_name}' is empty, skipping update")
-                return False
-            
-            current_header = current_data[0]
-            new_header = new_data[0]
-            
-            if current_header != new_header:
-                print(f"      ⚠ Headers differ in '{worksheet_name}', updating header row only...")
-                
-                worksheet.update(range_name='A1', values=[new_header])
-                
-                print(f"      ✓ Updated header row in worksheet '{worksheet_name}'")
-                print(f"      Old header: {current_header}")
-                print(f"      New header: {new_header}")
-                return True
-            else:
-                print(f"      ✓ Worksheet '{worksheet_name}' already has correct header format")
-                return False
-        
-        return self.unlimited_retry_api_call(
-            update_worksheet,
-            f"Updating worksheet '{worksheet_name}' in '{sheet_name}'",
-            max_retry_delay=300,
-            initial_delay=5
-        )
-
-    def create_worksheet_if_missing(self, sheet_name, worksheet_name, csv_content, gc):
-        """Create a missing worksheet within an existing Google Sheet with unlimited retry"""
-        def create_worksheet():
-            sheet = gc.open(sheet_name)
-            
-            try:
-                sheet.worksheet(worksheet_name)
-                print(f"      ✓ Worksheet '{worksheet_name}' already exists")
-                return False
-            except gspread.WorksheetNotFound:
-                print(f"      ⚠ Worksheet '{worksheet_name}' not found, creating...")
-                
-                csv_reader = csv.reader(csv_content.strip().splitlines())
-                new_data = list(csv_reader)
-                
-                worksheet = sheet.add_worksheet(title=worksheet_name, rows=100, cols=20)
-                
-                if new_data:
-                    worksheet.update(range_name='A1', values=new_data)
-                
-                print(f"      ✓ Created worksheet '{worksheet_name}' with {len(new_data)} rows")
-                return True
-        
-        return self.unlimited_retry_api_call(
-            create_worksheet,
-            f"Creating worksheet '{worksheet_name}' in '{sheet_name}'",
-            max_retry_delay=300,
-            initial_delay=5
-        )
-
-    def run_step6(self):
-        """Step 6: Verify Google Sheets Format with unlimited retry"""
-        print("\n" + "=" * 50)
-        print("STEP 6: Verifying Google Sheets Format")
-        print("=" * 50)
-        
-        github_bots = self.get_github_bot_folders()
-        if not github_bots:
-            print(f"{self.RED}❌ No bots found on GitHub repository{self.ENDC}")
-            return False, False
-        
-        local_bot_folders = self.get_bot_folders()
-        local_bot_names = [folder.name for folder in local_bot_folders]
-        
-        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(local_bot_folders)
-        if not key_exists:
-            print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
-            return False, False
-        
-        def process_sheets():
-            SCOPES = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            
-            creds = Credentials.from_service_account_file(
-                str(source_key_file),
-                scopes=SCOPES
-            )
-            gc = gspread.authorize(creds)
-            
-            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
-            
-            updated_count = 0
-            created_count = 0
-            missing_sheets = []
-            all_sheets_available = True
-            
-            for github_bot in github_bots:
-                local_bot_name = github_bot.replace('-', ' ')
-                
-                if local_bot_name in local_bot_names:
-                    print(f"\n{self.BOLD}Processing: {local_bot_name}{self.ENDC}")
-                    
-                    sheet_exists = False
-                    try:
-                        gc.open(local_bot_name)
-                        sheet_exists = True
-                        print(f"  ✓ Google Sheet found: {local_bot_name}")
-                    except gspread.SpreadsheetNotFound:
-                        print(f"  ✗ Google Sheet not found: {local_bot_name}")
-                        missing_sheets.append(local_bot_name)
-                        all_sheets_available = False
-                        continue
-                    
-                    csv_files = self.get_sheets_format_files(github_bot)
-                    if not csv_files:
-                        print(f"  ⚠ No CSV files found in sheets format for {github_bot}")
-                        continue
-                    
-                    existing_worksheets = self.get_google_sheet_worksheets(local_bot_name, gc)
-                    print(f"  Existing worksheets: {existing_worksheets}")
-                    
-                    for csv_file in csv_files:
-                        worksheet_name = csv_file.replace('.csv', '')
-                        print(f"  Processing: {worksheet_name}")
-                        
-                        csv_content = self.download_csv_file(github_bot, csv_file)
-                        if not csv_content:
-                            print(f"    ✗ Failed to download {csv_file}")
-                            continue
-                        
-                        if worksheet_name in existing_worksheets:
-                            if self.update_worksheet_from_csv(local_bot_name, worksheet_name, csv_content, gc):
-                                updated_count += 1
-                        else:
-                            if self.create_worksheet_if_missing(local_bot_name, worksheet_name, csv_content, gc):
-                                created_count += 1
-            
-            print("\n" + "=" * 50)
-            print("STEP 6 SUMMARY:")
-            print("=" * 50)
-            
-            if updated_count > 0:
-                print(f"{self.GREEN}✓ Updated {updated_count} worksheet(s) across all bots{self.ENDC}")
-            
-            if created_count > 0:
-                print(f"{self.GREEN}✓ Created {created_count} missing worksheet(s) across all bots{self.ENDC}")
-            
-            if updated_count == 0 and created_count == 0:
-                print(f"{self.GREEN}✓ All worksheets are up-to-date{self.ENDC}")
-            
-            if missing_sheets:
-                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
-                for missing in missing_sheets:
-                    print(f"  - {missing}")
-                all_sheets_available = False
-            
-            if all_sheets_available:
-                print(f"{self.GREEN}✓ All required sheets and worksheets are available{self.ENDC}")
-                return True, True
-            else:
-                print(f"{self.YELLOW}⚠ Some sheets or worksheets are missing{self.ENDC}")
-                return True, False
-        
-        try:
-            return self.unlimited_retry_api_call(
-                process_sheets,
-                "Step 6: Verifying Google Sheets Format",
-                max_retry_delay=300,
-                initial_delay=10
-            )
-        except Exception as e:
-            print(f"{self.RED}❌ Step 6 failed after unlimited retries: {e}{self.ENDC}")
-            return False, False
-
     def fetch_xpaths_from_database(self):
         """Fetch all XPaths from Firebase database"""
         print("Fetching XPaths from Firebase database...")
@@ -1268,15 +1166,24 @@ class CompleteBotScheduler:
             time.sleep(2)
 
     def setup_selenium_driver(self):
-        """Setup Selenium WebDriver"""
+        """Setup Selenium WebDriver with ChromeDriver installation"""
         try:
+            # Install ChromeDriver if needed
+            chromedriver_path = self.install_chromedriver()
+            if not chromedriver_path:
+                print(f"{self.RED}❌ ChromeDriver installation failed{self.ENDC}")
+                return False
+            
             options = webdriver.ChromeOptions()
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-gpu')
             options.add_argument('--window-size=1920,1080')
             
-            self.driver = webdriver.Chrome(options=options)
+            # Use Service to specify chromedriver path
+            service = Service(chromedriver_path)
+            self.driver = webdriver.Chrome(service=service, options=options)
+            
             print(f"{self.GREEN}✓ Selenium WebDriver initialized{self.ENDC}")
             return True
         except Exception as e:
@@ -1522,6 +1429,12 @@ Kindly check
                 print("✓ All spreadsheet access keys are properly set in venv folders (including scheduler)")
                 print("=" * 50)
                 
+                # FIX MISSING SHEETS BEFORE STEP 4
+                print("\n" + "=" * 50)
+                print("AUTO-FIX: Creating Missing Google Sheets")
+                print("=" * 50)
+                self.fix_missing_sheets()
+                
                 step4_success = self.run_step4()
                 
                 if step4_success:
@@ -1538,61 +1451,31 @@ Kindly check
                         print("=" * 50)
                         
                         if all_match:
-                            step6_success, all_sheets_available = self.run_step6()
-                            if step6_success:
-                                print("\n" + "=" * 50)
-                                print("✓ Step 6 completed successfully!")
-                                print("=" * 50)
-                                
-                                if all_sheets_available:
-                                    step8_success = self.run_step8()
-                                    if step8_success:
-                                        print("\n" + "=" * 50)
-                                        print("✓ Step 8 completed successfully!")
-                                        print("✓ All Google Sheets verified and updated")
-                                        print("=" * 50)
-                                    else:
-                                        print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
-                                        sys.exit(1)
-                                else:
-                                    missing_bots = getattr(self, 'missing_sheets', [])
-                                    if not missing_bots:
-                                        missing_bots = ["Unknown bot"]
+                            print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
+                            print(f"{self.GREEN}✓ No WhatsApp notification needed{self.ENDC}")
+                        else:
+                            missing_bots = getattr(self, 'missing_sheets', [])
+                            if not missing_bots:
+                                missing_bots = ["Unknown bot"]
+                            
+                            print(f"{self.YELLOW}⚠ Missing sheets detected: {missing_bots}{self.ENDC}")
+                            
+                            # Ask user if they want to send WhatsApp notification
+                            try:
+                                response = input(f"\n{self.YELLOW}Send WhatsApp notification about missing sheets? (y/n): {self.ENDC}").strip().lower()
+                                if response == 'y':
                                     step7_success = self.run_step7(missing_bots)
                                     if step7_success:
                                         print("\n" + "=" * 50)
                                         print("✓ Step 7 completed successfully!")
                                         print("✓ WhatsApp notification sent")
                                         print("=" * 50)
-                                        step8_success = self.run_step8()
-                                        if step8_success:
-                                            print("\n" + "=" * 50)
-                                            print("✓ Step 8 completed successfully!")
-                                            print("=" * 50)
                                     else:
-                                        print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
-                                        sys.exit(1)
-                            else:
-                                print(f"\n{self.RED}❌ Step 6 failed.{self.ENDC}")
-                                sys.exit(1)
-                        else:
-                            missing_bots = getattr(self, 'missing_sheets', [])
-                            if not missing_bots:
-                                missing_bots = ["Unknown bot"]
-                            step7_success = self.run_step7(missing_bots)
-                            if step7_success:
-                                print("\n" + "=" * 50)
-                                print("✓ Step 7 completed successfully!")
-                                print("✓ WhatsApp notification sent")
-                                print("=" * 50)
-                                step8_success = self.run_step8()
-                                if step8_success:
-                                    print("\n" + "=" * 50)
-                                    print("✓ Step 8 completed successfully!")
-                                    print("=" * 50)
-                            else:
-                                print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
-                                sys.exit(1)
+                                        print(f"\n{self.YELLOW}⚠ WhatsApp notification failed, but sheets are fixed{self.ENDC}")
+                                else:
+                                    print(f"{self.GREEN}✓ Sheets fixed, notification skipped{self.ENDC}")
+                            except (KeyboardInterrupt, EOFError):
+                                print(f"{self.GREEN}✓ Sheets fixed, notification skipped{self.ENDC}")
                     else:
                         print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
                         sys.exit(1)
