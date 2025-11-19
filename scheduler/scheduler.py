@@ -915,8 +915,8 @@ class BotScheduler:
             for item in contents:
                 if item['type'] == 'dir':
                     folder_name = item['name']
-                    # Skip non-bot folders
-                    if folder_name in ['all-in-one-venv', 'scheduler', '.github']:
+                    # Skip only non-bot folders, include scheduler
+                    if folder_name in ['all-in-one-venv', '.github']:  # Removed 'scheduler' from exclusion
                         continue
                     
                     # Check if this folder has both 'sheets format' folder and 'venv.sh'
@@ -931,7 +931,7 @@ class BotScheduler:
                         if has_sheets_format and has_venv_sh:
                             bot_folders.append(folder_name)
                             print(f"  ✓ Found bot: {folder_name}")
-            
+        
             print(f"{self.GREEN}✓ Found {len(bot_folders)} bots on GitHub{self.ENDC}")
             return bot_folders
             
