@@ -784,10 +784,11 @@ class BotScheduler:
             return False
 
     def run_step5(self):
-        """Step 5: Compare Bot Folders with Google Sheets"""
+        """Step 5: Compare Bot Folders with Google Sheets (EXACT alphabetical match)"""
         print("\n" + "=" * 50)
         print("STEP 5: Comparing Bot Folders with Google Sheets")
         print("=" * 50)
+        print(f"{self.YELLOW}NOTE: Requiring EXACT alphabetical match (case-sensitive){self.ENDC}")
         
         bot_folders = self.get_bot_folders()
         if not bot_folders:
@@ -810,58 +811,81 @@ class BotScheduler:
             print(f"  {sheet['number']:2d}. {sheet['name']}")
             sheet_names.append(sheet['name'])
         
-        print(f"\n{self.BOLD}Comparing bot folders with Google Sheets...{self.ENDC}")
+        print(f"\n{self.BOLD}Comparing bot folders with Google Sheets (EXACT match required)...{self.ENDC}")
         
-        # Compare exact lowercase matches
+        # Compare EXACT alphabetical matches (case-sensitive)
         missing_sheets = []
         all_match = True
         
         for bot_name in bot_folder_names:
-            bot_lower = bot_name.lower()
             found = False
+            matching_sheet = None
             
             for sheet_name in sheet_names:
-                if bot_lower == sheet_name.lower():
+                if bot_name == sheet_name:  # EXACT match (case-sensitive)
                     found = True
-                    print(f"{self.GREEN}  ✓ '{bot_name}' matches sheet '{sheet_name}'{self.ENDC}")
+                    matching_sheet = sheet_name
                     break
             
-            if not found:
+            if found:
+                print(f"{self.GREEN}  ✓ '{bot_name}' matches sheet '{matching_sheet}'{self.ENDC}")
+            else:
                 all_match = False
                 missing_sheets.append(bot_name)
-                print(f"{self.RED}  ✗ '{bot_name}' - No matching Google Sheet found{self.ENDC}")
+                # Check if there's a case-insensitive match to show as suggestion
+                case_insensitive_match = None
+                for sheet_name in sheet_names:
+                    if bot_name.lower() == sheet_name.lower():
+                        case_insensitive_match = sheet_name
+                        break
+                
+                if case_insensitive_match:
+                    print(f"{self.RED}  ✗ '{bot_name}' - No EXACT match (found '{case_insensitive_match}' but case doesn't match){self.ENDC}")
+                else:
+                    print(f"{self.RED}  ✗ '{bot_name}' - No matching Google Sheet found{self.ENDC}")
         
         # Check for extra sheets that don't have corresponding bot folders
         extra_sheets = []
         for sheet_name in sheet_names:
-            sheet_lower = sheet_name.lower()
             found = False
             
             for bot_name in bot_folder_names:
-                if sheet_lower == bot_name.lower():
+                if sheet_name == bot_name:  # EXACT match (case-sensitive)
                     found = True
                     break
             
-            if not found and sheet_name.lower() != "scheduler":
+            if not found and sheet_name != "scheduler":  # Exclude scheduler from extra sheets
                 extra_sheets.append(sheet_name)
         
         print(f"\n{self.BOLD}Comparison Results:{self.ENDC}")
         
         if all_match and not extra_sheets:
-            print(f"{self.GREEN}✓ All bots have matching Google Sheets!{self.ENDC}")
+            print(f"{self.GREEN}✓ All bots have EXACT matching Google Sheets!{self.ENDC}")
             print(f"{self.GREEN}✓ No extra sheets found{self.ENDC}")
             return True, True  # Success and all match
         
         else:
             if missing_sheets:
-                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
+                print(f"{self.YELLOW}⚠ Missing EXACT Google Sheets for these bots:{self.ENDC}")
                 for missing in missing_sheets:
-                    print(f"  - {missing}")
+                    # Find case-insensitive matches to suggest
+                    suggestions = []
+                    for sheet_name in sheet_names:
+                        if missing.lower() == sheet_name.lower():
+                            suggestions.append(sheet_name)
+                    
+                    if suggestions:
+                        print(f"  - '{missing}' (suggest renaming sheet to: {', '.join(suggestions)})")
+                    else:
+                        print(f"  - '{missing}'")
             
             if extra_sheets:
                 print(f"{self.BLUE}ℹ️  Extra Google Sheets (no corresponding bot):{self.ENDC}")
                 for extra in extra_sheets:
-                    print(f"  - {extra}")
+                    print(f"  - '{extra}'")
+            
+            print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTLY (case-sensitive){self.ENDC}")
+            print(f"{self.YELLOW}   Please rename your Google Sheets to match the bot folder names exactly.{self.ENDC}")
             
             return True, False  # Success but not all match
 
