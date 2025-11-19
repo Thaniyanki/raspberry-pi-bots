@@ -52,8 +52,11 @@ echo "[OK] Python standard libraries: os, time, json, subprocess, shutil, re, sy
 # Google Sheets API (from your try/except block)
 pip install gspread oauth2client
 
+# Additional Google API packages for Google Sheets
+pip install google-auth google-api-python-client
+
 # Additional dependencies used in your code
-pip install firebase_admin google-auth google-auth-oauthlib \
+pip install firebase_admin google-auth-oauthlib \
     google-cloud-storage google-cloud-firestore psutil \
     pyautogui python3-xlib requests Pillow python-dateutil
 
@@ -72,6 +75,7 @@ echo "📄 Phone number file: $REPORT_FILE"
 echo
 echo "🐍 Python Dependencies Installed:"
 echo "   ✅ gspread, oauth2client (Google Sheets API)"
+echo "   ✅ google-auth, google-api-python-client (Google Auth)"
 echo "   ✅ firebase_admin, google-cloud-* (Firebase)"
 echo "   ✅ selenium (Web automation)"
 echo "   ✅ psutil, pyautogui, python3-xlib (System control)"
