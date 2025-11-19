@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scheduler Script for Managing Python Bots
+Scheduler Script for Managing Python Bots with Unlimited Retry
 """
 
 import os
@@ -19,12 +19,14 @@ try:
     import gspread
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
 except ImportError:
     print("Installing required Google packages...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "gspread", "google-auth", "google-api-python-client"])
     import gspread
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
 
 try:
     from selenium import webdriver
@@ -76,6 +78,38 @@ class BotScheduler:
         self.driver = None
         self.xpaths = {}
         
+    def unlimited_retry_api_call(self, api_call_func, operation_name, max_retry_delay=300, initial_delay=5):
+        """
+        Unlimited retry decorator for Google Sheets API calls
+        """
+        delay = initial_delay
+        attempt = 1
+        
+        while True:
+            try:
+                return api_call_func()
+            except HttpError as e:
+                if e.resp.status in [503, 500, 429]:  # Service unavailable, internal error, rate limit
+                    print(f"{self.YELLOW}⚠ {operation_name} - Attempt {attempt}: API temporarily unavailable ({e.resp.status}){self.ENDC}")
+                    print(f"{self.YELLOW}   Retrying in {delay} seconds...{self.ENDC}")
+                    time.sleep(delay)
+                    
+                    # Exponential backoff with cap
+                    delay = min(delay * 2, max_retry_delay)
+                    attempt += 1
+                else:
+                    # Other HTTP errors (404, 403, etc.) should not be retried indefinitely
+                    print(f"{self.RED}❌ {operation_name} - HTTP Error {e.resp.status}: {e}{self.ENDC}")
+                    raise
+            except Exception as e:
+                print(f"{self.RED}❌ {operation_name} - Attempt {attempt}: Unexpected error: {e}{self.ENDC}")
+                if attempt >= 3:  # Only retry unexpected errors a few times
+                    raise
+                print(f"{self.YELLOW}   Retrying in {delay} seconds...{self.ENDC}")
+                time.sleep(delay)
+                delay = min(delay * 2, max_retry_delay)
+                attempt += 1
+
     def run_curl_command(self):
         """Run the curl command to setup bots with LIVE output"""
         print("Setting up bots using curl command...")
@@ -184,7 +218,7 @@ class BotScheduler:
         return None, None
     
     def copy_report_numbers_from_valid_bots(self, bot_folders):
-        """Copy report numbers from bots that have valid ones to bots that don't (INCLUDING scheduler)"""
+        """Copy report numbers from bots that have them to bots that don't (INCLUDING scheduler)"""
         print("Automatically copying report numbers from bots that have them...")
         
         # Find all valid report numbers
@@ -735,7 +769,7 @@ class BotScheduler:
             return None
 
     def run_step4(self):
-        """Step 4: List Google Sheets"""
+        """Step 4: List Google Sheets with unlimited retry"""
         print("\n" + "=" * 50)
         print("STEP 4: Listing Google Sheets")
         print("=" * 50)
@@ -756,12 +790,7 @@ class BotScheduler:
         
         print(f"{self.GREEN}✓ Using spreadsheet access key from {source_folder.name}/venv/{self.ENDC}")
         
-        try:
-            # Import required libraries
-            import gspread
-            from google.oauth2.service_account import Credentials
-            from googleapiclient.discovery import build
-            
+        def list_sheets():
             # Define scopes
             SCOPES = [
                 "https://www.googleapis.com/auth/spreadsheets.readonly",
@@ -820,16 +849,14 @@ class BotScheduler:
             # Store the sheets for Step 5 comparison
             self.available_sheets = available_sheets
             return True
-            
-        except ImportError as e:
-            print(f"{self.RED}❌ Required libraries not installed: {e}{self.ENDC}")
-            print("Please install required packages:")
-            print("pip install gspread google-auth google-api-python-client")
-            return False
-            
-        except Exception as e:
-            print(f"{self.RED}❌ Error listing Google Sheets: {e}{self.ENDC}")
-            return False
+        
+        # Use unlimited retry for listing sheets
+        return self.unlimited_retry_api_call(
+            list_sheets, 
+            "Listing Google Sheets",
+            max_retry_delay=300,
+            initial_delay=5
+        )
 
     def run_step5(self):
         """Step 5: Compare Bot Folders with Google Sheets (EXACT alphabetical match)"""
@@ -1028,18 +1055,22 @@ class BotScheduler:
             return None
 
     def get_google_sheet_worksheets(self, sheet_name, gc):
-        """Get all worksheets from a Google Sheet"""
-        try:
+        """Get all worksheets from a Google Sheet with unlimited retry"""
+        def get_worksheets():
             sheet = gc.open(sheet_name)
             worksheets = sheet.worksheets()
             return [worksheet.title for worksheet in worksheets]
-        except Exception as e:
-            print(f"    Error accessing Google Sheet '{sheet_name}': {e}")
-            return []
+        
+        return self.unlimited_retry_api_call(
+            lambda: get_worksheets(),
+            f"Getting worksheets from '{sheet_name}'",
+            max_retry_delay=300,
+            initial_delay=5
+        )
 
     def update_worksheet_from_csv(self, sheet_name, worksheet_name, csv_content, gc):
-        """Update existing worksheet header row with CSV content if structure differs"""
-        try:
+        """Update existing worksheet header row with CSV content with unlimited retry"""
+        def update_worksheet():
             sheet = gc.open(sheet_name)
             worksheet = sheet.worksheet(worksheet_name)
             
@@ -1078,14 +1109,17 @@ class BotScheduler:
             else:
                 print(f"      ✓ Worksheet '{worksheet_name}' already has correct header format")
                 return False
-                
-        except Exception as e:
-            print(f"      ✗ Error updating worksheet '{worksheet_name}': {e}")
-            return False
+        
+        return self.unlimited_retry_api_call(
+            update_worksheet,
+            f"Updating worksheet '{worksheet_name}' in '{sheet_name}'",
+            max_retry_delay=300,
+            initial_delay=5
+        )
 
     def create_worksheet_if_missing(self, sheet_name, worksheet_name, csv_content, gc):
-        """Create a missing worksheet within an existing Google Sheet"""
-        try:
+        """Create a missing worksheet within an existing Google Sheet with unlimited retry"""
+        def create_worksheet():
             sheet = gc.open(sheet_name)
             
             # Check if worksheet already exists
@@ -1109,13 +1143,16 @@ class BotScheduler:
                 
                 print(f"      ✓ Created worksheet '{worksheet_name}' with {len(new_data)} rows")
                 return True
-                
-        except Exception as e:
-            print(f"      ✗ Error creating worksheet '{worksheet_name}': {e}")
-            return False
+        
+        return self.unlimited_retry_api_call(
+            create_worksheet,
+            f"Creating worksheet '{worksheet_name}' in '{sheet_name}'",
+            max_retry_delay=300,
+            initial_delay=5
+        )
 
     def run_step6(self):
-        """Step 6: Verify Google Sheets Format (Create missing worksheets within existing sheets)"""
+        """Step 6: Verify Google Sheets Format with unlimited retry"""
         print("\n" + "=" * 50)
         print("STEP 6: Verifying Google Sheets Format")
         print("=" * 50)
@@ -1124,7 +1161,7 @@ class BotScheduler:
         github_bots = self.get_github_bot_folders()
         if not github_bots:
             print(f"{self.RED}❌ No bots found on GitHub repository{self.ENDC}")
-            return False, False  # Return False for both success and all_sheets_available
+            return False, False
         
         # Get local bot folders
         local_bot_folders = self.get_bot_folders()
@@ -1136,11 +1173,8 @@ class BotScheduler:
             print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
             return False, False
         
-        try:
+        def process_sheets():
             # Authorize with Google Sheets
-            import gspread
-            from google.oauth2.service_account import Credentials
-            
             SCOPES = [
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive"
@@ -1162,7 +1196,6 @@ class BotScheduler:
             
             for github_bot in github_bots:
                 # Convert GitHub folder name to local folder name format
-                # GitHub: facebook-birthday-wisher -> Local: facebook birthday wisher
                 local_bot_name = github_bot.replace('-', ' ')
                 
                 if local_bot_name in local_bot_names:
@@ -1232,16 +1265,21 @@ class BotScheduler:
             
             if all_sheets_available:
                 print(f"{self.GREEN}✓ All required sheets and worksheets are available{self.ENDC}")
-                return True, True  # Success and all sheets available
+                return True, True
             else:
                 print(f"{self.YELLOW}⚠ Some sheets or worksheets are missing{self.ENDC}")
-                return True, False  # Success but some sheets missing
-            
-        except ImportError as e:
-            print(f"{self.RED}❌ Required libraries not installed: {e}{self.ENDC}")
-            return False, False
+                return True, False
+        
+        # Use unlimited retry for the entire Step 6 process
+        try:
+            return self.unlimited_retry_api_call(
+                process_sheets,
+                "Step 6: Verifying Google Sheets Format",
+                max_retry_delay=300,
+                initial_delay=10
+            )
         except Exception as e:
-            print(f"{self.RED}❌ Error in Step 6: {e}{self.ENDC}")
+            print(f"{self.RED}❌ Step 6 failed after unlimited retries: {e}{self.ENDC}")
             return False, False
 
     def fetch_xpaths_from_database(self):
@@ -1536,7 +1574,6 @@ Kindly check
         print("=" * 50)
         print(f"{self.GREEN}✓ All Google Sheets are available with correct format!{self.ENDC}")
         print("Continuing with bot execution setup...")
-        # Step 8 implementation will go here
         return True
 
     def run(self):
