@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scheduler Script for Managing Python Bots - Complete Implementation
+Scheduler Script for Managing Python Bots
 """
 
 import os
@@ -1197,23 +1197,15 @@ class BotScheduler:
             return False, None
 
     def run_step7h(self, search_field, phone_number):
-        """Step 7h: Enter phone number in search field - Type digit by digit"""
+        """Step 7h: Enter phone number in search field"""
         print("\n" + "=" * 50)
         print("STEP 7h: Entering Phone Number")
         print("=" * 50)
         
         try:
-            # Clear the search field first
             search_field.clear()
-            time.sleep(1)
-            
-            # Type phone number digit by digit
-            print(f"Typing phone number digit by digit: {phone_number}")
-            for digit in phone_number:
-                search_field.send_keys(digit)
-                time.sleep(0.1)  # Small delay between each digit
-            
-            print(f"✓ Phone number typed: {phone_number}")
+            search_field.send_keys(phone_number)
+            print(f"✓ Phone number entered: {phone_number}")
             
             print("⏳ Waiting 10 seconds for stability...")
             time.sleep(10)
@@ -1253,26 +1245,21 @@ class BotScheduler:
             print("Waiting 10 seconds for stability after phone number entry...")
             time.sleep(10)
             
-            # Press down arrow to select the first contact
-            print("Pressing down arrow to select contact...")
+            # Press down arrow
+            print("Pressing down arrow...")
             body = self.driver.find_element(By.TAG_NAME, 'body')
             body.send_keys(Keys.ARROW_DOWN)
-            print("✓ Down arrow pressed - contact selected")
+            print("✓ Down arrow pressed")
             
             # Wait 2 seconds for stability
             print("Waiting 2 seconds for stability...")
             time.sleep(2)
             
-            # Press enter to open the chat
-            print("Pressing Enter to open chat...")
+            # Press enter
+            print("Pressing Enter...")
             body.send_keys(Keys.ENTER)
-            print("✓ Enter pressed - Chat opened")
+            print("✓ Enter pressed - Entered Message Field")
             
-            # Wait for message input field to be available
-            print("Waiting 3 seconds for message field...")
-            time.sleep(3)
-            
-            print("✓ Entered Message Field")
             return True
             
         except Exception as e:
@@ -1440,7 +1427,7 @@ class BotScheduler:
                     print("❌ Step 7g failed, stopping...")
                     return False
                 
-                # Step 7h: Enter phone number (TYPE DIGIT BY DIGIT)
+                # Step 7h: Enter phone number
                 print(f"\n{self.BLUE}7h. Entering Phone Number{self.ENDC}")
                 if not self.run_step7h(search_field, phone_number):
                     print("❌ Step 7h failed, restarting...")
