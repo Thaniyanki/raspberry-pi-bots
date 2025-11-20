@@ -1202,11 +1202,187 @@ class BotScheduler:
             return False, False
 
     # =========================================================================
-    # STEP 7 & 8 IMPLEMENTATION (Keep existing implementation)
+    # STEP 7 IMPLEMENTATION - WORKING WHATSAPP NOTIFICATIONS
     # =========================================================================
 
+    def check_internet_connection(self):
+        """Check internet connection using ping method"""
+        print("Checking internet connection...")
+        
+        ping_targets = ['8.8.8.8', '1.1.1.1', 'google.com']
+        
+        for target in ping_targets:
+            try:
+                if platform.system().lower() == 'windows':
+                    command = ['ping', '-n', '2', '-w', '5000', target]
+                else:
+                    command = ['ping', '-c', '2', '-W', '5', target]
+                
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if result.returncode == 0:
+                    print(f"  ✓ Internet connection available (ping to {target} successful)")
+                    return True
+                    
+            except subprocess.TimeoutExpired:
+                print(f"  ⚠ Ping to {target} timed out")
+                continue
+            except Exception as e:
+                print(f"  ⚠ Ping to {target} failed: {e}")
+                continue
+        
+        print("  ✗ No internet connection available")
+        return False
+
+    def wait_for_internet_connection(self):
+        """Wait for internet connection to become available, checking every 2 seconds"""
+        print(f"{self.YELLOW}Waiting for internet connection...{self.ENDC}")
+        print("Checking every 2 seconds. Press Ctrl+C to cancel.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                
+                if self.check_internet_connection():
+                    print(f"{self.GREEN}✓ Internet connection established!{self.ENDC}")
+                    return True
+                
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rWaiting for internet{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(2)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return False
+
+    def close_chrome_browser(self):
+        """Close Chrome browser if already open"""
+        print("Closing Chrome browser if open...")
+        
+        browsers = ['chromium', 'chrome']
+        
+        if self.driver:
+            try:
+                self.driver.quit()
+                self.driver = None
+                print("✅ Chrome browser closed via Selenium")
+            except Exception as e:
+                print(f"⚠️ Error closing Selenium driver: {str(e)}")
+        
+        for browser in browsers:
+            print(f"🔍 Checking for {browser} processes...")
+            try:
+                result = subprocess.run(['pgrep', '-f', browser], 
+                                      stdout=subprocess.PIPE, 
+                                      stderr=subprocess.PIPE,
+                                      timeout=5)
+                if result.stdout:
+                    print(f"🛑 Closing {browser} processes...")
+                    subprocess.run(['pkill', '-f', browser], 
+                                  check=True,
+                                  timeout=5)
+                    print(f"✅ {browser.capitalize()} processes closed")
+            except Exception as e:
+                print(f"⚠️ Error cleaning {browser}: {str(e)}")
+
+    def setup_selenium_driver(self):
+        """Setup Selenium WebDriver with Chrome options"""
+        print("Setting up Selenium WebDriver...")
+        
+        try:
+            options = Options()
+            options.add_argument(f"--user-data-dir={self.chrome_profile}")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--start-maximized")
+            options.add_argument("--no-first-run")
+            options.add_argument("--no-default-browser-check")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-plugins")
+            options.add_argument("--disable-popup-blocking")
+            options.add_argument("--disable-default-apps")
+            
+            service = Service(executable_path=self.chromedriver)
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.implicitly_wait(10)
+            self.driver.set_page_load_timeout(300)
+            
+            print(f"{self.GREEN}✅ WebDriver setup completed{self.ENDC}")
+            return True
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error setting up WebDriver: {e}{self.ENDC}")
+            return False
+
+    def wait_for_element(self, xpath_key, timeout=120, check_interval=1):
+        """Wait for element to be present using XPath from database"""
+        if xpath_key not in self.xpaths:
+            print(f"{self.RED}❌ XPath key '{xpath_key}' not found in database{self.ENDC}")
+            return None
+        
+        xpath = self.xpaths[xpath_key]
+        print(f"Waiting for {xpath_key} (timeout: {timeout}s)...")
+        
+        start_time = time.time()
+        check_count = 0
+        
+        while time.time() - start_time < timeout:
+            check_count += 1
+            try:
+                element = self.driver.find_element(By.XPATH, xpath)
+                if element.is_displayed():
+                    print(f"  ✓ {xpath_key} found after {check_count} checks")
+                    return element
+            except NoSuchElementException:
+                pass
+            
+            elapsed = int(time.time() - start_time)
+            if check_count % 10 == 0:
+                print(f"  Checking... {elapsed}s elapsed")
+            
+            time.sleep(check_interval)
+        
+        print(f"  ✗ {xpath_key} not found within {timeout} seconds")
+        return None
+
+    def check_element_present(self, xpath_key):
+        """Check if element is present using XPath from database"""
+        if xpath_key not in self.xpaths:
+            return False
+        
+        xpath = self.xpaths[xpath_key]
+        try:
+            element = self.driver.find_element(By.XPATH, xpath)
+            return element.is_displayed()
+        except NoSuchElementException:
+            return False
+
+    def get_report_number(self):
+        """Get report number from any bot's venv folder"""
+        bot_folders = self.get_bot_folders()
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            return content
+                    except:
+                        continue
+        return None
+
     def run_step7(self):
-        """Step 7: WhatsApp notification for missing sheets"""
+        """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets"""
         print("\n" + "=" * 60)
         print("STEP 7: SENDING WHATSAPP NOTIFICATION FOR MISSING SHEETS")
         print("=" * 60)
@@ -1216,9 +1392,203 @@ class BotScheduler:
             return True
         
         print(f"{self.YELLOW}Missing sheets detected: {', '.join(self.missing_sheets)}{self.ENDC}")
-        print("WhatsApp notification would be sent here...")
-        print(f"{self.GREEN}✓ Step 7 placeholder - WhatsApp notification logic{self.ENDC}")
-        return True
+        print("Sending WhatsApp notification to admin...")
+        
+        # Fetch all WhatsApp XPaths from database first
+        if not self.fetch_all_whatsapp_xpaths():
+            return False
+        
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attempts} ==={self.ENDC}")
+            
+            try:
+                # Setup browser
+                print(f"\n{self.BLUE}Browser Management{self.ENDC}")
+                self.close_chrome_browser()
+                time.sleep(3)
+                if not self.setup_selenium_driver():
+                    print("❌ Browser setup failed, restarting...")
+                    continue
+                
+                # Check internet
+                print(f"\n{self.BLUE}Internet Connection Check{self.ENDC}")
+                if not self.check_internet_connection():
+                    if not self.wait_for_internet_connection():
+                        print("❌ No internet connection, restarting...")
+                        continue
+                
+                # Open WhatsApp
+                print(f"\n{self.BLUE}WhatsApp Web Setup{self.ENDC}")
+                try:
+                    self.driver.get("https://web.whatsapp.com/")
+                    print("✓ WhatsApp Web opened")
+                except Exception as e:
+                    print(f"❌ Error opening WhatsApp Web: {e}")
+                    continue
+                
+                # Check search field
+                print(f"\n{self.BLUE}Checking Search Field{self.ENDC}")
+                search_field = self.wait_for_element("Xpath001", timeout=120)
+                if not search_field:
+                    print("❌ Search field not found, restarting...")
+                    continue
+                print("✓ Entered Mobile number search field")
+                
+                # Get report number
+                print(f"\n{self.BLUE}Checking Report Number{self.ENDC}")
+                report_number = self.get_report_number()
+                if not report_number:
+                    print("❌ Report number not available")
+                    return False
+                print(f"✓ Phone number: {report_number}")
+                
+                # Enter phone number
+                print(f"\n{self.BLUE}Entering Phone Number{self.ENDC}")
+                try:
+                    search_field.clear()
+                    search_field.send_keys(report_number)
+                    print(f"✓ Phone number entered: {report_number}")
+                    time.sleep(2)
+                    search_field.send_keys(Keys.ENTER)
+                    print("✓ Enter key pressed")
+                    time.sleep(10)
+                except Exception as e:
+                    print(f"❌ Error entering phone number: {e}")
+                    continue
+                
+                # Check contact existence
+                print(f"\n{self.BLUE}Checking Contact Existence{self.ENDC}")
+                if self.check_element_present("Xpath004"):
+                    print("❌ Contact not found")
+                    if self.check_internet_connection():
+                        print("✗ Invalid Mobile Number")
+                        return False
+                    else:
+                        print("No internet connection, restarting...")
+                        continue
+                else:
+                    print("✓ Contact found")
+                
+                # Select contact
+                print(f"\n{self.BLUE}Selecting Contact{self.ENDC}")
+                try:
+                    time.sleep(10)
+                    body = self.driver.find_element(By.TAG_NAME, 'body')
+                    body.send_keys(Keys.ARROW_DOWN)
+                    print("✓ Down arrow pressed")
+                    time.sleep(2)
+                    body.send_keys(Keys.ENTER)
+                    print("✓ Enter pressed - Entered Message Field")
+                except Exception as e:
+                    print(f"❌ Error selecting contact: {e}")
+                    continue
+                
+                # Type error message
+                print(f"\n{self.BLUE}Composing Error Message{self.ENDC}")
+                if not self.missing_sheets:
+                    print("No missing sheets to report")
+                    return False
+                
+                # Create message
+                if len(self.missing_sheets) == 1:
+                    message = f"Google Sheet Error - {self.missing_sheets[0]}"
+                else:
+                    message = f"Google Sheet Error - {self.missing_sheets[0]} and {self.missing_sheets[1]}" if len(self.missing_sheets) == 2 else f"Google Sheet Error - {', '.join(self.missing_sheets)}"
+                
+                message += "\n---------------------------------------------\n"
+                for sheet in self.missing_sheets:
+                    message += f"Sheet '{sheet}' is not available [or]\n"
+                    message += f"Name is mismatch [or]\n"
+                    message += f"Not share with service account\n\n"
+                message += "Kindly check\n---------------------------------------------"
+                
+                try:
+                    time.sleep(2)
+                    message_input = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                    )
+                    message_input.click()
+                    time.sleep(1)
+                    
+                    lines = message.split('\n')
+                    for i, line in enumerate(lines):
+                        message_input.send_keys(line)
+                        if i < len(lines) - 1:
+                            message_input.send_keys(Keys.SHIFT + Keys.ENTER)
+                            time.sleep(0.5)
+                    
+                    print("✓ Error message composed")
+                except Exception as e:
+                    print(f"❌ Error composing message: {e}")
+                    continue
+                
+                # Send message
+                print(f"\n{self.BLUE}Sending Message{self.ENDC}")
+                try:
+                    time.sleep(2)
+                    message_input = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                    )
+                    message_input.send_keys(Keys.ENTER)
+                    print("✓ Message sent")
+                except Exception as e:
+                    print(f"❌ Error sending message: {e}")
+                    continue
+                
+                # Wait for delivery
+                print(f"\n{self.BLUE}Waiting for Message Delivery{self.ENDC}")
+                try:
+                    time.sleep(2)
+                    print("Monitoring message delivery...")
+                    
+                    start_time = time.time()
+                    check_count = 0
+                    xpath003_was_present = False
+                    
+                    while time.time() - start_time < 300:
+                        check_count += 1
+                        elapsed_time = int(time.time() - start_time)
+                        
+                        xpath003_present = self.check_element_present("Xpath003")
+                        
+                        if xpath003_present:
+                            if not xpath003_was_present:
+                                print(f"  ✓ Message is pending delivery (check {check_count})")
+                                xpath003_was_present = True
+                            
+                            if check_count % 10 == 0:
+                                print(f"  ⏳ Still pending... {elapsed_time}s elapsed")
+                        else:
+                            if xpath003_was_present:
+                                print(f"  ✓ Message delivered after {elapsed_time}s!")
+                                print("✓ Error message sent successfully")
+                                return True
+                            else:
+                                print(f"  ✓ Message delivered instantly after {elapsed_time}s")
+                                print("✓ Error message sent successfully")
+                                return True
+                        
+                        time.sleep(1)
+                    
+                    print(f"✗ Message delivery timeout after 300 seconds")
+                    return False
+                    
+                except Exception as e:
+                    print(f"❌ Error in delivery monitoring: {e}")
+                    return False
+                
+            except Exception as e:
+                print(f"{self.RED}❌ Unexpected error in attempt {attempt}: {e}{self.ENDC}")
+                continue
+            
+            finally:
+                if self.driver:
+                    self.driver.quit()
+                    self.driver = None
+        
+        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
+        return False
 
     def run_step8(self):
         """Step 8: Final step - All setup completed"""
@@ -1233,13 +1603,7 @@ class BotScheduler:
     def cleanup(self):
         """Cleanup method to be called before exit"""
         print("\nPerforming cleanup...")
-        if self.driver:
-            try:
-                self.driver.quit()
-                self.driver = None
-                print("✅ Browser closed")
-            except Exception as e:
-                print(f"⚠️ Error closing browser: {str(e)}")
+        self.close_chrome_browser()
 
     def run(self):
         """Main execution function with proper cleanup"""
