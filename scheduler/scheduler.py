@@ -1207,7 +1207,15 @@ class BotScheduler:
             search_field.send_keys(phone_number)
             print(f"✓ Phone number entered: {phone_number}")
             
-            print("⏳ Waiting 10 seconds for stability...")
+            print("⏳ Waiting 2 seconds after entering phone number...")
+            time.sleep(2)
+            
+            # Press Enter key one time
+            print("Pressing Enter key...")
+            search_field.send_keys(Keys.ENTER)
+            print("✓ Enter key pressed")
+            
+            print("⏳ Waiting 10 seconds for contact to load...")
             time.sleep(10)
             
             return True
@@ -1216,7 +1224,7 @@ class BotScheduler:
             return False
 
     def run_step7i(self, phone_number):
-        """Step 7i: Check if contact exists"""
+        """Step 7i: Check if contact exists using Xpath004"""
         print("\n" + "=" * 50)
         print("STEP 7i: Checking Contact Existence")
         print("=" * 50)
