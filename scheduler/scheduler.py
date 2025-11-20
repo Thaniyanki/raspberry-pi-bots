@@ -1201,6 +1201,66 @@ class BotScheduler:
     # STEP 7 & 8 IMPLEMENTATION 
     # =========================================================================
 
+    def send_whatsapp_message(self, phone_number, message):
+        """Send WhatsApp message using selenium"""
+        print("Initializing browser for WhatsApp...")
+        
+        try:
+            # Setup Chrome options
+            chrome_options = Options()
+            chrome_options.add_argument("--user-data-dir=" + str(self.chrome_profile))
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--remote-debugging-port=9222")
+            
+            # Initialize the driver
+            service = Service(self.chromedriver)
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.driver.get("https://web.whatsapp.com")
+            
+            print("Please ensure WhatsApp Web is logged in...")
+            print("Waiting for WhatsApp Web to load...")
+            
+            # Wait for WhatsApp to load
+            WebDriverWait(self.driver, 30).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='3']"))
+            )
+            
+            print("WhatsApp Web loaded successfully!")
+            
+            # Construct WhatsApp URL with message
+            encoded_message = requests.utils.quote(message)
+            whatsapp_url = f"https://web.whatsapp.com/send?phone={phone_number}&text={encoded_message}"
+            
+            self.driver.get(whatsapp_url)
+            
+            # Wait for send button to be available
+            send_button_xpath = "//button[@data-tab='11']//span[@data-icon='send']"
+            WebDriverWait(self.driver, 30).until(
+                EC.element_to_be_clickable((By.XPATH, send_button_xpath))
+            )
+            
+            # Click send button
+            send_button = self.driver.find_element(By.XPATH, send_button_xpath)
+            send_button.click()
+            
+            print("Message sent successfully!")
+            
+            # Wait a moment to ensure message is sent
+            time.sleep(3)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error sending WhatsApp message: {e}")
+            return False
+        finally:
+            # Close browser
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
+                self.driver = None
+
     def run_step7(self):
         """Step 7: WhatsApp notification for missing sheets"""
         print("\n" + "=" * 60)
@@ -1212,9 +1272,47 @@ class BotScheduler:
             return True
         
         print(f"{self.YELLOW}Missing sheets detected: {', '.join(self.missing_sheets)}{self.ENDC}")
-        print("WhatsApp notification would be sent here...")
-        print(f"{self.GREEN}✓ Step 7 placeholder - WhatsApp notification logic{self.ENDC}")
-        return True
+        
+        try:
+            # Get report number from any bot
+            bot_folders = self.get_bot_folders()
+            report_number, source_bot = self.get_valid_report_number_from_bots(bot_folders)
+            
+            if not report_number:
+                print(f"{self.RED}❌ No valid report number found to send WhatsApp notification{self.ENDC}")
+                return False
+            
+            print(f"Using report number from {source_bot}: {report_number}")
+            
+            # Format the message
+            missing_sheets_list = "\n".join([f"• {sheet}" for sheet in self.missing_sheets])
+            message = f"""🚨 *MISSING GOOGLE SHEETS ALERT* 🚨
+
+The following bots are missing matching Google Sheets:
+
+{missing_sheets_list}
+
+*Action Required:*
+Please create Google Sheets with EXACT matching names (case-sensitive) for these bots.
+
+*Device:* Raspberry Pi ({self.username})
+*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+This is an automated notification from Bot Scheduler."""
+
+            # Send WhatsApp message
+            success = self.send_whatsapp_message(report_number, message)
+            
+            if success:
+                print(f"{self.GREEN}✓ WhatsApp notification sent successfully!{self.ENDC}")
+                return True
+            else:
+                print(f"{self.RED}❌ Failed to send WhatsApp notification{self.ENDC}")
+                return False
+                
+        except Exception as e:
+            print(f"{self.RED}❌ Error sending WhatsApp notification: {e}{self.ENDC}")
+            return False
 
     def run_step8(self):
         """Step 8: Final step - All setup completed"""
