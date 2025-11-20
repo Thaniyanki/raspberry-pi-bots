@@ -1336,15 +1336,14 @@ class BotScheduler:
         
         try:
             # Wait 2 seconds for stability before sending
+            print("⏳ Waiting 2 seconds for stability before sending...")
             time.sleep(2)
             
             # Press Enter to send the message
+            print("Pressing Enter key to send message...")
             body = self.driver.find_element(By.TAG_NAME, 'body')
             body.send_keys(Keys.ENTER)
             print("✓ Enter pressed - Message sent")
-            
-            # Wait 2 seconds after sending
-            time.sleep(2)
             
             return True
         except Exception as e:
@@ -1352,23 +1351,58 @@ class BotScheduler:
             return False
 
     def run_step7m(self):
-        """Step 7m: Wait for message to be delivered"""
+        """Step 7m: Wait for message to be delivered by checking Xpath003 disappearance"""
         print("\n" + "=" * 50)
         print("STEP 7m: Waiting for Message Delivery")
         print("=" * 50)
         
-        print("Waiting for pending message indicator to disappear...")
-        start_time = time.time()
-        
-        while time.time() - start_time < 300:
-            if not self.check_element_present("Xpath003"):
-                print("✓ Error message sent successfully")
-                return True
+        try:
+            # Wait 2 seconds for stability after sending
+            print("⏳ Waiting 2 seconds for stability after sending...")
+            time.sleep(2)
             
-            time.sleep(1)
-        
-        print("✗ Message delivery timeout")
-        return False
+            print("Immediately checking for Xpath003 (pending message indicator)...")
+            print("Monitoring Xpath003 every second until it disappears...")
+            
+            start_time = time.time()
+            check_count = 0
+            xpath003_was_present = False
+            
+            while time.time() - start_time < 300:  # 5 minute timeout
+                check_count += 1
+                elapsed_time = int(time.time() - start_time)
+                
+                # Check if Xpath003 is present
+                xpath003_present = self.check_element_present("Xpath003")
+                
+                if xpath003_present:
+                    if not xpath003_was_present:
+                        print(f"  ✓ Xpath003 found - message is pending delivery (check {check_count})")
+                        xpath003_was_present = True
+                    
+                    # Show waiting status every 10 checks
+                    if check_count % 10 == 0:
+                        print(f"  ⏳ Still pending... {elapsed_time}s elapsed")
+                else:
+                    if xpath003_was_present:
+                        print(f"  ✓ Xpath003 disappeared after {elapsed_time}s - message delivered!")
+                        print("✓ Error message sent successfully")
+                        return True
+                    else:
+                        # Xpath003 was never present, which means message was delivered instantly
+                        print(f"  ✓ Xpath003 never appeared - message delivered instantly after {elapsed_time}s")
+                        print("✓ Error message sent successfully")
+                        return True
+                
+                time.sleep(1)  # Check every second
+            
+            # If we reach here, timeout occurred
+            print(f"✗ Message delivery timeout after 300 seconds - Xpath003 still present")
+            return False
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error in delivery monitoring: {e}{self.ENDC}")
+            return False
 
     def run_step7(self):
         """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets"""
@@ -1473,7 +1507,14 @@ class BotScheduler:
                 print(f"\n{self.BLUE}7m. Waiting for Message Delivery{self.ENDC}")
                 if self.run_step7m():
                     print(f"\n{self.GREEN}✅ WHATSAPP NOTIFICATION SENT SUCCESSFULLY{self.ENDC}")
-                    return True
+                    
+                    # Continue with step8 after successful delivery
+                    step8_success = self.run_step8()
+                    if step8_success:
+                        return True
+                    else:
+                        print(f"{self.RED}❌ Step 8 failed after successful message delivery{self.ENDC}")
+                        return False
                 else:
                     print("❌ Step 7m failed, restarting...")
                     continue
