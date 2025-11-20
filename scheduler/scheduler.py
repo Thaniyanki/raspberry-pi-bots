@@ -1000,27 +1000,42 @@ class BotScheduler:
             print(f"  Error getting sheets format for {bot_folder_name}: {e}")
             return []
 
-    def download_csv_header(self, bot_folder_name, csv_file):
-        """Download only the header row from a CSV file"""
-        try:
-            # URL encode the file name properly
-            encoded_file = csv_file.replace(' ', '%20')
-            csv_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format/{encoded_file}"
-            
-            response = requests.get(csv_url, timeout=30)
-            if response.status_code == 200:
-                # Read only the first line (header)
-                first_line = response.text.split('\n')[0]
-                csv_reader = csv.reader([first_line])
-                header = next(csv_reader)
-                return header
-            else:
-                print(f"    Error downloading {csv_file}: {response.status_code}")
-                return None
+    def download_csv_header_with_retry(self, bot_folder_name, csv_file, max_retries=3):
+        """Download only the header row from a CSV file with retry logic"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                # URL encode the file name properly
+                encoded_file = csv_file.replace(' ', '%20')
+                csv_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format/{encoded_file}"
                 
-        except Exception as e:
-            print(f"    Error downloading {csv_file}: {e}")
-            return None
+                print(f"    Download attempt {attempt} for {csv_file}...")
+                response = requests.get(csv_url, timeout=30)
+                
+                if response.status_code == 200:
+                    # Read only the first line (header)
+                    first_line = response.text.split('\n')[0]
+                    csv_reader = csv.reader([first_line])
+                    header = next(csv_reader)
+                    print(f"    ✓ Successfully downloaded header for {csv_file}")
+                    return header
+                else:
+                    print(f"    Error downloading {csv_file}: HTTP {response.status_code}")
+                    
+            except requests.exceptions.ConnectionError as e:
+                print(f"    Connection error on attempt {attempt} for {csv_file}: {e}")
+            except requests.exceptions.Timeout:
+                print(f"    Timeout error on attempt {attempt} for {csv_file}")
+            except Exception as e:
+                print(f"    Error downloading {csv_file} on attempt {attempt}: {e}")
+            
+            # Wait before retrying (exponential backoff)
+            if attempt < max_retries:
+                wait_time = 2 ** attempt  # 2, 4, 8 seconds
+                print(f"    Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+        
+        print(f"    ✗ Failed to download header for {csv_file} after {max_retries} attempts")
+        return None
 
     def get_google_sheet_worksheets(self, sheet_name, gc):
         """Get all worksheets from a Google Sheet"""
@@ -1161,10 +1176,10 @@ class BotScheduler:
                             worksheet_name = csv_file.replace('.csv', '')
                             print(f"  Processing: {worksheet_name}")
                             
-                            # Download CSV header from GitHub
-                            csv_header = self.download_csv_header(github_bot, csv_file)
+                            # Download CSV header from GitHub with retry logic
+                            csv_header = self.download_csv_header_with_retry(github_bot, csv_file)
                             if not csv_header:
-                                print(f"    ✗ Failed to download header for {csv_file}")
+                                print(f"    ✗ Failed to download header for {csv_file} after retries")
                                 error_count += 1
                                 continue
                             
