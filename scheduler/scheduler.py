@@ -35,18 +35,18 @@ class BotScheduler:
             print("Error: Could not determine username")
             sys.exit(1)
             
-        # Auto-detect paths like your existing project
+        # Auto-detect paths
         self.USER_HOME = Path.home()
         self.bots_base_path = self.USER_HOME / "bots"
         self.scheduler_folder = "scheduler"
         self.github_repo = "https://github.com/Thaniyanki/raspberry-pi-bots"
         self.github_raw_base = "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
         
-        # Browser paths (same as your existing project)
+        # Browser paths
         self.chrome_profile = self.USER_HOME / ".config" / "chromium"
         self.chromedriver = "/usr/bin/chromedriver"
         
-        # Firebase database URL (same as your existing project)
+        # Firebase database URL
         self.database_url = "https://thaniyanki-xpath-manager-default-rtdb.firebaseio.com/"
         
         # Colors for terminal output
@@ -91,7 +91,7 @@ class BotScheduler:
             return False
 
     def fetch_xpath_from_firebase(self, xpath_name, platform="WhatsApp"):
-        """Fetch XPath from Firebase with retry logic (same as your existing project)"""
+        """Fetch XPath from Firebase with retry logic"""
         while True:
             try:
                 print(f"🔍 Fetching {xpath_name} from database...")
@@ -931,11 +931,11 @@ class BotScheduler:
             return True, False
 
     # =========================================================================
-    # STEP 7 IMPLEMENTATION - USING YOUR EXISTING PROJECT STRUCTURE
+    # STEP 7 IMPLEMENTATION - COMPLETE WHATSAPP MESSAGING
     # =========================================================================
 
     def check_internet_connection(self):
-        """Check internet connection using ping method (same as your existing project)"""
+        """Check internet connection using ping method"""
         print("Checking internet connection...")
         
         ping_targets = ['8.8.8.8', '1.1.1.1', 'google.com']
@@ -992,7 +992,7 @@ class BotScheduler:
             return False
 
     def close_chrome_browser(self):
-        """Close Chrome browser if already open (same as your existing project)"""
+        """Close Chrome browser if already open"""
         print("Closing Chrome browser if open...")
         
         browsers = ['chromium', 'chrome']
@@ -1022,7 +1022,7 @@ class BotScheduler:
                 print(f"⚠️ Error cleaning {browser}: {str(e)}")
 
     def setup_selenium_driver(self):
-        """Setup Selenium WebDriver with Chrome options (same as your existing project)"""
+        """Setup Selenium WebDriver with Chrome options"""
         print("Setting up Selenium WebDriver...")
         
         try:
@@ -1149,9 +1149,9 @@ class BotScheduler:
             return False
 
     def run_step7d(self):
-        """Step 7d: Check for Xpath001"""
+        """Step 7d: Check for Xpath001 (search field)"""
         print("\n" + "=" * 50)
-        print("STEP 7d: Checking Search Field (XPath001)")
+        print("STEP 7d: Checking Search Field")
         print("=" * 50)
         
         element = self.wait_for_element("Xpath001", timeout=120)
@@ -1159,9 +1159,10 @@ class BotScheduler:
             print("✓ Entered Mobile number search field")
             return True, element
         else:
+            # Check for loading indicator (Xpath011)
             if self.check_element_present("Xpath011"):
                 print("Loading chats detected, retrying search field...")
-                return self.run_step7d()
+                return self.run_step7d()  # Recursive retry
             else:
                 print("Search field not found and no loading indicator")
                 return False, None
@@ -1184,7 +1185,7 @@ class BotScheduler:
     def run_step7f(self):
         """Step 7f: Check loading indicator"""
         print("\n" + "=" * 50)
-        print("STEP 7f: Checking Loading Indicator (XPath011)")
+        print("STEP 7f: Checking Loading Indicator")
         print("=" * 50)
         
         if self.check_element_present("Xpath011"):
@@ -1230,7 +1231,7 @@ class BotScheduler:
     def run_step7i(self, phone_number):
         """Step 7i: Check if contact exists"""
         print("\n" + "=" * 50)
-        print("STEP 7i: Checking Contact Existence (XPath004)")
+        print("STEP 7i: Checking Contact Existence")
         print("=" * 50)
         
         if self.check_element_present("Xpath004"):
@@ -1252,13 +1253,22 @@ class BotScheduler:
         print("=" * 50)
         
         try:
-            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ARROW_DOWN)
-            print("✓ Down arrow pressed")
+            # Wait for search results to appear
+            time.sleep(3)
             
+            # Press down arrow to select the first contact
+            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ARROW_DOWN)
+            print("✓ Down arrow pressed - contact selected")
+            
+            # Wait 2 seconds for stability
             time.sleep(2)
             
+            # Press enter to open the chat
             self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
-            print("✓ Enter pressed - Entered Message Field")
+            print("✓ Enter pressed - Chat opened")
+            
+            # Wait for message input field to be available
+            time.sleep(3)
             
             return True
         except Exception as e:
@@ -1292,15 +1302,28 @@ class BotScheduler:
         message += "---------------------------------------------"
         
         try:
-            message_input = self.driver.find_element(By.XPATH, "//div[@contenteditable='true']")
+            # Wait for message input field to be ready
+            time.sleep(2)
             
+            # Find the message input field in the chat
+            message_input = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+            )
+            
+            # Focus on the input
+            message_input.click()
+            time.sleep(1)
+            
+            # Type the message with proper line breaks
             lines = message.split('\n')
             for i, line in enumerate(lines):
                 message_input.send_keys(line)
-                if i < len(lines) - 1:
+                if i < len(lines) - 1:  # Not the last line
+                    # Use Shift+Enter for new line (without sending)
                     message_input.send_keys(Keys.SHIFT + Keys.ENTER)
+                    time.sleep(0.5)  # Small delay between lines
             
-            print("✓ Error message composed")
+            print("✓ Error message composed in message input field")
             return True
         except Exception as e:
             print(f"{self.RED}❌ Error composing message: {e}{self.ENDC}")
@@ -1313,9 +1336,16 @@ class BotScheduler:
         print("=" * 50)
         
         try:
+            # Wait 2 seconds for stability before sending
             time.sleep(2)
-            self.driver.find_element(By.XPATH, "//div[@contenteditable='true']").send_keys(Keys.ENTER)
-            print("✓ Message sent")
+            
+            # Press Enter to send the message
+            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
+            print("✓ Enter pressed - Message sent")
+            
+            # Wait 2 seconds after sending
+            time.sleep(2)
+            
             return True
         except Exception as e:
             print(f"{self.RED}❌ Error sending message: {e}{self.ENDC}")
@@ -1324,7 +1354,7 @@ class BotScheduler:
     def run_step7m(self):
         """Step 7m: Wait for message to be delivered"""
         print("\n" + "=" * 50)
-        print("STEP 7m: Waiting for Message Delivery (XPath003)")
+        print("STEP 7m: Waiting for Message Delivery")
         print("=" * 50)
         
         print("Waiting for pending message indicator to disappear...")
@@ -1340,8 +1370,8 @@ class BotScheduler:
         print("✗ Message delivery timeout")
         return False
 
-        def run_step7(self):
-        """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets - FIXED VERSION"""
+    def run_step7(self):
+        """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets"""
         print("\n" + "=" * 50)
         print("STEP 7: Sending WhatsApp Notification")
         print("=" * 50)
@@ -1363,90 +1393,63 @@ class BotScheduler:
             
             try:
                 # Step 7a: Setup browser
-                print("\n--- Step 7a: Browser Setup ---")
                 if not self.run_step7a():
-                    print("Browser setup failed, retrying...")
                     continue
                 
                 # Step 7b: Check internet
-                print("\n--- Step 7b: Internet Check ---")
                 if not self.run_step7b():
-                    print("Internet check failed, retrying...")
                     continue
                 
                 # Step 7c: Open WhatsApp
-                print("\n--- Step 7c: Open WhatsApp ---")
                 if not self.run_step7c():
-                    print("Opening WhatsApp failed, retrying...")
                     continue
                 
                 # Step 7d: Check search field
-                print("\n--- Step 7d: Check Search Field ---")
                 success, search_field = self.run_step7d()
                 if not success:
                     result = self.run_step7f()
                     if result == "restart":
-                        print("Restarting browser due to loading...")
                         continue
                     else:
                         return False
                 
                 # Step 7e: Check report number file
-                print("\n--- Step 7e: Check Report Number ---")
                 success, phone_number = self.run_step7e()
                 if not success:
-                    print("Report number file issue, stopping...")
                     return False
                 
                 # Step 7g: Validate phone number
-                print("\n--- Step 7g: Validate Phone Number ---")
                 success, phone_number = self.run_step7g()
                 if not success:
-                    print("Phone number validation failed, stopping...")
                     return False
                 
                 # Step 7h: Enter phone number
-                print("\n--- Step 7h: Enter Phone Number ---")
                 if not self.run_step7h(search_field, phone_number):
-                    print("Entering phone number failed, retrying...")
                     continue
                 
                 # Step 7i: Check contact existence
-                print("\n--- Step 7i: Check Contact Existence ---")
                 result = self.run_step7i(phone_number)
                 if result == "restart":
-                    print("Internet issue, restarting...")
                     continue
                 elif not result:
-                    print("Invalid mobile number, stopping...")
                     return False
                 
                 # Step 7j: Select contact
-                print("\n--- Step 7j: Select Contact ---")
                 if not self.run_step7j():
-                    print("Selecting contact failed, retrying...")
                     continue
                 
-                # Step 7k: Type message
-                print("\n--- Step 7k: Type Message ---")
+                # Step 7k: Type error message
                 if not self.run_step7k():
-                    print("Typing message failed, retrying...")
                     continue
                 
                 # Step 7l: Send message
-                print("\n--- Step 7l: Send Message ---")
                 if not self.run_step7l():
-                    print("Sending message failed, retrying...")
                     continue
                 
                 # Step 7m: Wait for delivery
-                print("\n--- Step 7m: Wait for Delivery ---")
                 if self.run_step7m():
                     print(f"{self.GREEN}✓ WhatsApp notification sent successfully{self.ENDC}")
                     return True
-                else:
-                    print("Message delivery confirmation failed, retrying...")
-                    continue
                 
             except Exception as e:
                 print(f"{self.RED}❌ Error in attempt {attempt}: {e}{self.ENDC}")
