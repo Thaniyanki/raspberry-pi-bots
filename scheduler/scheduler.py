@@ -110,10 +110,12 @@ class BotScheduler:
                 temp_xpath_file = Path("/tmp/whatsapp_xpaths.json")
                 with open(temp_xpath_file, 'w') as f:
                     json.dump(xpaths_data, f, indent=2)
-                print(f"✅ XPaths saved to temporary storage")
+                print(f"✅ XPaths saved to {temp_xpath_file}")
                 
-                # Don't display fetched XPaths to user
-                print(f"✅ XPaths loaded successfully")
+                # Display fetched XPaths
+                print(f"\n{self.BLUE}Fetched XPaths:{self.ENDC}")
+                for xpath_name, xpath_value in sorted(self.xpaths.items()):
+                    print(f"  {xpath_name}: {xpath_value}")
                     
                 return True
             else:
@@ -253,7 +255,7 @@ class BotScheduler:
             return False
         
         source_bot, report_number = next(iter(valid_report_numbers.items()))
-        print(f"Found valid report number in {source_bot}")
+        print(f"Found valid report number '{report_number}' in {source_bot}")
         
         copied_count = 0
         for folder in bot_folders:
@@ -391,7 +393,7 @@ class BotScheduler:
             
             if report_number:
                 self.create_report_numbers(bot_folders, report_number)
-                print(f"Report number set for all bots in their venv folders.")
+                print(f"Report number '{report_number}' set for all bots in their venv folders.")
             else:
                 print("No valid report number provided. Please run the script again to set report numbers.")
                 sys.exit(1)
@@ -413,7 +415,7 @@ class BotScheduler:
                 report_number = self.get_report_number_input()
                 if report_number:
                     self.create_report_numbers(bot_folders, report_number)
-                    print(f"Report number updated in all venv folders")
+                    print(f"Report number updated to '{report_number}' in all venv folders")
                 else:
                     print("No valid report number provided. Keeping existing setup.")
         else:
@@ -424,7 +426,7 @@ class BotScheduler:
                     report_number = self.get_report_number_input()
                     if report_number:
                         self.create_report_numbers(bot_folders, report_number)
-                        print(f"Report number updated in all venv folders")
+                        print(f"Report number updated to '{report_number}' in all venv folders")
                 else:
                     print("Continuing with existing report numbers...")
             except (KeyboardInterrupt, EOFError):
@@ -443,7 +445,7 @@ class BotScheduler:
                             with open(report_file, 'r') as f:
                                 content = f.read().strip()
                             if content and self.is_valid_phone_number(content):
-                                status = f"✓ (configured)"
+                                status = f"✓ ({content})"
                             elif content:
                                 status = "✗ (invalid)"
                             else:
@@ -474,7 +476,7 @@ class BotScheduler:
                         with open(report_file, 'r') as f:
                             content = f.read().strip()
                         if content and self.is_valid_phone_number(content):
-                            print(f"  ✓ {folder.name}/venv/: configured")
+                            print(f"  ✓ {folder.name}/venv/: {content}")
                         else:
                             print(f"  ✗ {folder.name}/venv/: {'Empty' if not content else 'Invalid'} report number")
                             all_set = False
@@ -500,7 +502,7 @@ class BotScheduler:
                 report_number = self.get_report_number_input()
                 if report_number:
                     self.create_report_numbers(bot_folders, report_number)
-                    print(f"Report number updated for all bots.")
+                    print(f"Report number '{report_number}' updated for all bots.")
                     print("\nRe-verifying report numbers...")
                     return self.verify_report_numbers(bot_folders)
                 else:
@@ -788,7 +790,7 @@ class BotScheduler:
                         'number': sheet_count
                     }
                     available_sheets.append(sheet_info)
-                    print(f"{sheet_count:2d}. {file['name']}")
+                    print(f"{sheet_count:2d}. {file['name']}  ->  {file['id']}")
                 
                 page_token = response.get('nextPageToken', None)
                 if not page_token:
@@ -916,6 +918,315 @@ class BotScheduler:
             return True, False
 
     # =========================================================================
+    # STEP 6 IMPLEMENTATION - GOOGLE SHEETS FORMAT VERIFICATION
+    # =========================================================================
+
+    def get_github_bot_folders(self):
+        """Get list of bot folders from GitHub repository"""
+        print("Fetching bot information from GitHub repository...")
+        
+        try:
+            # Get the main repository structure
+            api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"Error accessing GitHub repository: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            bot_folders = []
+            
+            for item in contents:
+                if item['type'] == 'dir':
+                    folder_name = item['name']
+                    # Skip only non-bot folders, include scheduler
+                    if folder_name in ['all-in-one-venv', '.github']:  # Removed 'scheduler' from exclusion
+                        continue
+                    
+                    # Check if this folder has both 'sheets format' folder and 'venv.sh'
+                    folder_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{folder_name}"
+                    folder_response = requests.get(folder_url)
+                    
+                    if folder_response.status_code == 200:
+                        folder_contents = folder_response.json()
+                        has_sheets_format = any(content['name'] == 'sheets format' and content['type'] == 'dir' for content in folder_contents)
+                        has_venv_sh = any(content['name'] == 'venv.sh' for content in folder_contents)
+                        
+                        if has_sheets_format and has_venv_sh:
+                            bot_folders.append(folder_name)
+                            print(f"  ✓ Found bot: {folder_name}")
+        
+            print(f"{self.GREEN}✓ Found {len(bot_folders)} bots on GitHub{self.ENDC}")
+            return bot_folders
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching GitHub repository: {e}{self.ENDC}")
+            return []
+
+    def get_sheets_format_files(self, bot_folder_name):
+        """Get the list of CSV files from the 'sheets format' folder for a bot"""
+        try:
+            sheets_format_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format"
+            
+            # Try to get the directory listing from GitHub
+            api_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{bot_folder_name}/sheets%20format"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"  Error accessing sheets format for {bot_folder_name}: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            csv_files = []
+            
+            for item in contents:
+                if item['name'].endswith('.csv'):
+                    csv_files.append(item['name'])
+                    print(f"    - Found CSV: {item['name']}")
+            
+            return csv_files
+            
+        except Exception as e:
+            print(f"  Error getting sheets format for {bot_folder_name}: {e}")
+            return []
+
+    def download_csv_file(self, bot_folder_name, csv_file):
+        """Download a CSV file from GitHub"""
+        try:
+            # URL encode the file name properly
+            encoded_file = csv_file.replace(' ', '%20')
+            csv_url = f"{self.github_raw_base}/{bot_folder_name}/sheets%20format/{encoded_file}"
+            
+            response = requests.get(csv_url)
+            if response.status_code == 200:
+                return response.text
+            else:
+                print(f"    Error downloading {csv_file}: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"    Error downloading {csv_file}: {e}")
+            return None
+
+    def get_google_sheet_worksheets(self, sheet_name, gc):
+        """Get all worksheets from a Google Sheet"""
+        try:
+            sheet = gc.open(sheet_name)
+            worksheets = sheet.worksheets()
+            return [worksheet.title for worksheet in worksheets]
+        except Exception as e:
+            print(f"    Error accessing Google Sheet '{sheet_name}': {e}")
+            return []
+
+    def update_worksheet_from_csv(self, sheet_name, worksheet_name, csv_content, gc):
+        """Update existing worksheet header row with CSV content if structure differs"""
+        try:
+            sheet = gc.open(sheet_name)
+            worksheet = sheet.worksheet(worksheet_name)
+            
+            # Get current data from worksheet
+            current_data = worksheet.get_all_values()
+            
+            # Parse CSV content
+            csv_reader = csv.reader(csv_content.strip().splitlines())
+            new_data = list(csv_reader)
+            
+            # Check if we have at least a header row in both current and new data
+            if not current_data:
+                print(f"      ⚠ Worksheet '{worksheet_name}' is empty, updating with new format...")
+                worksheet.update(range_name='A1', values=new_data)
+                print(f"      ✓ Updated worksheet '{worksheet_name}' with new format")
+                return True
+            
+            if not new_data:
+                print(f"      ⚠ CSV file for '{worksheet_name}' is empty, skipping update")
+                return False
+            
+            # Compare headers (first row) only
+            current_header = current_data[0]
+            new_header = new_data[0]
+            
+            if current_header != new_header:
+                print(f"      ⚠ Headers differ in '{worksheet_name}', updating header row only...")
+                
+                # Update only the header row (first row)
+                worksheet.update(range_name='A1', values=[new_header])
+                
+                print(f"      ✓ Updated header row in worksheet '{worksheet_name}'")
+                print(f"      Old header: {current_header}")
+                print(f"      New header: {new_header}")
+                return True
+            else:
+                print(f"      ✓ Worksheet '{worksheet_name}' already has correct header format")
+                return False
+                
+        except Exception as e:
+            print(f"      ✗ Error updating worksheet '{worksheet_name}': {e}")
+            return False
+
+    def create_worksheet_if_missing(self, sheet_name, worksheet_name, csv_content, gc):
+        """Create a missing worksheet within an existing Google Sheet"""
+        try:
+            sheet = gc.open(sheet_name)
+            
+            # Check if worksheet already exists
+            try:
+                sheet.worksheet(worksheet_name)
+                print(f"      ✓ Worksheet '{worksheet_name}' already exists")
+                return False  # Worksheet already exists
+            except gspread.WorksheetNotFound:
+                # Worksheet doesn't exist, create it
+                print(f"      ⚠ Worksheet '{worksheet_name}' not found, creating...")
+                
+                # Parse CSV content
+                csv_reader = csv.reader(csv_content.strip().splitlines())
+                new_data = list(csv_reader)
+                
+                # Create new worksheet with CSV data
+                worksheet = sheet.add_worksheet(title=worksheet_name, rows=100, cols=20)
+                
+                if new_data:
+                    worksheet.update(range_name='A1', values=new_data)
+                
+                print(f"      ✓ Created worksheet '{worksheet_name}' with {len(new_data)} rows")
+                return True
+                
+        except Exception as e:
+            print(f"      ✗ Error creating worksheet '{worksheet_name}': {e}")
+            return False
+
+    def run_step6(self):
+        """Step 6: Verify Google Sheets Format (Create missing worksheets within existing sheets)"""
+        print("\n" + "=" * 50)
+        print("STEP 6: Verifying Google Sheets Format")
+        print("=" * 50)
+        
+        # Get bot folders from GitHub
+        github_bots = self.get_github_bot_folders()
+        if not github_bots:
+            print(f"{self.RED}❌ No bots found on GitHub repository{self.ENDC}")
+            return False, False  # Return False for both success and all_sheets_available
+        
+        # Get local bot folders
+        local_bot_folders = self.get_bot_folders()
+        local_bot_names = [folder.name for folder in local_bot_folders]
+        
+        # Get spreadsheet key
+        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(local_bot_folders)
+        if not key_exists:
+            print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
+            return False, False
+        
+        try:
+            # Authorize with Google Sheets
+            import gspread
+            from google.oauth2.service_account import Credentials
+            
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            
+            # Process each GitHub bot that has a matching local folder
+            updated_count = 0
+            created_count = 0
+            missing_sheets = []
+            all_sheets_available = True
+            
+            for github_bot in github_bots:
+                # Convert GitHub folder name to local folder name format
+                # GitHub: facebook-birthday-wisher -> Local: facebook birthday wisher
+                local_bot_name = github_bot.replace('-', ' ')
+                
+                if local_bot_name in local_bot_names:
+                    print(f"\n{self.BOLD}Processing: {local_bot_name}{self.ENDC}")
+                    
+                    # Check if Google Sheet exists for this bot
+                    sheet_exists = False
+                    try:
+                        gc.open(local_bot_name)
+                        sheet_exists = True
+                        print(f"  ✓ Google Sheet found: {local_bot_name}")
+                    except gspread.SpreadsheetNotFound:
+                        print(f"  ✗ Google Sheet not found: {local_bot_name}")
+                        missing_sheets.append(local_bot_name)
+                        all_sheets_available = False
+                        continue
+                    
+                    # Get required CSV files from GitHub
+                    csv_files = self.get_sheets_format_files(github_bot)
+                    if not csv_files:
+                        print(f"  ⚠ No CSV files found in sheets format for {github_bot}")
+                        continue
+                    
+                    # Get existing worksheets from Google Sheet
+                    existing_worksheets = self.get_google_sheet_worksheets(local_bot_name, gc)
+                    print(f"  Existing worksheets: {existing_worksheets}")
+                    
+                    # Process each required CSV file
+                    for csv_file in csv_files:
+                        worksheet_name = csv_file.replace('.csv', '')
+                        print(f"  Processing: {worksheet_name}")
+                        
+                        # Download CSV content from GitHub
+                        csv_content = self.download_csv_file(github_bot, csv_file)
+                        if not csv_content:
+                            print(f"    ✗ Failed to download {csv_file}")
+                            continue
+                        
+                        if worksheet_name in existing_worksheets:
+                            # Worksheet exists, check and update header if needed
+                            if self.update_worksheet_from_csv(local_bot_name, worksheet_name, csv_content, gc):
+                                updated_count += 1
+                        else:
+                            # Worksheet doesn't exist, create it
+                            if self.create_worksheet_if_missing(local_bot_name, worksheet_name, csv_content, gc):
+                                created_count += 1
+            
+            # Summary
+            print("\n" + "=" * 50)
+            print("STEP 6 SUMMARY:")
+            print("=" * 50)
+            
+            if updated_count > 0:
+                print(f"{self.GREEN}✓ Updated {updated_count} worksheet(s) across all bots{self.ENDC}")
+            
+            if created_count > 0:
+                print(f"{self.GREEN}✓ Created {created_count} missing worksheet(s) across all bots{self.ENDC}")
+            
+            if updated_count == 0 and created_count == 0:
+                print(f"{self.GREEN}✓ All worksheets are up-to-date{self.ENDC}")
+            
+            if missing_sheets:
+                print(f"{self.YELLOW}⚠ Missing Google Sheets for these bots:{self.ENDC}")
+                for missing in missing_sheets:
+                    print(f"  - {missing}")
+                all_sheets_available = False
+            
+            if all_sheets_available:
+                print(f"{self.GREEN}✓ All required sheets and worksheets are available{self.ENDC}")
+                return True, True  # Success and all sheets available
+            else:
+                print(f"{self.YELLOW}⚠ Some sheets or worksheets are missing{self.ENDC}")
+                return True, False  # Success but some sheets missing
+            
+        except ImportError as e:
+            print(f"{self.RED}❌ Required libraries not installed: {e}{self.ENDC}")
+            return False, False
+        except Exception as e:
+            print(f"{self.RED}❌ Error in Step 6: {e}{self.ENDC}")
+            return False, False
+
+    # =========================================================================
     # STEP 7 IMPLEMENTATION - COMPLETE WHATSAPP MESSAGING
     # =========================================================================
 
@@ -940,12 +1251,14 @@ class BotScheduler:
                 )
                 
                 if result.returncode == 0:
-                    print(f"  ✓ Internet connection available")
+                    print(f"  ✓ Internet connection available (ping to {target} successful)")
                     return True
                     
             except subprocess.TimeoutExpired:
+                print(f"  ⚠ Ping to {target} timed out")
                 continue
             except Exception as e:
+                print(f"  ⚠ Ping to {target} failed: {e}")
                 continue
         
         print("  ✗ No internet connection available")
@@ -989,17 +1302,20 @@ class BotScheduler:
                 print(f"⚠️ Error closing Selenium driver: {str(e)}")
         
         for browser in browsers:
+            print(f"🔍 Checking for {browser} processes...")
             try:
                 result = subprocess.run(['pgrep', '-f', browser], 
                                       stdout=subprocess.PIPE, 
                                       stderr=subprocess.PIPE,
                                       timeout=5)
                 if result.stdout:
+                    print(f"🛑 Closing {browser} processes...")
                     subprocess.run(['pkill', '-f', browser], 
                                   check=True,
                                   timeout=5)
-            except:
-                pass
+                    print(f"✅ {browser.capitalize()} processes closed")
+            except Exception as e:
+                print(f"⚠️ Error cleaning {browser}: {str(e)}")
 
     def setup_selenium_driver(self):
         """Setup Selenium WebDriver with Chrome options"""
@@ -1037,7 +1353,7 @@ class BotScheduler:
             return None
         
         xpath = self.xpaths[xpath_key]
-        print(f"Waiting for {xpath_key}...")
+        print(f"Waiting for {xpath_key} (timeout: {timeout}s)...")
         
         start_time = time.time()
         check_count = 0
@@ -1047,7 +1363,7 @@ class BotScheduler:
             try:
                 element = self.driver.find_element(By.XPATH, xpath)
                 if element.is_displayed():
-                    print(f"  ✓ {xpath_key} found")
+                    print(f"  ✓ {xpath_key} found after {check_count} checks")
                     return element
             except NoSuchElementException:
                 pass
@@ -1198,7 +1514,7 @@ class BotScheduler:
         try:
             search_field.clear()
             search_field.send_keys(phone_number)
-            print(f"✓ Phone number entered")
+            print(f"✓ Phone number entered: {phone_number}")
             
             print("⏳ Waiting 2 seconds after entering phone number...")
             time.sleep(2)
@@ -1224,7 +1540,7 @@ class BotScheduler:
         
         # Check for Xpath004 (contact not found message)
         if self.check_element_present("Xpath004"):
-            print("❌ Contact not found message detected")
+            print("❌ Contact not found message detected (Xpath004 found)")
             if self.check_internet_connection():
                 print("✗ Invalid Mobile Number")
                 return False
@@ -1232,7 +1548,7 @@ class BotScheduler:
                 print("No internet connection, restarting browser...")
                 return "restart"
         else:
-            print("✓ Contact found")
+            print("✓ Contact found (Xpath004 not present)")
             return True
 
     def run_step7j(self):
@@ -1345,20 +1661,20 @@ class BotScheduler:
                 print("✓ Message sent")
                 return True
             except Exception as e1:
-                print(f"⚠ Method 1 failed")
+                print(f"⚠ Method 1 failed: {e1}")
                 
                 # Method 2: Click the send button using Xpath005
-                print("Attempting to send message using send button...")
+                print("Attempting to send message using Xpath005 (send button)...")
                 try:
                     send_button = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, self.xpaths.get("Xpath005", "//span[@data-icon='send']")))
                     )
                     send_button.click()
-                    print("✓ Send button clicked")
+                    print("✓ Send button clicked using Xpath005")
                     print("✓ Message sent")
                     return True
                 except Exception as e2:
-                    print(f"⚠ Method 2 failed")
+                    print(f"⚠ Method 2 failed: {e2}")
                     
                     # Method 3: Try alternative send button selector
                     print("Attempting to send using alternative send button selector...")
@@ -1371,7 +1687,7 @@ class BotScheduler:
                         print("✓ Message sent")
                         return True
                     except Exception as e3:
-                        print(f"⚠ Method 3 failed")
+                        print(f"⚠ Method 3 failed: {e3}")
                         
                         # Method 4: Press Enter on body as final fallback
                         print("Attempting to send using Enter key on body element...")
@@ -1382,7 +1698,7 @@ class BotScheduler:
                             print("✓ Message sent")
                             return True
                         except Exception as e4:
-                            print(f"❌ All sending methods failed")
+                            print(f"❌ All sending methods failed: {e4}")
                             return False
         
         except Exception as e:
@@ -1400,8 +1716,8 @@ class BotScheduler:
             print("⏳ Waiting 2 seconds for stability after sending...")
             time.sleep(2)
             
-            print("Checking for pending message indicator...")
-            print("Monitoring message delivery status...")
+            print("Immediately checking for Xpath003 (pending message indicator)...")
+            print("Monitoring Xpath003 every second until it disappears...")
             
             start_time = time.time()
             check_count = 0
@@ -1416,7 +1732,7 @@ class BotScheduler:
                 
                 if xpath003_present:
                     if not xpath003_was_present:
-                        print(f"  ✓ Message is pending delivery")
+                        print(f"  ✓ Xpath003 found - message is pending delivery (check {check_count})")
                         xpath003_was_present = True
                     
                     # Show waiting status every 10 checks
@@ -1424,19 +1740,19 @@ class BotScheduler:
                         print(f"  ⏳ Still pending... {elapsed_time}s elapsed")
                 else:
                     if xpath003_was_present:
-                        print(f"  ✓ Message delivered after {elapsed_time}s!")
+                        print(f"  ✓ Xpath003 disappeared after {elapsed_time}s - message delivered!")
                         print("✓ Error message sent successfully")
                         return True
                     else:
                         # Xpath003 was never present, which means message was delivered instantly
-                        print(f"  ✓ Message delivered instantly")
+                        print(f"  ✓ Xpath003 never appeared - message delivered instantly after {elapsed_time}s")
                         print("✓ Error message sent successfully")
                         return True
                 
                 time.sleep(1)  # Check every second
             
             # If we reach here, timeout occurred
-            print(f"✗ Message delivery timeout after 300 seconds")
+            print(f"✗ Message delivery timeout after 300 seconds - Xpath003 still present")
             return False
             
         except Exception as e:
@@ -1546,14 +1862,7 @@ class BotScheduler:
                 print(f"\n{self.BLUE}7m. Waiting for Message Delivery{self.ENDC}")
                 if self.run_step7m():
                     print(f"\n{self.GREEN}✅ WHATSAPP NOTIFICATION SENT SUCCESSFULLY{self.ENDC}")
-                    
-                    # Continue with step8 after successful delivery
-                    step8_success = self.run_step8()
-                    if step8_success:
-                        return True
-                    else:
-                        print(f"{self.RED}❌ Step 8 failed after successful message delivery{self.ENDC}")
-                        return False
+                    return True
                 else:
                     print("❌ Step 7m failed, restarting...")
                     continue
@@ -1651,15 +1960,37 @@ class BotScheduler:
                             print("=" * 50)
                             
                             if all_match:
-                                # All bots have matching sheets - continue to Step 8
-                                step8_success = self.run_step8()
-                                if step8_success:
+                                # All bots have matching sheets - continue to Step 6
+                                step6_success, all_sheets_available = self.run_step6()
+                                if step6_success:
                                     print("\n" + "=" * 50)
-                                    print("✓ Step 8 completed successfully!")
-                                    print("✓ All Google Sheets verified and updated")
+                                    print("✓ Step 6 completed successfully!")
                                     print("=" * 50)
+                                    
+                                    if all_sheets_available:
+                                        # All sheets available with correct format - continue to Step 8
+                                        step8_success = self.run_step8()
+                                        if step8_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Step 8 completed successfully!")
+                                            print("✓ All Google Sheets verified and updated")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                            sys.exit(1)
+                                    else:
+                                        # Some sheets missing - continue to Step 7
+                                        step7_success = self.run_step7()
+                                        if step7_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Step 7 completed successfully!")
+                                            print("✓ WhatsApp notification sent for missing sheets")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                            sys.exit(1)
                                 else:
-                                    print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                    print(f"\n{self.RED}❌ Step 6 failed.{self.ENDC}")
                                     sys.exit(1)
                             else:
                                 # Some bots missing matching sheets - continue to Step 7
