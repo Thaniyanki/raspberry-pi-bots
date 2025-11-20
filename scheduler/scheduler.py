@@ -64,7 +64,7 @@ class BotScheduler:
         self.firebase_initialized = False
         
     def initialize_firebase(self):
-        """Initialize Firebase connection using database access key from any bot"""
+        """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
             return True
             
@@ -72,10 +72,11 @@ class BotScheduler:
         
         # Find database access key in any bot folder (excluding scheduler)
         bot_folders = self.get_bot_folders()
-        key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
+        working_bots = [folder for folder in bot_folders if folder.name != self.scheduler_folder]
+        key_exists, source_folder, source_key_file = self.check_database_key_exists(working_bots)
         
         if not key_exists:
-            print(f"{self.RED}❌ Database access key not found in any bot folder{self.ENDC}")
+            print(f"{self.RED}❌ Database access key not found in any bot folder (excluding scheduler){self.ENDC}")
             return False
         
         try:
@@ -84,32 +85,14 @@ class BotScheduler:
                 "databaseURL": self.database_url
             })
             self.firebase_initialized = True
-            print(f"{self.GREEN}✅ Firebase initialized successfully{self.ENDC}")
+            print(f"{self.GREEN}✅ Firebase initialized successfully using key from {source_folder.name}{self.ENDC}")
             return True
         except Exception as e:
             print(f"{self.RED}❌ Firebase initialization failed: {str(e)}{self.ENDC}")
             return False
 
-    def fetch_xpath_from_firebase(self, xpath_name, platform="WhatsApp"):
-        """Fetch XPath from Firebase with retry logic"""
-        while True:
-            try:
-                print(f"🔍 Fetching {xpath_name} from database...")
-                ref = db.reference(f"{platform}/Xpath")
-                xpaths = ref.get()
-                
-                if xpaths and xpath_name in xpaths:
-                    print(f"✅ {xpath_name} fetched from database")
-                    return xpaths[xpath_name]
-                else:
-                    print(f"❌ {xpath_name} not found in database. Retrying in 1 second...")
-                    time.sleep(1)
-            except Exception as e:
-                print(f"❌ Error accessing database for {xpath_name}: {str(e)}. Retrying in 1 second...")
-                time.sleep(1)
-
     def fetch_all_whatsapp_xpaths(self):
-        """Fetch all WhatsApp XPaths from database"""
+        """Fetch all WhatsApp XPaths from database and store in temporary local storage"""
         print("Fetching all WhatsApp XPaths from database...")
         
         if not self.initialize_firebase():
@@ -128,6 +111,12 @@ class BotScheduler:
                 with open(temp_xpath_file, 'w') as f:
                     json.dump(xpaths_data, f, indent=2)
                 print(f"✅ XPaths saved to {temp_xpath_file}")
+                
+                # Display fetched XPaths
+                print(f"\n{self.BLUE}Fetched XPaths:{self.ENDC}")
+                for xpath_name, xpath_value in sorted(self.xpaths.items()):
+                    print(f"  {xpath_name}: {xpath_value}")
+                    
                 return True
             else:
                 print(f"{self.RED}❌ No XPaths found in database{self.ENDC}")
@@ -523,9 +512,7 @@ class BotScheduler:
 
     def check_database_key_exists(self, bot_folders):
         """Check if database access key exists in any bot folder's venv (EXCLUDING scheduler)"""
-        working_bots = [folder for folder in bot_folders if folder.name != self.scheduler_folder]
-        
-        for folder in working_bots:
+        for folder in bot_folders:
             venv_path = self.get_venv_path(folder)
             if venv_path:
                 db_key_file = venv_path / "database access key.json"
@@ -924,14 +911,14 @@ class BotScheduler:
                 for extra in extra_sheets:
                     print(f"  - '{extra}'")
             
-            print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTLY (case-sensitive){self.ENDC}")
+            print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTly (case-sensitive){self.ENDC}")
             print(f"{self.YELLOW}   Please rename your Google Sheets to match the bot folder names exactly.{self.ENDC}")
             
             self.missing_sheets = missing_sheets
             return True, False
 
     # =========================================================================
-    # STEP 7 IMPLEMENTATION - IMPROVED WHATSAPP MESSAGING
+    # STEP 7 IMPLEMENTATION - COMPLETE WHATSAPP MESSAGING
     # =========================================================================
 
     def check_internet_connection(self):
@@ -1247,7 +1234,7 @@ class BotScheduler:
             return True
 
     def run_step7j(self):
-        """Step 7j: Select contact and enter message field - IMPROVED VERSION"""
+        """Step 7j: Select contact and enter message field"""
         print("\n" + "=" * 50)
         print("STEP 7j: Selecting Contact")
         print("=" * 50)
@@ -1256,52 +1243,28 @@ class BotScheduler:
             # Wait for search results to appear
             time.sleep(3)
             
-            # Method 1: Try clicking on the contact directly using XPath
-            try:
-                contact_xpath = "//div[@role='listitem']//span[@title]"
-                contact_elements = self.driver.find_elements(By.XPATH, contact_xpath)
-                if contact_elements:
-                    contact_elements[0].click()
-                    print("✓ Contact clicked directly")
-                    time.sleep(3)
-                    return True
-            except:
-                pass
+            # Press down arrow to select the first contact
+            body = self.driver.find_element(By.TAG_NAME, 'body')
+            body.send_keys(Keys.ARROW_DOWN)
+            print("✓ Down arrow pressed - contact selected")
             
-            # Method 2: Try pressing down arrow and enter
-            try:
-                body = self.driver.find_element(By.TAG_NAME, 'body')
-                body.send_keys(Keys.ARROW_DOWN)
-                print("✓ Down arrow pressed")
-                time.sleep(2)
-                body.send_keys(Keys.ENTER)
-                print("✓ Enter pressed - Chat opened")
-                time.sleep(3)
-                return True
-            except:
-                pass
+            # Wait 2 seconds for stability
+            time.sleep(2)
             
-            # Method 3: Try pressing Tab and Enter
-            try:
-                body = self.driver.find_element(By.TAG_NAME, 'body')
-                body.send_keys(Keys.TAB)
-                time.sleep(1)
-                body.send_keys(Keys.ENTER)
-                print("✓ Tab + Enter pressed - Chat opened")
-                time.sleep(3)
-                return True
-            except:
-                pass
+            # Press enter to open the chat
+            body.send_keys(Keys.ENTER)
+            print("✓ Enter pressed - Chat opened")
             
-            print("✗ All contact selection methods failed")
-            return False
+            # Wait for message input field to be available
+            time.sleep(3)
             
+            return True
         except Exception as e:
             print(f"{self.RED}❌ Error selecting contact: {e}{self.ENDC}")
             return False
 
     def run_step7k(self):
-        """Step 7k: Type error message about missing sheets - IMPROVED VERSION"""
+        """Step 7k: Type error message about missing sheets"""
         print("\n" + "=" * 50)
         print("STEP 7k: Composing Error Message")
         print("=" * 50)
@@ -1310,11 +1273,11 @@ class BotScheduler:
             print("No missing sheets to report")
             return False
         
-        message = "Google Sheet Error"
+        # Create message based on missing sheets
         if len(self.missing_sheets) == 1:
-            message += f" - {self.missing_sheets[0]}"
+            message = f"Google Sheet Error - {self.missing_sheets[0]}"
         else:
-            message += f" - {', '.join(self.missing_sheets)}"
+            message = f"Google Sheet Error - {self.missing_sheets[0]} and {self.missing_sheets[1]}" if len(self.missing_sheets) == 2 else f"Google Sheet Error - {', '.join(self.missing_sheets)}"
         
         message += "\n---------------------------------------------\n"
         
@@ -1328,53 +1291,18 @@ class BotScheduler:
         
         try:
             # Wait for message input field to be ready
-            time.sleep(3)
+            time.sleep(2)
             
-            # Try multiple methods to find the message input field
-            message_input = None
-            
-            # Method 1: Try the standard WhatsApp message input
-            try:
-                message_input = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
-                )
-                print("✓ Found message input using data-tab='10'")
-            except:
-                pass
-            
-            # Method 2: Try alternative WhatsApp message input
-            if not message_input:
-                try:
-                    message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@spellcheck='true']"))
-                    )
-                    print("✓ Found message input using spellcheck")
-                except:
-                    pass
-            
-            # Method 3: Try any contenteditable div
-            if not message_input:
-                try:
-                    message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true']"))
-                    )
-                    print("✓ Found message input using contenteditable")
-                except:
-                    pass
-            
-            if not message_input:
-                print("✗ Could not find message input field")
-                return False
+            # Find the message input field in the chat
+            message_input = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+            )
             
             # Focus on the input
             message_input.click()
             time.sleep(1)
             
-            # Clear any existing text
-            message_input.clear()
-            time.sleep(1)
-            
-            # Type the message with proper line breaks
+            # Type the message with proper line breaks using Shift+Enter
             lines = message.split('\n')
             for i, line in enumerate(lines):
                 message_input.send_keys(line)
@@ -1390,7 +1318,7 @@ class BotScheduler:
             return False
 
     def run_step7l(self):
-        """Step 7l: Send message - IMPROVED VERSION"""
+        """Step 7l: Send message"""
         print("\n" + "=" * 50)
         print("STEP 7l: Sending Message")
         print("=" * 50)
@@ -1399,41 +1327,10 @@ class BotScheduler:
             # Wait 2 seconds for stability before sending
             time.sleep(2)
             
-            # Try multiple methods to send the message
-            success = False
-            
-            # Method 1: Press Enter
-            try:
-                body = self.driver.find_element(By.TAG_NAME, 'body')
-                body.send_keys(Keys.ENTER)
-                print("✓ Enter pressed - Message sent")
-                success = True
-            except:
-                pass
-            
-            # Method 2: Click send button
-            if not success:
-                try:
-                    send_button = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
-                    send_button.click()
-                    print("✓ Send button clicked - Message sent")
-                    success = True
-                except:
-                    pass
-            
-            # Method 3: Use Return key
-            if not success:
-                try:
-                    body = self.driver.find_element(By.TAG_NAME, 'body')
-                    body.send_keys(Keys.RETURN)
-                    print("✓ Return key pressed - Message sent")
-                    success = True
-                except:
-                    pass
-            
-            if not success:
-                print("✗ All send methods failed")
-                return False
+            # Press Enter to send the message
+            body = self.driver.find_element(By.TAG_NAME, 'body')
+            body.send_keys(Keys.ENTER)
+            print("✓ Enter pressed - Message sent")
             
             # Wait 2 seconds after sending
             time.sleep(2)
@@ -1475,7 +1372,7 @@ class BotScheduler:
         print(f"{self.YELLOW}Missing sheets detected: {', '.join(self.missing_sheets)}{self.ENDC}")
         print("Sending WhatsApp notification to admin...")
         
-        # Fetch all WhatsApp XPaths from database
+        # Fetch all WhatsApp XPaths from database first
         if not self.fetch_all_whatsapp_xpaths():
             return False
         
