@@ -931,7 +931,7 @@ class BotScheduler:
             return True, False
 
     # =========================================================================
-    # STEP 7 IMPLEMENTATION - COMPLETE WHATSAPP MESSAGING
+    # STEP 7 IMPLEMENTATION - IMPROVED WHATSAPP MESSAGING
     # =========================================================================
 
     def check_internet_connection(self):
@@ -1247,7 +1247,7 @@ class BotScheduler:
             return True
 
     def run_step7j(self):
-        """Step 7j: Select contact and enter message field"""
+        """Step 7j: Select contact and enter message field - IMPROVED VERSION"""
         print("\n" + "=" * 50)
         print("STEP 7j: Selecting Contact")
         print("=" * 50)
@@ -1256,27 +1256,52 @@ class BotScheduler:
             # Wait for search results to appear
             time.sleep(3)
             
-            # Press down arrow to select the first contact
-            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ARROW_DOWN)
-            print("✓ Down arrow pressed - contact selected")
+            # Method 1: Try clicking on the contact directly using XPath
+            try:
+                contact_xpath = "//div[@role='listitem']//span[@title]"
+                contact_elements = self.driver.find_elements(By.XPATH, contact_xpath)
+                if contact_elements:
+                    contact_elements[0].click()
+                    print("✓ Contact clicked directly")
+                    time.sleep(3)
+                    return True
+            except:
+                pass
             
-            # Wait 2 seconds for stability
-            time.sleep(2)
+            # Method 2: Try pressing down arrow and enter
+            try:
+                body = self.driver.find_element(By.TAG_NAME, 'body')
+                body.send_keys(Keys.ARROW_DOWN)
+                print("✓ Down arrow pressed")
+                time.sleep(2)
+                body.send_keys(Keys.ENTER)
+                print("✓ Enter pressed - Chat opened")
+                time.sleep(3)
+                return True
+            except:
+                pass
             
-            # Press enter to open the chat
-            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
-            print("✓ Enter pressed - Chat opened")
+            # Method 3: Try pressing Tab and Enter
+            try:
+                body = self.driver.find_element(By.TAG_NAME, 'body')
+                body.send_keys(Keys.TAB)
+                time.sleep(1)
+                body.send_keys(Keys.ENTER)
+                print("✓ Tab + Enter pressed - Chat opened")
+                time.sleep(3)
+                return True
+            except:
+                pass
             
-            # Wait for message input field to be available
-            time.sleep(3)
+            print("✗ All contact selection methods failed")
+            return False
             
-            return True
         except Exception as e:
             print(f"{self.RED}❌ Error selecting contact: {e}{self.ENDC}")
             return False
 
     def run_step7k(self):
-        """Step 7k: Type error message about missing sheets"""
+        """Step 7k: Type error message about missing sheets - IMPROVED VERSION"""
         print("\n" + "=" * 50)
         print("STEP 7k: Composing Error Message")
         print("=" * 50)
@@ -1303,15 +1328,50 @@ class BotScheduler:
         
         try:
             # Wait for message input field to be ready
-            time.sleep(2)
+            time.sleep(3)
             
-            # Find the message input field in the chat
-            message_input = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
-            )
+            # Try multiple methods to find the message input field
+            message_input = None
+            
+            # Method 1: Try the standard WhatsApp message input
+            try:
+                message_input = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                )
+                print("✓ Found message input using data-tab='10'")
+            except:
+                pass
+            
+            # Method 2: Try alternative WhatsApp message input
+            if not message_input:
+                try:
+                    message_input = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@spellcheck='true']"))
+                    )
+                    print("✓ Found message input using spellcheck")
+                except:
+                    pass
+            
+            # Method 3: Try any contenteditable div
+            if not message_input:
+                try:
+                    message_input = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true']"))
+                    )
+                    print("✓ Found message input using contenteditable")
+                except:
+                    pass
+            
+            if not message_input:
+                print("✗ Could not find message input field")
+                return False
             
             # Focus on the input
             message_input.click()
+            time.sleep(1)
+            
+            # Clear any existing text
+            message_input.clear()
             time.sleep(1)
             
             # Type the message with proper line breaks
@@ -1330,7 +1390,7 @@ class BotScheduler:
             return False
 
     def run_step7l(self):
-        """Step 7l: Send message"""
+        """Step 7l: Send message - IMPROVED VERSION"""
         print("\n" + "=" * 50)
         print("STEP 7l: Sending Message")
         print("=" * 50)
@@ -1339,9 +1399,41 @@ class BotScheduler:
             # Wait 2 seconds for stability before sending
             time.sleep(2)
             
-            # Press Enter to send the message
-            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
-            print("✓ Enter pressed - Message sent")
+            # Try multiple methods to send the message
+            success = False
+            
+            # Method 1: Press Enter
+            try:
+                body = self.driver.find_element(By.TAG_NAME, 'body')
+                body.send_keys(Keys.ENTER)
+                print("✓ Enter pressed - Message sent")
+                success = True
+            except:
+                pass
+            
+            # Method 2: Click send button
+            if not success:
+                try:
+                    send_button = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
+                    send_button.click()
+                    print("✓ Send button clicked - Message sent")
+                    success = True
+                except:
+                    pass
+            
+            # Method 3: Use Return key
+            if not success:
+                try:
+                    body = self.driver.find_element(By.TAG_NAME, 'body')
+                    body.send_keys(Keys.RETURN)
+                    print("✓ Return key pressed - Message sent")
+                    success = True
+                except:
+                    pass
+            
+            if not success:
+                print("✗ All send methods failed")
+                return False
             
             # Wait 2 seconds after sending
             time.sleep(2)
