@@ -911,7 +911,7 @@ class BotScheduler:
                 for extra in extra_sheets:
                     print(f"  - '{extra}'")
             
-            print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTly (case-sensitive){self.ENDC}")
+            print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTLY (case-sensitive){self.ENDC}")
             print(f"{self.YELLOW}   Please rename your Google Sheets to match the bot folder names exactly.{self.ENDC}")
             
             self.missing_sheets = missing_sheets
@@ -1221,16 +1221,17 @@ class BotScheduler:
         print("STEP 7i: Checking Contact Existence")
         print("=" * 50)
         
+        # Check for Xpath004 (contact not found message)
         if self.check_element_present("Xpath004"):
-            print("Contact not found message detected")
+            print("❌ Contact not found message detected (Xpath004 found)")
             if self.check_internet_connection():
                 print("✗ Invalid Mobile Number")
                 return False
             else:
-                print("No internet connection, restarting...")
+                print("No internet connection, restarting browser...")
                 return "restart"
         else:
-            print("✓ Contact found")
+            print("✓ Contact found (Xpath004 not present)")
             return True
 
     def run_step7j(self):
@@ -1240,25 +1241,32 @@ class BotScheduler:
         print("=" * 50)
         
         try:
-            # Wait for search results to appear
-            time.sleep(3)
+            # Wait 10 seconds for stability after phone number entry
+            print("Waiting 10 seconds for stability after phone number entry...")
+            time.sleep(10)
             
             # Press down arrow to select the first contact
+            print("Pressing down arrow to select contact...")
             body = self.driver.find_element(By.TAG_NAME, 'body')
             body.send_keys(Keys.ARROW_DOWN)
             print("✓ Down arrow pressed - contact selected")
             
             # Wait 2 seconds for stability
+            print("Waiting 2 seconds for stability...")
             time.sleep(2)
             
             # Press enter to open the chat
+            print("Pressing Enter to open chat...")
             body.send_keys(Keys.ENTER)
             print("✓ Enter pressed - Chat opened")
             
             # Wait for message input field to be available
+            print("Waiting 3 seconds for message field...")
             time.sleep(3)
             
+            print("✓ Entered Message Field")
             return True
+            
         except Exception as e:
             print(f"{self.RED}❌ Error selecting contact: {e}{self.ENDC}")
             return False
@@ -1361,9 +1369,9 @@ class BotScheduler:
 
     def run_step7(self):
         """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets"""
-        print("\n" + "=" * 50)
-        print("STEP 7: Sending WhatsApp Notification")
-        print("=" * 50)
+        print("\n" + "=" * 60)
+        print("STEP 7: SENDING WHATSAPP NOTIFICATION FOR MISSING SHEETS")
+        print("=" * 60)
         
         if not self.missing_sheets:
             print("No missing sheets to report")
@@ -1378,70 +1386,97 @@ class BotScheduler:
         
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
-            print(f"\n{self.BOLD}Attempt {attempt} of {max_attempts}{self.ENDC}")
+            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attempts} ==={self.ENDC}")
             
             try:
                 # Step 7a: Setup browser
+                print(f"\n{self.BLUE}7a. Browser Management{self.ENDC}")
                 if not self.run_step7a():
+                    print("❌ Step 7a failed, restarting...")
                     continue
                 
                 # Step 7b: Check internet
+                print(f"\n{self.BLUE}7b. Internet Connection Check{self.ENDC}")
                 if not self.run_step7b():
+                    print("❌ Step 7b failed, restarting...")
                     continue
                 
                 # Step 7c: Open WhatsApp
+                print(f"\n{self.BLUE}7c. WhatsApp Web Setup{self.ENDC}")
                 if not self.run_step7c():
+                    print("❌ Step 7c failed, restarting...")
                     continue
                 
                 # Step 7d: Check search field
+                print(f"\n{self.BLUE}7d. Checking Search Field{self.ENDC}")
                 success, search_field = self.run_step7d()
                 if not success:
                     result = self.run_step7f()
                     if result == "restart":
+                        print("🔄 Restarting due to loading indicator...")
                         continue
                     else:
                         return False
                 
                 # Step 7e: Check report number file
+                print(f"\n{self.BLUE}7e. Checking Report Number File{self.ENDC}")
                 success, phone_number = self.run_step7e()
                 if not success:
+                    print("❌ Step 7e failed, stopping...")
                     return False
                 
                 # Step 7g: Validate phone number
+                print(f"\n{self.BLUE}7g. Validating Phone Number{self.ENDC}")
                 success, phone_number = self.run_step7g()
                 if not success:
+                    print("❌ Step 7g failed, stopping...")
                     return False
                 
                 # Step 7h: Enter phone number
+                print(f"\n{self.BLUE}7h. Entering Phone Number{self.ENDC}")
                 if not self.run_step7h(search_field, phone_number):
+                    print("❌ Step 7h failed, restarting...")
                     continue
                 
                 # Step 7i: Check contact existence
+                print(f"\n{self.BLUE}7i. Checking Contact Existence{self.ENDC}")
                 result = self.run_step7i(phone_number)
                 if result == "restart":
+                    print("🔄 Restarting due to no internet...")
                     continue
                 elif not result:
+                    print("❌ Step 7i failed, stopping...")
                     return False
                 
                 # Step 7j: Select contact
+                print(f"\n{self.BLUE}7j. Selecting Contact{self.ENDC}")
                 if not self.run_step7j():
+                    print("❌ Step 7j failed, restarting...")
                     continue
                 
                 # Step 7k: Type error message
+                print(f"\n{self.BLUE}7k. Composing Error Message{self.ENDC}")
                 if not self.run_step7k():
+                    print("❌ Step 7k failed, restarting...")
                     continue
                 
                 # Step 7l: Send message
+                print(f"\n{self.BLUE}7l. Sending Message{self.ENDC}")
                 if not self.run_step7l():
+                    print("❌ Step 7l failed, restarting...")
                     continue
                 
                 # Step 7m: Wait for delivery
+                print(f"\n{self.BLUE}7m. Waiting for Message Delivery{self.ENDC}")
                 if self.run_step7m():
-                    print(f"{self.GREEN}✓ WhatsApp notification sent successfully{self.ENDC}")
+                    print(f"\n{self.GREEN}✅ WHATSAPP NOTIFICATION SENT SUCCESSFULLY{self.ENDC}")
                     return True
+                else:
+                    print("❌ Step 7m failed, restarting...")
+                    continue
                 
             except Exception as e:
-                print(f"{self.RED}❌ Error in attempt {attempt}: {e}{self.ENDC}")
+                print(f"{self.RED}❌ Unexpected error in attempt {attempt}: {e}{self.ENDC}")
                 continue
             
             finally:
@@ -1449,7 +1484,7 @@ class BotScheduler:
                     self.driver.quit()
                     self.driver = None
         
-        print(f"{self.RED}❌ Failed to send WhatsApp notification after {max_attempts} attempts{self.ENDC}")
+        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
         return False
 
     def run_step8(self):
