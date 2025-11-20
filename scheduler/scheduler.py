@@ -10,12 +10,20 @@ import time
 import shutil
 import csv
 import requests
+import json
+import platform
 from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import signal
-import platform
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 class BotScheduler:
     def __init__(self):
@@ -44,6 +52,9 @@ class BotScheduler:
         
         # Browser management
         self.browser_process = None
+        self.driver = None
+        self.xpaths = {}
+        self.missing_sheets = []
         
     def run_curl_command(self):
         """Run the curl command to setup bots with LIVE output"""
@@ -904,6 +915,8 @@ class BotScheduler:
             print(f"\n{self.YELLOW}⚠ IMPORTANT: Folder names and Sheet names must match EXACTLY (case-sensitive){self.ENDC}")
             print(f"{self.YELLOW}   Please rename your Google Sheets to match the bot folder names exactly.{self.ENDC}")
             
+            # Store missing sheets for Step 7
+            self.missing_sheets = missing_sheets
             return True, False  # Success but not all match
 
     def get_github_bot_folders(self):
@@ -1202,6 +1215,8 @@ class BotScheduler:
                 return True, True  # Success and all sheets available
             else:
                 print(f"{self.YELLOW}⚠ Some sheets or worksheets are missing{self.ENDC}")
+                # Store missing sheets for Step 7
+                self.missing_sheets = missing_sheets
                 return True, False  # Success but some sheets missing
             
         except ImportError as e:
@@ -1212,87 +1227,58 @@ class BotScheduler:
             return False, False
 
     # =========================================================================
-    # STEP 7 IMPLEMENTATION
+    # STEP 7 IMPLEMENTATION - COMPLETE VERSION
     # =========================================================================
 
-    def kill_chrome_processes(self):
-        """Kill all Chrome/Chromium browser processes"""
-        print("Closing Chrome/Chromium browsers...")
+    def fetch_xpaths_from_database(self):
+        """Fetch all XPaths from Firebase database"""
+        print("Fetching XPaths from database...")
         
-        # List of Chrome/Chromium process names to kill
-        chrome_processes = [
-            'chrome', 'chromium', 'chromium-browser', 
-            'google-chrome', 'chrome_sandbox'
-        ]
+        # Get database key from any bot (excluding scheduler)
+        bot_folders = self.get_bot_folders()
+        key_exists, source_folder, source_key_file = self.check_database_key_exists(bot_folders)
         
-        killed_count = 0
-        for process_name in chrome_processes:
-            try:
-                # Use pkill to kill processes by name
-                result = subprocess.run(
-                    ['pkill', '-f', process_name],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0:
-                    killed_count += 1
-                    print(f"  ✓ Killed {process_name} processes")
-                time.sleep(1)  # Small delay between kills
-            except Exception as e:
-                print(f"  ⚠ Error killing {process_name}: {e}")
-        
-        # Additional cleanup for any remaining Chrome processes
-        try:
-            subprocess.run(['pkill', '-f', 'chrome'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'chromium'], capture_output=True)
-        except:
-            pass
-            
-        print(f"✓ Closed {killed_count} Chrome/Chromium process types")
-        return killed_count > 0
-
-    def kill_chromedriver_processes(self):
-        """Kill all chromedriver processes"""
-        print("Closing chromedriver processes...")
+        if not key_exists:
+            print(f"{self.RED}❌ Database access key not found in any bot folder{self.ENDC}")
+            return False
         
         try:
-            # Kill chromedriver processes
-            result = subprocess.run(
-                ['pkill', '-f', 'chromedriver'],
-                capture_output=True,
-                text=True
-            )
+            # Import Firebase admin
+            import firebase_admin
+            from firebase_admin import credentials, db
             
-            if result.returncode == 0:
-                print("  ✓ Killed chromedriver processes")
+            # Initialize Firebase app
+            if not firebase_admin._apps:
+                cred = credentials.Certificate(str(source_key_file))
+                firebase_admin.initialize_app(cred, {
+                    'databaseURL': 'https://thaniyanki-xpath-manager-default-rtdb.firebaseio.com/'  # Replace with actual URL
+                })
+            
+            # Fetch XPaths from database
+            ref = db.reference('WhatsApp/Xpath')
+            xpaths_data = ref.get()
+            
+            if xpaths_data:
+                self.xpaths = xpaths_data
+                print(f"{self.GREEN}✓ Successfully fetched {len(xpaths_data)} XPaths from database{self.ENDC}")
+                
+                # Save XPaths to temporary local storage
+                temp_xpath_file = Path("/tmp/whatsapp_xpaths.json")
+                with open(temp_xpath_file, 'w') as f:
+                    json.dump(xpaths_data, f, indent=2)
+                print(f"✓ XPaths saved to {temp_xpath_file}")
                 return True
             else:
-                print("  ℹ No chromedriver processes found")
+                print(f"{self.RED}❌ No XPaths found in database{self.ENDC}")
                 return False
                 
-        except Exception as e:
-            print(f"  ⚠ Error killing chromedriver: {e}")
+        except ImportError:
+            print(f"{self.RED}❌ Firebase admin not installed{self.ENDC}")
+            print("Please install: pip install firebase-admin")
             return False
-
-    def cleanup_browser_processes(self):
-        """Clean up any remaining browser processes"""
-        print("Performing final browser cleanup...")
-        
-        # Kill Chrome/Chromium processes
-        self.kill_chrome_processes()
-        
-        # Kill chromedriver processes
-        self.kill_chromedriver_processes()
-        
-        # Additional cleanup for any zombie processes
-        try:
-            subprocess.run(['pkill', '-9', '-f', 'chrome'], capture_output=True)
-            subprocess.run(['pkill', '-9', '-f', 'chromium'], capture_output=True)
-            subprocess.run(['pkill', '-9', '-f', 'chromedriver'], capture_output=True)
-        except:
-            pass
-            
-        print("✓ Browser cleanup completed")
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching XPaths: {e}{self.ENDC}")
+            return False
 
     def check_internet_connection(self):
         """Check internet connection using ping method"""
@@ -1354,146 +1340,120 @@ class BotScheduler:
             print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
             return False
 
-    def open_browser_with_profile(self):
-        """Open Chrome/Chromium browser with the specified profile"""
-        print("Opening Chrome/Chromium browser...")
-        
-        # First, ensure all previous browser processes are closed
-        self.cleanup_browser_processes()
-        
-        time.sleep(2)  # Wait for processes to fully terminate
+    def setup_selenium_driver(self):
+        """Setup Selenium WebDriver with Chrome options"""
+        print("Setting up Selenium WebDriver...")
         
         try:
-            # Try to open Chromium with the specified profile
-            browsers_to_try = [
-                ['chromium-browser', f'--profile-directory={self.chrome_profile}'],
-                ['chromium', f'--profile-directory={self.chrome_profile}'],
-                ['google-chrome', f'--profile-directory={self.chrome_profile}'],
-                ['chromium-browser'],  # Try without profile
-                ['chromium'],  # Try without profile
-            ]
+            chrome_options = Options()
+            chrome_options.add_argument(f"--user-data-dir={self.chrome_profile}")
+            chrome_options.add_argument("--no-first-run")
+            chrome_options.add_argument("--no-default-browser-check")
+            chrome_options.add_argument("--disable-extensions")
+            chrome_options.add_argument("--disable-plugins")
+            chrome_options.add_argument("--disable-popup-blocking")
+            chrome_options.add_argument("--disable-default-apps")
             
-            for browser_cmd in browsers_to_try:
-                try:
-                    print(f"  Trying: {' '.join(browser_cmd)}")
-                    self.browser_process = subprocess.Popen(
-                        browser_cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-                    
-                    # Wait a moment to see if the process starts successfully
-                    time.sleep(2)
-                    
-                    if self.browser_process.poll() is None:
-                        print(f"  ✓ Browser opened successfully with: {browser_cmd[0]}")
-                        return True
-                    else:
-                        print(f"  ✗ {browser_cmd[0]} failed to start")
-                        
-                except FileNotFoundError:
-                    print(f"  ✗ {browser_cmd[0]} not found")
-                    continue
-                except Exception as e:
-                    print(f"  ✗ Error with {browser_cmd[0]}: {e}")
-                    continue
-            
-            print(f"{self.RED}❌ Could not open any browser{self.ENDC}")
-            return False
+            self.driver = webdriver.Chrome(executable_path=self.chromedriver, options=chrome_options)
+            self.driver.implicitly_wait(10)
+            print(f"{self.GREEN}✓ WebDriver setup completed{self.ENDC}")
+            return True
             
         except Exception as e:
-            print(f"{self.RED}❌ Error opening browser: {e}{self.ENDC}")
+            print(f"{self.RED}❌ Error setting up WebDriver: {e}{self.ENDC}")
             return False
 
-    def open_whatsapp_web(self):
-        """Open WhatsApp Web in the browser"""
-        print("Opening WhatsApp Web...")
-        
-        try:
-            # Try to open WhatsApp Web using xdg-open (Linux) or direct browser command
-            whatsapp_url = "https://web.whatsapp.com/"
-            
-            # Try xdg-open first (Linux)
+    def close_browser(self):
+        """Close the browser and WebDriver"""
+        if self.driver:
             try:
-                result = subprocess.run(
-                    ['xdg-open', whatsapp_url],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    print(f"  ✓ WhatsApp Web opened successfully")
-                    return True
+                self.driver.quit()
+                print("✓ Browser closed")
             except:
                 pass
-            
-            # Try using browser directly
-            browsers_to_try = [
-                ['chromium-browser', whatsapp_url],
-                ['chromium', whatsapp_url],
-                ['google-chrome', whatsapp_url],
-            ]
-            
-            for browser_cmd in browsers_to_try:
-                try:
-                    print(f"  Trying: {' '.join(browser_cmd)}")
-                    subprocess.Popen(
-                        browser_cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-                    print(f"  ✓ WhatsApp Web opened with {browser_cmd[0]}")
-                    return True
-                except FileNotFoundError:
-                    continue
-                except Exception as e:
-                    print(f"  ⚠ Error with {browser_cmd[0]}: {e}")
-                    continue
-            
-            print(f"{self.YELLOW}⚠ Could not automatically open WhatsApp Web{self.ENDC}")
-            print(f"{self.YELLOW}Please manually open: https://web.whatsapp.com/{self.ENDC}")
-            return False
-            
-        except Exception as e:
-            print(f"{self.RED}❌ Error opening WhatsApp Web: {e}{self.ENDC}")
-            return False
+            self.driver = None
 
-    def wait_for_user_confirmation(self, message, timeout=300):
-        """Wait for user confirmation with timeout"""
-        print(f"\n{self.YELLOW}{message}{self.ENDC}")
-        print(f"You have {timeout} seconds to complete this step.")
-        print("Press Enter to continue when ready...")
+    def wait_for_element(self, xpath_key, timeout=120, check_interval=1):
+        """Wait for element to be present using XPath from database"""
+        if xpath_key not in self.xpaths:
+            print(f"{self.RED}❌ XPath key '{xpath_key}' not found in database{self.ENDC}")
+            return False
+        
+        xpath = self.xpaths[xpath_key]
+        print(f"Waiting for {xpath_key} (timeout: {timeout}s)...")
         
         start_time = time.time()
+        check_count = 0
+        
+        while time.time() - start_time < timeout:
+            check_count += 1
+            try:
+                element = self.driver.find_element(By.XPATH, xpath)
+                if element.is_displayed():
+                    print(f"  ✓ {xpath_key} found after {check_count} checks")
+                    return element
+            except NoSuchElementException:
+                pass
+            
+            # Show progress
+            elapsed = int(time.time() - start_time)
+            if check_count % 10 == 0:  # Print every 10 checks
+                print(f"  Checking... {elapsed}s elapsed")
+            
+            time.sleep(check_interval)
+        
+        print(f"  ✗ {xpath_key} not found within {timeout} seconds")
+        return None
+
+    def check_element_present(self, xpath_key):
+        """Check if element is present using XPath from database"""
+        if xpath_key not in self.xpaths:
+            return False
+        
+        xpath = self.xpaths[xpath_key]
         try:
-            while time.time() - start_time < timeout:
-                # Check if user pressed Enter (non-blocking)
-                try:
-                    if sys.stdin.isatty():
-                        # For interactive terminals
-                        import select
-                        if select.select([sys.stdin], [], [], 1)[0]:
-                            user_input = sys.stdin.readline().strip()
-                            if user_input == "":
-                                print("✓ Continuing...")
-                                return True
-                    else:
-                        # For non-interactive environments, wait with countdown
-                        remaining = int(timeout - (time.time() - start_time))
-                        if remaining % 30 == 0:  # Print every 30 seconds
-                            print(f"Time remaining: {remaining} seconds...")
-                        time.sleep(1)
-                        
-                except (KeyboardInterrupt, EOFError):
-                    print(f"\n{self.RED}Operation interrupted by user.{self.ENDC}")
-                    return False
-                    
-            print(f"\n{self.YELLOW}Timeout reached. Continuing...{self.ENDC}")
+            element = self.driver.find_element(By.XPATH, xpath)
+            return element.is_displayed()
+        except NoSuchElementException:
+            return False
+
+    def get_report_number(self):
+        """Get report number from any bot's venv folder"""
+        bot_folders = self.get_bot_folders()
+        for folder in bot_folders:
+            venv_path = self.get_venv_path(folder)
+            if venv_path:
+                report_file = venv_path / "report number"
+                if report_file.exists():
+                    try:
+                        with open(report_file, 'r') as f:
+                            content = f.read().strip()
+                        if content and self.is_valid_phone_number(content):
+                            return content
+                    except:
+                        continue
+        return None
+
+    def send_whatsapp_message(self, message):
+        """Send WhatsApp message using Selenium"""
+        try:
+            # Type the message
+            for line in message.split('\n'):
+                self.driver.find_element(By.XPATH, "//div[@contenteditable='true']").send_keys(line)
+                # Use Shift+Enter for new line, Enter to send final message
+                self.driver.find_element(By.XPATH, "//div[@contenteditable='true']").send_keys(Keys.SHIFT + Keys.ENTER)
+            
+            # Remove the last Shift+Enter and send with Enter
+            self.driver.find_element(By.XPATH, "//div[@contenteditable='true']").send_keys(Keys.BACKSPACE)
+            time.sleep(2)
+            self.driver.find_element(By.XPATH, "//div[@contenteditable='true']").send_keys(Keys.ENTER)
+            
+            print("✓ Message sent successfully")
             return True
             
         except Exception as e:
-            print(f"Error in user confirmation: {e}")
-            return True
+            print(f"{self.RED}❌ Error sending message: {e}{self.ENDC}")
+            return False
 
     def run_step7a(self):
         """Step 7a: Close browser and reopen it"""
@@ -1501,23 +1461,12 @@ class BotScheduler:
         print("STEP 7a: Browser Management")
         print("=" * 50)
         
-        # Close existing browser processes
-        print("1. Closing existing browser processes...")
-        self.cleanup_browser_processes()
+        # Close existing browser
+        self.close_browser()
+        time.sleep(3)
         
-        time.sleep(3)  # Wait for processes to fully terminate
-        
-        # Open browser with profile
-        print("\n2. Opening browser with profile...")
-        browser_opened = self.open_browser_with_profile()
-        
-        if browser_opened:
-            print(f"{self.GREEN}✓ Browser management completed successfully{self.ENDC}")
-            return True
-        else:
-            print(f"{self.YELLOW}⚠ Browser could not be opened automatically{self.ENDC}")
-            print(f"{self.YELLOW}Please open the browser manually and continue.{self.ENDC}")
-            return True  # Continue anyway
+        # Setup new browser
+        return self.setup_selenium_driver()
 
     def run_step7b(self):
         """Step 7b: Check internet connection"""
@@ -1525,12 +1474,10 @@ class BotScheduler:
         print("STEP 7b: Internet Connection Check")
         print("=" * 50)
         
-        # Check if internet is available
         if self.check_internet_connection():
             print(f"{self.GREEN}✓ Internet connection is available{self.ENDC}")
             return True
         else:
-            # Wait for internet connection
             print(f"{self.YELLOW}Internet connection not available.{self.ENDC}")
             return self.wait_for_internet_connection()
 
@@ -1540,66 +1487,309 @@ class BotScheduler:
         print("STEP 7c: WhatsApp Web Setup")
         print("=" * 50)
         
-        # Open WhatsApp Web
-        whatsapp_opened = self.open_whatsapp_web()
+        try:
+            self.driver.get("https://web.whatsapp.com/")
+            print("✓ WhatsApp Web opened")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error opening WhatsApp Web: {e}{self.ENDC}")
+            return False
+
+    def run_step7d(self):
+        """Step 7d: Check for Xpath001 (search field)"""
+        print("\n" + "=" * 50)
+        print("STEP 7d: Checking Search Field")
+        print("=" * 50)
         
-        if whatsapp_opened:
-            print(f"{self.GREEN}✓ WhatsApp Web opened successfully{self.ENDC}")
-            
-            # Wait for user to complete WhatsApp setup
-            user_message = "Please complete WhatsApp Web setup:\n1. Scan QR code with your phone\n2. Wait for WhatsApp to load completely\n3. Ensure you're logged in successfully"
-            return self.wait_for_user_confirmation(user_message, timeout=600)  # 10 minutes for WhatsApp setup
+        element = self.wait_for_element("Xpath001", timeout=120)
+        if element:
+            print("✓ Entered Mobile number search field")
+            return True, element
         else:
-            print(f"{self.YELLOW}⚠ Could not automatically open WhatsApp Web{self.ENDC}")
-            user_message = "Please manually open https://web.whatsapp.com and complete the setup"
-            return self.wait_for_user_confirmation(user_message, timeout=600)
+            # Check for loading indicator (Xpath011)
+            if self.check_element_present("Xpath011"):
+                print("Loading chats detected, retrying search field...")
+                return self.run_step7d()  # Recursive retry
+            else:
+                print("Search field not found and no loading indicator")
+                return False, None
+
+    def run_step7e(self):
+        """Step 7e: Check report number file"""
+        print("\n" + "=" * 50)
+        print("STEP 7e: Checking Report Number File")
+        print("=" * 50)
+        
+        report_number = self.get_report_number()
+        if report_number:
+            print("✓ Report number file available")
+            print(f"✓ Phone number: {report_number}")
+            return True, report_number
+        else:
+            print("✗ Report number file not available")
+            return False, None
+
+    def run_step7f(self):
+        """Step 7f: Check loading indicator"""
+        print("\n" + "=" * 50)
+        print("STEP 7f: Checking Loading Indicator")
+        print("=" * 50)
+        
+        if self.check_element_present("Xpath011"):
+            print("Loading indicator present, restarting browser...")
+            return "restart"
+        else:
+            print("No loading indicator, restarting browser...")
+            return "restart"
+
+    def run_step7g(self):
+        """Step 7g: Validate phone number"""
+        print("\n" + "=" * 50)
+        print("STEP 7g: Validating Phone Number")
+        print("=" * 50)
+        
+        report_number = self.get_report_number()
+        if report_number and self.is_valid_phone_number(report_number):
+            print("✓ Phone number is available and valid")
+            return True, report_number
+        else:
+            print("✗ Phone number is not available or invalid")
+            return False, None
+
+    def run_step7h(self, search_field, phone_number):
+        """Step 7h: Enter phone number in search field"""
+        print("\n" + "=" * 50)
+        print("STEP 7h: Entering Phone Number")
+        print("=" * 50)
+        
+        try:
+            search_field.clear()
+            search_field.send_keys(phone_number)
+            print(f"✓ Phone number entered: {phone_number}")
+            time.sleep(10)  # Wait 10 seconds for stability
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error entering phone number: {e}{self.ENDC}")
+            return False
+
+    def run_step7i(self, phone_number):
+        """Step 7i: Check if contact exists"""
+        print("\n" + "=" * 50)
+        print("STEP 7i: Checking Contact Existence")
+        print("=" * 50)
+        
+        if self.check_element_present("Xpath004"):
+            print("Contact not found message detected")
+            if self.check_internet_connection():
+                print("✗ Invalid Mobile Number")
+                return False
+            else:
+                print("No internet connection, restarting...")
+                return "restart"
+        else:
+            print("✓ Contact found")
+            return True
+
+    def run_step7j(self):
+        """Step 7j: Select contact and enter message field"""
+        print("\n" + "=" * 50)
+        print("STEP 7j: Selecting Contact")
+        print("=" * 50)
+        
+        try:
+            # Press down arrow
+            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ARROW_DOWN)
+            time.sleep(2)  # Wait 2 seconds for stability
+            
+            # Press Enter
+            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
+            print("✓ Entered Message Field")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error selecting contact: {e}{self.ENDC}")
+            return False
+
+    def run_step7k(self):
+        """Step 7k: Type error message about missing sheets"""
+        print("\n" + "=" * 50)
+        print("STEP 7k: Composing Error Message")
+        print("=" * 50)
+        
+        if not self.missing_sheets:
+            print("No missing sheets to report")
+            return False
+        
+        # Create error message
+        message = "Google Sheet Error"
+        if len(self.missing_sheets) == 1:
+            message += f" - {self.missing_sheets[0]}"
+        else:
+            message += f" - {', '.join(self.missing_sheets)}"
+        
+        message += "\n---------------------------------------------\n"
+        
+        for sheet in self.missing_sheets:
+            message += f"Sheet '{sheet}' is not available [or]\n"
+            message += f"Name is mismatch [or]\n"
+            message += f"Not share with service account\n\n"
+        
+        message += "Kindly check\n"
+        message += "---------------------------------------------"
+        
+        try:
+            # Find message input field
+            message_input = self.driver.find_element(By.XPATH, "//div[@contenteditable='true']")
+            
+            # Type message with proper line breaks
+            lines = message.split('\n')
+            for i, line in enumerate(lines):
+                message_input.send_keys(line)
+                if i < len(lines) - 1:  # Not the last line
+                    message_input.send_keys(Keys.SHIFT + Keys.ENTER)
+            
+            print("✓ Error message composed")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error composing message: {e}{self.ENDC}")
+            return False
+
+    def run_step7l(self):
+        """Step 7l: Send message"""
+        print("\n" + "=" * 50)
+        print("STEP 7l: Sending Message")
+        print("=" * 50)
+        
+        try:
+            time.sleep(2)  # Wait 2 seconds for stability
+            self.driver.find_element(By.XPATH, "//div[@contenteditable='true']").send_keys(Keys.ENTER)
+            print("✓ Message sent")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error sending message: {e}{self.ENDC}")
+            return False
+
+    def run_step7m(self):
+        """Step 7m: Wait for message to be delivered"""
+        print("\n" + "=" * 50)
+        print("STEP 7m: Waiting for Message Delivery")
+        print("=" * 50)
+        
+        print("Waiting for pending message indicator to disappear...")
+        start_time = time.time()
+        
+        while time.time() - start_time < 300:  # 5 minute timeout
+            if not self.check_element_present("Xpath003"):
+                print("✓ Error message sent successfully")
+                return True
+            
+            time.sleep(1)
+        
+        print("✗ Message delivery timeout")
+        return False
 
     def run_step7(self):
-        """Step 7: Main step 7 execution - Browser and WhatsApp setup"""
+        """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets"""
         print("\n" + "=" * 50)
-        print("STEP 7: Browser and WhatsApp Setup")
+        print("STEP 7: Sending WhatsApp Notification")
         print("=" * 50)
-        print(f"{self.YELLOW}⚠ Some bots are missing matching Google Sheets{self.ENDC}")
-        print("Setting up browser and WhatsApp for manual sheet creation...")
         
-        # Run Step 7a - Browser management
-        print(f"\n{self.BOLD}--- Step 7a: Browser Management ---{self.ENDC}")
-        step7a_success = self.run_step7a()
-        if not step7a_success:
-            print(f"{self.RED}❌ Step 7a failed{self.ENDC}")
+        if not self.missing_sheets:
+            print("No missing sheets to report")
+            return True
+        
+        print(f"{self.YELLOW}Missing sheets detected: {', '.join(self.missing_sheets)}{self.ENDC}")
+        print("Sending WhatsApp notification to admin...")
+        
+        # Fetch XPaths from database
+        if not self.fetch_xpaths_from_database():
             return False
         
-        # Run Step 7b - Internet connection check
-        print(f"\n{self.BOLD}--- Step 7b: Internet Connection Check ---{self.ENDC}")
-        step7b_success = self.run_step7b()
-        if not step7b_success:
-            print(f"{self.RED}❌ Step 7b failed - No internet connection{self.ENDC}")
-            return False
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            print(f"\n{self.BOLD}Attempt {attempt} of {max_attempts}{self.ENDC}")
+            
+            try:
+                # Step 7a: Setup browser
+                if not self.run_step7a():
+                    continue
+                
+                # Step 7b: Check internet
+                if not self.run_step7b():
+                    continue
+                
+                # Step 7c: Open WhatsApp
+                if not self.run_step7c():
+                    continue
+                
+                # Step 7d: Check search field
+                success, search_field = self.run_step7d()
+                if not success:
+                    result = self.run_step7f()
+                    if result == "restart":
+                        continue
+                    else:
+                        return False
+                
+                # Step 7e: Check report number file
+                success, phone_number = self.run_step7e()
+                if not success:
+                    return False
+                
+                # Step 7g: Validate phone number
+                success, phone_number = self.run_step7g()
+                if not success:
+                    return False
+                
+                # Step 7h: Enter phone number
+                if not self.run_step7h(search_field, phone_number):
+                    continue
+                
+                # Step 7i: Check contact existence
+                result = self.run_step7i(phone_number)
+                if result == "restart":
+                    continue
+                elif not result:
+                    return False
+                
+                # Step 7j: Select contact
+                if not self.run_step7j():
+                    continue
+                
+                # Step 7k: Type error message
+                if not self.run_step7k():
+                    continue
+                
+                # Step 7l: Send message
+                if not self.run_step7l():
+                    continue
+                
+                # Step 7m: Wait for delivery
+                if self.run_step7m():
+                    print(f"{self.GREEN}✓ WhatsApp notification sent successfully{self.ENDC}")
+                    return True
+                
+            except Exception as e:
+                print(f"{self.RED}❌ Error in attempt {attempt}: {e}{self.ENDC}")
+                continue
+            
+            finally:
+                self.close_browser()
         
-        # Run Step 7c - WhatsApp Web setup
-        print(f"\n{self.BOLD}--- Step 7c: WhatsApp Web Setup ---{self.ENDC}")
-        step7c_success = self.run_step7c()
-        if not step7c_success:
-            print(f"{self.RED}❌ Step 7c failed{self.ENDC}")
-            return False
-        
-        print(f"\n{self.GREEN}✓ Step 7 completed successfully!{self.ENDC}")
-        print(f"{self.GREEN}✓ Browser and WhatsApp are ready for use{self.ENDC}")
-        return True
+        print(f"{self.RED}❌ Failed to send WhatsApp notification after {max_attempts} attempts{self.ENDC}")
+        return False
 
     def run_step8(self):
-        """Step 8: All sheets available with correct format"""
+        """Step 8: Placeholder for future implementation"""
         print("\n" + "=" * 50)
-        print("STEP 8: All Sheets Available with Correct Format")
+        print("STEP 8: Placeholder")
         print("=" * 50)
-        print(f"{self.GREEN}✓ All Google Sheets are available with correct format!{self.ENDC}")
-        print("Continuing with bot execution setup...")
+        print(f"{self.GREEN}✓ Step 8 - To be implemented later{self.ENDC}")
         return True
 
     def cleanup(self):
         """Cleanup method to be called before exit"""
         print("\nPerforming cleanup...")
-        self.cleanup_browser_processes()
+        self.close_browser()
 
     def run(self):
         """Main execution function with proper cleanup"""
@@ -1684,7 +1874,6 @@ class BotScheduler:
                                             print("✓ Step 8 completed successfully!")
                                             print("✓ All Google Sheets verified and updated")
                                             print("=" * 50)
-                                            # Continue to next steps...
                                         else:
                                             print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
                                             sys.exit(1)
@@ -1694,6 +1883,7 @@ class BotScheduler:
                                         if step7_success:
                                             print("\n" + "=" * 50)
                                             print("✓ Step 7 completed successfully!")
+                                            print("✓ WhatsApp notification sent for missing sheets")
                                             print("=" * 50)
                                         else:
                                             print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
@@ -1707,6 +1897,7 @@ class BotScheduler:
                                 if step7_success:
                                     print("\n" + "=" * 50)
                                     print("✓ Step 7 completed successfully!")
+                                    print("✓ WhatsApp notification sent for missing sheets")
                                     print("=" * 50)
                                 else:
                                     print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
