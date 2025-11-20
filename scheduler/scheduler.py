@@ -1340,8 +1340,8 @@ class BotScheduler:
         print("✗ Message delivery timeout")
         return False
 
-    def run_step7(self):
-        """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets"""
+        def run_step7(self):
+        """Step 7: Main step 7 execution - Send WhatsApp notification for missing sheets - FIXED VERSION"""
         print("\n" + "=" * 50)
         print("STEP 7: Sending WhatsApp Notification")
         print("=" * 50)
@@ -1363,63 +1363,90 @@ class BotScheduler:
             
             try:
                 # Step 7a: Setup browser
+                print("\n--- Step 7a: Browser Setup ---")
                 if not self.run_step7a():
+                    print("Browser setup failed, retrying...")
                     continue
                 
                 # Step 7b: Check internet
+                print("\n--- Step 7b: Internet Check ---")
                 if not self.run_step7b():
+                    print("Internet check failed, retrying...")
                     continue
                 
                 # Step 7c: Open WhatsApp
+                print("\n--- Step 7c: Open WhatsApp ---")
                 if not self.run_step7c():
+                    print("Opening WhatsApp failed, retrying...")
                     continue
                 
                 # Step 7d: Check search field
+                print("\n--- Step 7d: Check Search Field ---")
                 success, search_field = self.run_step7d()
                 if not success:
                     result = self.run_step7f()
                     if result == "restart":
+                        print("Restarting browser due to loading...")
                         continue
                     else:
                         return False
                 
                 # Step 7e: Check report number file
+                print("\n--- Step 7e: Check Report Number ---")
                 success, phone_number = self.run_step7e()
                 if not success:
+                    print("Report number file issue, stopping...")
                     return False
                 
                 # Step 7g: Validate phone number
+                print("\n--- Step 7g: Validate Phone Number ---")
                 success, phone_number = self.run_step7g()
                 if not success:
+                    print("Phone number validation failed, stopping...")
                     return False
                 
                 # Step 7h: Enter phone number
+                print("\n--- Step 7h: Enter Phone Number ---")
                 if not self.run_step7h(search_field, phone_number):
+                    print("Entering phone number failed, retrying...")
                     continue
                 
                 # Step 7i: Check contact existence
+                print("\n--- Step 7i: Check Contact Existence ---")
                 result = self.run_step7i(phone_number)
                 if result == "restart":
+                    print("Internet issue, restarting...")
                     continue
                 elif not result:
+                    print("Invalid mobile number, stopping...")
                     return False
                 
                 # Step 7j: Select contact
+                print("\n--- Step 7j: Select Contact ---")
                 if not self.run_step7j():
+                    print("Selecting contact failed, retrying...")
                     continue
                 
-                # Step 7k: Type error message
+                # Step 7k: Type message
+                print("\n--- Step 7k: Type Message ---")
                 if not self.run_step7k():
+                    print("Typing message failed, retrying...")
                     continue
                 
                 # Step 7l: Send message
+                print("\n--- Step 7l: Send Message ---")
                 if not self.run_step7l():
+                    print("Sending message failed, retrying...")
                     continue
                 
                 # Step 7m: Wait for delivery
+                print("\n--- Step 7m: Wait for Delivery ---")
                 if self.run_step7m():
                     print(f"{self.GREEN}✓ WhatsApp notification sent successfully{self.ENDC}")
                     return True
+                else:
+                    print("Message delivery confirmation failed, retrying...")
+                    continue
                 
             except Exception as e:
                 print(f"{self.RED}❌ Error in attempt {attempt}: {e}{self.ENDC}")
