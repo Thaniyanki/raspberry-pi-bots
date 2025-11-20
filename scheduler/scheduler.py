@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scheduler Script for Managing Python Bots
+Scheduler Script for Managing Python Bots - Complete Implementation
 """
 
 import os
@@ -1197,15 +1197,23 @@ class BotScheduler:
             return False, None
 
     def run_step7h(self, search_field, phone_number):
-        """Step 7h: Enter phone number in search field"""
+        """Step 7h: Enter phone number in search field - Type digit by digit"""
         print("\n" + "=" * 50)
         print("STEP 7h: Entering Phone Number")
         print("=" * 50)
         
         try:
+            # Clear the search field first
             search_field.clear()
-            search_field.send_keys(phone_number)
-            print(f"✓ Phone number entered: {phone_number}")
+            time.sleep(1)
+            
+            # Type phone number digit by digit
+            print(f"Typing phone number digit by digit: {phone_number}")
+            for digit in phone_number:
+                search_field.send_keys(digit)
+                time.sleep(0.1)  # Small delay between each digit
+            
+            print(f"✓ Phone number typed: {phone_number}")
             
             print("⏳ Waiting 10 seconds for stability...")
             time.sleep(10)
@@ -1432,7 +1440,7 @@ class BotScheduler:
                     print("❌ Step 7g failed, stopping...")
                     return False
                 
-                # Step 7h: Enter phone number
+                # Step 7h: Enter phone number (TYPE DIGIT BY DIGIT)
                 print(f"\n{self.BLUE}7h. Entering Phone Number{self.ENDC}")
                 if not self.run_step7h(search_field, phone_number):
                     print("❌ Step 7h failed, restarting...")
