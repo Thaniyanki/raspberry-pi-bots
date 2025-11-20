@@ -110,12 +110,10 @@ class BotScheduler:
                 temp_xpath_file = Path("/tmp/whatsapp_xpaths.json")
                 with open(temp_xpath_file, 'w') as f:
                     json.dump(xpaths_data, f, indent=2)
-                print(f"✅ XPaths saved to {temp_xpath_file}")
+                print(f"✅ XPaths saved to temporary storage")
                 
-                # Display fetched XPaths
-                print(f"\n{self.BLUE}Fetched XPaths:{self.ENDC}")
-                for xpath_name, xpath_value in sorted(self.xpaths.items()):
-                    print(f"  {xpath_name}: {xpath_value}")
+                # Don't display fetched XPaths to user
+                print(f"✅ XPaths loaded successfully")
                     
                 return True
             else:
@@ -255,7 +253,7 @@ class BotScheduler:
             return False
         
         source_bot, report_number = next(iter(valid_report_numbers.items()))
-        print(f"Found valid report number '{report_number}' in {source_bot}")
+        print(f"Found valid report number in {source_bot}")
         
         copied_count = 0
         for folder in bot_folders:
@@ -393,7 +391,7 @@ class BotScheduler:
             
             if report_number:
                 self.create_report_numbers(bot_folders, report_number)
-                print(f"Report number '{report_number}' set for all bots in their venv folders.")
+                print(f"Report number set for all bots in their venv folders.")
             else:
                 print("No valid report number provided. Please run the script again to set report numbers.")
                 sys.exit(1)
@@ -415,7 +413,7 @@ class BotScheduler:
                 report_number = self.get_report_number_input()
                 if report_number:
                     self.create_report_numbers(bot_folders, report_number)
-                    print(f"Report number updated to '{report_number}' in all venv folders")
+                    print(f"Report number updated in all venv folders")
                 else:
                     print("No valid report number provided. Keeping existing setup.")
         else:
@@ -426,7 +424,7 @@ class BotScheduler:
                     report_number = self.get_report_number_input()
                     if report_number:
                         self.create_report_numbers(bot_folders, report_number)
-                        print(f"Report number updated to '{report_number}' in all venv folders")
+                        print(f"Report number updated in all venv folders")
                 else:
                     print("Continuing with existing report numbers...")
             except (KeyboardInterrupt, EOFError):
@@ -445,7 +443,7 @@ class BotScheduler:
                             with open(report_file, 'r') as f:
                                 content = f.read().strip()
                             if content and self.is_valid_phone_number(content):
-                                status = f"✓ ({content})"
+                                status = f"✓ (configured)"
                             elif content:
                                 status = "✗ (invalid)"
                             else:
@@ -476,7 +474,7 @@ class BotScheduler:
                         with open(report_file, 'r') as f:
                             content = f.read().strip()
                         if content and self.is_valid_phone_number(content):
-                            print(f"  ✓ {folder.name}/venv/: {content}")
+                            print(f"  ✓ {folder.name}/venv/: configured")
                         else:
                             print(f"  ✗ {folder.name}/venv/: {'Empty' if not content else 'Invalid'} report number")
                             all_set = False
@@ -502,7 +500,7 @@ class BotScheduler:
                 report_number = self.get_report_number_input()
                 if report_number:
                     self.create_report_numbers(bot_folders, report_number)
-                    print(f"Report number '{report_number}' updated for all bots.")
+                    print(f"Report number updated for all bots.")
                     print("\nRe-verifying report numbers...")
                     return self.verify_report_numbers(bot_folders)
                 else:
@@ -790,7 +788,7 @@ class BotScheduler:
                         'number': sheet_count
                     }
                     available_sheets.append(sheet_info)
-                    print(f"{sheet_count:2d}. {file['name']}  ->  {file['id']}")
+                    print(f"{sheet_count:2d}. {file['name']}")
                 
                 page_token = response.get('nextPageToken', None)
                 if not page_token:
@@ -942,14 +940,12 @@ class BotScheduler:
                 )
                 
                 if result.returncode == 0:
-                    print(f"  ✓ Internet connection available (ping to {target} successful)")
+                    print(f"  ✓ Internet connection available")
                     return True
                     
             except subprocess.TimeoutExpired:
-                print(f"  ⚠ Ping to {target} timed out")
                 continue
             except Exception as e:
-                print(f"  ⚠ Ping to {target} failed: {e}")
                 continue
         
         print("  ✗ No internet connection available")
@@ -993,20 +989,17 @@ class BotScheduler:
                 print(f"⚠️ Error closing Selenium driver: {str(e)}")
         
         for browser in browsers:
-            print(f"🔍 Checking for {browser} processes...")
             try:
                 result = subprocess.run(['pgrep', '-f', browser], 
                                       stdout=subprocess.PIPE, 
                                       stderr=subprocess.PIPE,
                                       timeout=5)
                 if result.stdout:
-                    print(f"🛑 Closing {browser} processes...")
                     subprocess.run(['pkill', '-f', browser], 
                                   check=True,
                                   timeout=5)
-                    print(f"✅ {browser.capitalize()} processes closed")
-            except Exception as e:
-                print(f"⚠️ Error cleaning {browser}: {str(e)}")
+            except:
+                pass
 
     def setup_selenium_driver(self):
         """Setup Selenium WebDriver with Chrome options"""
@@ -1044,7 +1037,7 @@ class BotScheduler:
             return None
         
         xpath = self.xpaths[xpath_key]
-        print(f"Waiting for {xpath_key} (timeout: {timeout}s)...")
+        print(f"Waiting for {xpath_key}...")
         
         start_time = time.time()
         check_count = 0
@@ -1054,7 +1047,7 @@ class BotScheduler:
             try:
                 element = self.driver.find_element(By.XPATH, xpath)
                 if element.is_displayed():
-                    print(f"  ✓ {xpath_key} found after {check_count} checks")
+                    print(f"  ✓ {xpath_key} found")
                     return element
             except NoSuchElementException:
                 pass
@@ -1205,7 +1198,7 @@ class BotScheduler:
         try:
             search_field.clear()
             search_field.send_keys(phone_number)
-            print(f"✓ Phone number entered: {phone_number}")
+            print(f"✓ Phone number entered")
             
             print("⏳ Waiting 2 seconds after entering phone number...")
             time.sleep(2)
@@ -1231,7 +1224,7 @@ class BotScheduler:
         
         # Check for Xpath004 (contact not found message)
         if self.check_element_present("Xpath004"):
-            print("❌ Contact not found message detected (Xpath004 found)")
+            print("❌ Contact not found message detected")
             if self.check_internet_connection():
                 print("✗ Invalid Mobile Number")
                 return False
@@ -1239,7 +1232,7 @@ class BotScheduler:
                 print("No internet connection, restarting browser...")
                 return "restart"
         else:
-            print("✓ Contact found (Xpath004 not present)")
+            print("✓ Contact found")
             return True
 
     def run_step7j(self):
@@ -1352,20 +1345,20 @@ class BotScheduler:
                 print("✓ Message sent")
                 return True
             except Exception as e1:
-                print(f"⚠ Method 1 failed: {e1}")
+                print(f"⚠ Method 1 failed")
                 
                 # Method 2: Click the send button using Xpath005
-                print("Attempting to send message using Xpath005 (send button)...")
+                print("Attempting to send message using send button...")
                 try:
                     send_button = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, self.xpaths.get("Xpath005", "//span[@data-icon='send']")))
                     )
                     send_button.click()
-                    print("✓ Send button clicked using Xpath005")
+                    print("✓ Send button clicked")
                     print("✓ Message sent")
                     return True
                 except Exception as e2:
-                    print(f"⚠ Method 2 failed: {e2}")
+                    print(f"⚠ Method 2 failed")
                     
                     # Method 3: Try alternative send button selector
                     print("Attempting to send using alternative send button selector...")
@@ -1378,7 +1371,7 @@ class BotScheduler:
                         print("✓ Message sent")
                         return True
                     except Exception as e3:
-                        print(f"⚠ Method 3 failed: {e3}")
+                        print(f"⚠ Method 3 failed")
                         
                         # Method 4: Press Enter on body as final fallback
                         print("Attempting to send using Enter key on body element...")
@@ -1389,7 +1382,7 @@ class BotScheduler:
                             print("✓ Message sent")
                             return True
                         except Exception as e4:
-                            print(f"❌ All sending methods failed: {e4}")
+                            print(f"❌ All sending methods failed")
                             return False
         
         except Exception as e:
@@ -1407,8 +1400,8 @@ class BotScheduler:
             print("⏳ Waiting 2 seconds for stability after sending...")
             time.sleep(2)
             
-            print("Immediately checking for Xpath003 (pending message indicator)...")
-            print("Monitoring Xpath003 every second until it disappears...")
+            print("Checking for pending message indicator...")
+            print("Monitoring message delivery status...")
             
             start_time = time.time()
             check_count = 0
@@ -1423,7 +1416,7 @@ class BotScheduler:
                 
                 if xpath003_present:
                     if not xpath003_was_present:
-                        print(f"  ✓ Xpath003 found - message is pending delivery (check {check_count})")
+                        print(f"  ✓ Message is pending delivery")
                         xpath003_was_present = True
                     
                     # Show waiting status every 10 checks
@@ -1431,19 +1424,19 @@ class BotScheduler:
                         print(f"  ⏳ Still pending... {elapsed_time}s elapsed")
                 else:
                     if xpath003_was_present:
-                        print(f"  ✓ Xpath003 disappeared after {elapsed_time}s - message delivered!")
+                        print(f"  ✓ Message delivered after {elapsed_time}s!")
                         print("✓ Error message sent successfully")
                         return True
                     else:
                         # Xpath003 was never present, which means message was delivered instantly
-                        print(f"  ✓ Xpath003 never appeared - message delivered instantly after {elapsed_time}s")
+                        print(f"  ✓ Message delivered instantly")
                         print("✓ Error message sent successfully")
                         return True
                 
                 time.sleep(1)  # Check every second
             
             # If we reach here, timeout occurred
-            print(f"✗ Message delivery timeout after 300 seconds - Xpath003 still present")
+            print(f"✗ Message delivery timeout after 300 seconds")
             return False
             
         except Exception as e:
