@@ -14,6 +14,8 @@ from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+import signal
+import platform
 
 class BotScheduler:
     def __init__(self):
@@ -27,6 +29,11 @@ class BotScheduler:
         self.github_repo = "https://github.com/Thaniyanki/raspberry-pi-bots"
         self.github_raw_base = "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main"
         
+        # Browser paths
+        self.USER_HOME = Path.home()
+        self.chrome_profile = self.USER_HOME / ".config" / "chromium"
+        self.chromedriver = "/usr/bin/chromedriver"
+        
         # Colors for terminal output
         self.YELLOW = '\033[93m'
         self.GREEN = '\033[92m'
@@ -34,6 +41,9 @@ class BotScheduler:
         self.BLUE = '\033[94m'
         self.ENDC = '\033[0m'
         self.BOLD = '\033[1m'
+        
+        # Browser management
+        self.browser_process = None
         
     def run_curl_command(self):
         """Run the curl command to setup bots with LIVE output"""
@@ -143,7 +153,7 @@ class BotScheduler:
         return None, None
     
     def copy_report_numbers_from_valid_bots(self, bot_folders):
-        """Copy report numbers from bots that have valid ones to bots that don't (INCLUDING scheduler)"""
+        """Copy report numbers from bots that have them to bots that don't (INCLUDING scheduler)"""
         print("Automatically copying report numbers from bots that have them...")
         
         # Find all valid report numbers
@@ -1201,14 +1211,380 @@ class BotScheduler:
             print(f"{self.RED}❌ Error in Step 6: {e}{self.ENDC}")
             return False, False
 
-    def run_step7(self):
-        """Step 7: Some bots missing matching sheets"""
+    # =========================================================================
+    # STEP 7 IMPLEMENTATION
+    # =========================================================================
+
+    def kill_chrome_processes(self):
+        """Kill all Chrome/Chromium browser processes"""
+        print("Closing Chrome/Chromium browsers...")
+        
+        # List of Chrome/Chromium process names to kill
+        chrome_processes = [
+            'chrome', 'chromium', 'chromium-browser', 
+            'google-chrome', 'chrome_sandbox'
+        ]
+        
+        killed_count = 0
+        for process_name in chrome_processes:
+            try:
+                # Use pkill to kill processes by name
+                result = subprocess.run(
+                    ['pkill', '-f', process_name],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    killed_count += 1
+                    print(f"  ✓ Killed {process_name} processes")
+                time.sleep(1)  # Small delay between kills
+            except Exception as e:
+                print(f"  ⚠ Error killing {process_name}: {e}")
+        
+        # Additional cleanup for any remaining Chrome processes
+        try:
+            subprocess.run(['pkill', '-f', 'chrome'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'chromium'], capture_output=True)
+        except:
+            pass
+            
+        print(f"✓ Closed {killed_count} Chrome/Chromium process types")
+        return killed_count > 0
+
+    def kill_chromedriver_processes(self):
+        """Kill all chromedriver processes"""
+        print("Closing chromedriver processes...")
+        
+        try:
+            # Kill chromedriver processes
+            result = subprocess.run(
+                ['pkill', '-f', 'chromedriver'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("  ✓ Killed chromedriver processes")
+                return True
+            else:
+                print("  ℹ No chromedriver processes found")
+                return False
+                
+        except Exception as e:
+            print(f"  ⚠ Error killing chromedriver: {e}")
+            return False
+
+    def cleanup_browser_processes(self):
+        """Clean up any remaining browser processes"""
+        print("Performing final browser cleanup...")
+        
+        # Kill Chrome/Chromium processes
+        self.kill_chrome_processes()
+        
+        # Kill chromedriver processes
+        self.kill_chromedriver_processes()
+        
+        # Additional cleanup for any zombie processes
+        try:
+            subprocess.run(['pkill', '-9', '-f', 'chrome'], capture_output=True)
+            subprocess.run(['pkill', '-9', '-f', 'chromium'], capture_output=True)
+            subprocess.run(['pkill', '-9', '-f', 'chromedriver'], capture_output=True)
+        except:
+            pass
+            
+        print("✓ Browser cleanup completed")
+
+    def check_internet_connection(self):
+        """Check internet connection using ping method"""
+        print("Checking internet connection...")
+        
+        # Try different ping targets for reliability
+        ping_targets = ['8.8.8.8', '1.1.1.1', 'google.com']
+        
+        for target in ping_targets:
+            try:
+                # Use ping with count=2 and timeout=5 seconds
+                if platform.system().lower() == 'windows':
+                    command = ['ping', '-n', '2', '-w', '5000', target]
+                else:
+                    command = ['ping', '-c', '2', '-W', '5', target]
+                
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if result.returncode == 0:
+                    print(f"  ✓ Internet connection available (ping to {target} successful)")
+                    return True
+                    
+            except subprocess.TimeoutExpired:
+                print(f"  ⚠ Ping to {target} timed out")
+                continue
+            except Exception as e:
+                print(f"  ⚠ Ping to {target} failed: {e}")
+                continue
+        
+        print("  ✗ No internet connection available")
+        return False
+
+    def wait_for_internet_connection(self):
+        """Wait for internet connection to become available, checking every 2 seconds"""
+        print(f"{self.YELLOW}Waiting for internet connection...{self.ENDC}")
+        print("Checking every 2 seconds. Press Ctrl+C to cancel.")
+        
+        check_count = 0
+        try:
+            while True:
+                check_count += 1
+                
+                if self.check_internet_connection():
+                    print(f"{self.GREEN}✓ Internet connection established!{self.ENDC}")
+                    return True
+                
+                # Show waiting animation
+                dots = "." * (check_count % 4)
+                spaces = " " * (3 - len(dots))
+                print(f"\rWaiting for internet{dots}{spaces} (Attempt {check_count})", end="", flush=True)
+                time.sleep(2)  # Check every 2 seconds
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.RED}Operation cancelled by user.{self.ENDC}")
+            return False
+
+    def open_browser_with_profile(self):
+        """Open Chrome/Chromium browser with the specified profile"""
+        print("Opening Chrome/Chromium browser...")
+        
+        # First, ensure all previous browser processes are closed
+        self.cleanup_browser_processes()
+        
+        time.sleep(2)  # Wait for processes to fully terminate
+        
+        try:
+            # Try to open Chromium with the specified profile
+            browsers_to_try = [
+                ['chromium-browser', f'--profile-directory={self.chrome_profile}'],
+                ['chromium', f'--profile-directory={self.chrome_profile}'],
+                ['google-chrome', f'--profile-directory={self.chrome_profile}'],
+                ['chromium-browser'],  # Try without profile
+                ['chromium'],  # Try without profile
+            ]
+            
+            for browser_cmd in browsers_to_try:
+                try:
+                    print(f"  Trying: {' '.join(browser_cmd)}")
+                    self.browser_process = subprocess.Popen(
+                        browser_cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    
+                    # Wait a moment to see if the process starts successfully
+                    time.sleep(2)
+                    
+                    if self.browser_process.poll() is None:
+                        print(f"  ✓ Browser opened successfully with: {browser_cmd[0]}")
+                        return True
+                    else:
+                        print(f"  ✗ {browser_cmd[0]} failed to start")
+                        
+                except FileNotFoundError:
+                    print(f"  ✗ {browser_cmd[0]} not found")
+                    continue
+                except Exception as e:
+                    print(f"  ✗ Error with {browser_cmd[0]}: {e}")
+                    continue
+            
+            print(f"{self.RED}❌ Could not open any browser{self.ENDC}")
+            return False
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error opening browser: {e}{self.ENDC}")
+            return False
+
+    def open_whatsapp_web(self):
+        """Open WhatsApp Web in the browser"""
+        print("Opening WhatsApp Web...")
+        
+        try:
+            # Try to open WhatsApp Web using xdg-open (Linux) or direct browser command
+            whatsapp_url = "https://web.whatsapp.com/"
+            
+            # Try xdg-open first (Linux)
+            try:
+                result = subprocess.run(
+                    ['xdg-open', whatsapp_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    print(f"  ✓ WhatsApp Web opened successfully")
+                    return True
+            except:
+                pass
+            
+            # Try using browser directly
+            browsers_to_try = [
+                ['chromium-browser', whatsapp_url],
+                ['chromium', whatsapp_url],
+                ['google-chrome', whatsapp_url],
+            ]
+            
+            for browser_cmd in browsers_to_try:
+                try:
+                    print(f"  Trying: {' '.join(browser_cmd)}")
+                    subprocess.Popen(
+                        browser_cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    print(f"  ✓ WhatsApp Web opened with {browser_cmd[0]}")
+                    return True
+                except FileNotFoundError:
+                    continue
+                except Exception as e:
+                    print(f"  ⚠ Error with {browser_cmd[0]}: {e}")
+                    continue
+            
+            print(f"{self.YELLOW}⚠ Could not automatically open WhatsApp Web{self.ENDC}")
+            print(f"{self.YELLOW}Please manually open: https://web.whatsapp.com/{self.ENDC}")
+            return False
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error opening WhatsApp Web: {e}{self.ENDC}")
+            return False
+
+    def wait_for_user_confirmation(self, message, timeout=300):
+        """Wait for user confirmation with timeout"""
+        print(f"\n{self.YELLOW}{message}{self.ENDC}")
+        print(f"You have {timeout} seconds to complete this step.")
+        print("Press Enter to continue when ready...")
+        
+        start_time = time.time()
+        try:
+            while time.time() - start_time < timeout:
+                # Check if user pressed Enter (non-blocking)
+                try:
+                    if sys.stdin.isatty():
+                        # For interactive terminals
+                        import select
+                        if select.select([sys.stdin], [], [], 1)[0]:
+                            user_input = sys.stdin.readline().strip()
+                            if user_input == "":
+                                print("✓ Continuing...")
+                                return True
+                    else:
+                        # For non-interactive environments, wait with countdown
+                        remaining = int(timeout - (time.time() - start_time))
+                        if remaining % 30 == 0:  # Print every 30 seconds
+                            print(f"Time remaining: {remaining} seconds...")
+                        time.sleep(1)
+                        
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{self.RED}Operation interrupted by user.{self.ENDC}")
+                    return False
+                    
+            print(f"\n{self.YELLOW}Timeout reached. Continuing...{self.ENDC}")
+            return True
+            
+        except Exception as e:
+            print(f"Error in user confirmation: {e}")
+            return True
+
+    def run_step7a(self):
+        """Step 7a: Close browser and reopen it"""
         print("\n" + "=" * 50)
-        print("STEP 7: Some Bots Missing Matching Sheets")
+        print("STEP 7a: Browser Management")
+        print("=" * 50)
+        
+        # Close existing browser processes
+        print("1. Closing existing browser processes...")
+        self.cleanup_browser_processes()
+        
+        time.sleep(3)  # Wait for processes to fully terminate
+        
+        # Open browser with profile
+        print("\n2. Opening browser with profile...")
+        browser_opened = self.open_browser_with_profile()
+        
+        if browser_opened:
+            print(f"{self.GREEN}✓ Browser management completed successfully{self.ENDC}")
+            return True
+        else:
+            print(f"{self.YELLOW}⚠ Browser could not be opened automatically{self.ENDC}")
+            print(f"{self.YELLOW}Please open the browser manually and continue.{self.ENDC}")
+            return True  # Continue anyway
+
+    def run_step7b(self):
+        """Step 7b: Check internet connection"""
+        print("\n" + "=" * 50)
+        print("STEP 7b: Internet Connection Check")
+        print("=" * 50)
+        
+        # Check if internet is available
+        if self.check_internet_connection():
+            print(f"{self.GREEN}✓ Internet connection is available{self.ENDC}")
+            return True
+        else:
+            # Wait for internet connection
+            print(f"{self.YELLOW}Internet connection not available.{self.ENDC}")
+            return self.wait_for_internet_connection()
+
+    def run_step7c(self):
+        """Step 7c: Open WhatsApp Web"""
+        print("\n" + "=" * 50)
+        print("STEP 7c: WhatsApp Web Setup")
+        print("=" * 50)
+        
+        # Open WhatsApp Web
+        whatsapp_opened = self.open_whatsapp_web()
+        
+        if whatsapp_opened:
+            print(f"{self.GREEN}✓ WhatsApp Web opened successfully{self.ENDC}")
+            
+            # Wait for user to complete WhatsApp setup
+            user_message = "Please complete WhatsApp Web setup:\n1. Scan QR code with your phone\n2. Wait for WhatsApp to load completely\n3. Ensure you're logged in successfully"
+            return self.wait_for_user_confirmation(user_message, timeout=600)  # 10 minutes for WhatsApp setup
+        else:
+            print(f"{self.YELLOW}⚠ Could not automatically open WhatsApp Web{self.ENDC}")
+            user_message = "Please manually open https://web.whatsapp.com and complete the setup"
+            return self.wait_for_user_confirmation(user_message, timeout=600)
+
+    def run_step7(self):
+        """Step 7: Main step 7 execution - Browser and WhatsApp setup"""
+        print("\n" + "=" * 50)
+        print("STEP 7: Browser and WhatsApp Setup")
         print("=" * 50)
         print(f"{self.YELLOW}⚠ Some bots are missing matching Google Sheets{self.ENDC}")
-        print("Please create the missing sheets or check the bot folder names.")
-        # Step 7 implementation will go here
+        print("Setting up browser and WhatsApp for manual sheet creation...")
+        
+        # Run Step 7a - Browser management
+        print(f"\n{self.BOLD}--- Step 7a: Browser Management ---{self.ENDC}")
+        step7a_success = self.run_step7a()
+        if not step7a_success:
+            print(f"{self.RED}❌ Step 7a failed{self.ENDC}")
+            return False
+        
+        # Run Step 7b - Internet connection check
+        print(f"\n{self.BOLD}--- Step 7b: Internet Connection Check ---{self.ENDC}")
+        step7b_success = self.run_step7b()
+        if not step7b_success:
+            print(f"{self.RED}❌ Step 7b failed - No internet connection{self.ENDC}")
+            return False
+        
+        # Run Step 7c - WhatsApp Web setup
+        print(f"\n{self.BOLD}--- Step 7c: WhatsApp Web Setup ---{self.ENDC}")
+        step7c_success = self.run_step7c()
+        if not step7c_success:
+            print(f"{self.RED}❌ Step 7c failed{self.ENDC}")
+            return False
+        
+        print(f"\n{self.GREEN}✓ Step 7 completed successfully!{self.ENDC}")
+        print(f"{self.GREEN}✓ Browser and WhatsApp are ready for use{self.ENDC}")
         return True
 
     def run_step8(self):
@@ -1218,141 +1594,166 @@ class BotScheduler:
         print("=" * 50)
         print(f"{self.GREEN}✓ All Google Sheets are available with correct format!{self.ENDC}")
         print("Continuing with bot execution setup...")
-        # Step 8 implementation will go here
         return True
 
+    def cleanup(self):
+        """Cleanup method to be called before exit"""
+        print("\nPerforming cleanup...")
+        self.cleanup_browser_processes()
+
     def run(self):
-        """Main execution function"""
-        print("=" * 50)
-        print("Bot Scheduler Starting...")
-        print(f"Username: {self.username}")
-        print(f"Bots path: {self.bots_base_path}")
-        print("=" * 50)
-        
-        if not self.check_bots_folder():
-            return
-            
-        bot_folders = self.get_bot_folders()
-        if not bot_folders:
-            print("No bot folders found. Running setup...")
-            self.run_curl_command()
-            return
-        
-        self.list_bot_folders(bot_folders)
-        self.handle_report_numbers(bot_folders)
-        report_numbers_ok = self.verify_report_numbers(bot_folders)
-        
-        print("\n" + "=" * 50)
-        if report_numbers_ok:
-            print("✓ Step 1 completed successfully!")
-            print("✓ All report numbers are properly set in venv folders (including scheduler)")
-        else:
-            print("⚠ Step 1 completed with warnings")
-            print("⚠ Some report numbers may not be set correctly in venv folders")
-        
-        print("=" * 50)
-        
-        # Run Step 2
-        step2_success = self.run_step2()
-        
-        if step2_success:
-            print("\n" + "=" * 50)
-            print("✓ Step 2 completed successfully!")
-            print("✓ All database access keys are properly set in venv folders (excluding scheduler)")
+        """Main execution function with proper cleanup"""
+        try:
+            print("=" * 50)
+            print("Bot Scheduler Starting...")
+            print(f"Username: {self.username}")
+            print(f"Bots path: {self.bots_base_path}")
             print("=" * 50)
             
-            # Run Step 3
-            step3_success = self.run_step3()
+            if not self.check_bots_folder():
+                return
+                
+            bot_folders = self.get_bot_folders()
+            if not bot_folders:
+                print("No bot folders found. Running setup...")
+                self.run_curl_command()
+                return
             
-            if step3_success:
+            self.list_bot_folders(bot_folders)
+            self.handle_report_numbers(bot_folders)
+            report_numbers_ok = self.verify_report_numbers(bot_folders)
+            
+            print("\n" + "=" * 50)
+            if report_numbers_ok:
+                print("✓ Step 1 completed successfully!")
+                print("✓ All report numbers are properly set in venv folders (including scheduler)")
+            else:
+                print("⚠ Step 1 completed with warnings")
+                print("⚠ Some report numbers may not be set correctly in venv folders")
+            
+            print("=" * 50)
+            
+            # Run Step 2
+            step2_success = self.run_step2()
+            
+            if step2_success:
                 print("\n" + "=" * 50)
-                print("✓ Step 3 completed successfully!")
-                print("✓ All spreadsheet access keys are properly set in venv folders (including scheduler)")
+                print("✓ Step 2 completed successfully!")
+                print("✓ All database access keys are properly set in venv folders (excluding scheduler)")
                 print("=" * 50)
                 
-                # Run Step 4
-                step4_success = self.run_step4()
+                # Run Step 3
+                step3_success = self.run_step3()
                 
-                if step4_success:
+                if step3_success:
                     print("\n" + "=" * 50)
-                    print("✓ Step 4 completed successfully!")
-                    print("✓ Google Sheets listed successfully")
+                    print("✓ Step 3 completed successfully!")
+                    print("✓ All spreadsheet access keys are properly set in venv folders (including scheduler)")
                     print("=" * 50)
                     
-                    # Run Step 5
-                    step5_success, all_match = self.run_step5()
+                    # Run Step 4
+                    step4_success = self.run_step4()
                     
-                    if step5_success:
+                    if step4_success:
                         print("\n" + "=" * 50)
-                        print("✓ Step 5 completed successfully!")
+                        print("✓ Step 4 completed successfully!")
+                        print("✓ Google Sheets listed successfully")
                         print("=" * 50)
                         
-                        if all_match:
-                            # All bots have matching sheets - continue to Step 6
-                            step6_success, all_sheets_available = self.run_step6()
-                            if step6_success:
-                                print("\n" + "=" * 50)
-                                print("✓ Step 6 completed successfully!")
-                                print("=" * 50)
-                                
-                                if all_sheets_available:
-                                    # All sheets available with correct format - continue to Step 8
-                                    step8_success = self.run_step8()
-                                    if step8_success:
-                                        print("\n" + "=" * 50)
-                                        print("✓ Step 8 completed successfully!")
-                                        print("✓ All Google Sheets verified and updated")
-                                        print("=" * 50)
-                                        # Continue to next steps...
+                        # Run Step 5
+                        step5_success, all_match = self.run_step5()
+                        
+                        if step5_success:
+                            print("\n" + "=" * 50)
+                            print("✓ Step 5 completed successfully!")
+                            print("=" * 50)
+                            
+                            if all_match:
+                                # All bots have matching sheets - continue to Step 6
+                                step6_success, all_sheets_available = self.run_step6()
+                                if step6_success:
+                                    print("\n" + "=" * 50)
+                                    print("✓ Step 6 completed successfully!")
+                                    print("=" * 50)
+                                    
+                                    if all_sheets_available:
+                                        # All sheets available with correct format - continue to Step 8
+                                        step8_success = self.run_step8()
+                                        if step8_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Step 8 completed successfully!")
+                                            print("✓ All Google Sheets verified and updated")
+                                            print("=" * 50)
+                                            # Continue to next steps...
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                            sys.exit(1)
                                     else:
-                                        print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
-                                        sys.exit(1)
+                                        # Some sheets missing - continue to Step 7
+                                        step7_success = self.run_step7()
+                                        if step7_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Step 7 completed successfully!")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                            sys.exit(1)
                                 else:
-                                    # Some sheets missing - continue to Step 7
-                                    step7_success = self.run_step7()
-                                    if step7_success:
-                                        print("\n" + "=" * 50)
-                                        print("✓ Step 7 completed successfully!")
-                                        print("=" * 50)
-                                    else:
-                                        print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
-                                        sys.exit(1)
+                                    print(f"\n{self.RED}❌ Step 6 failed.{self.ENDC}")
+                                    sys.exit(1)
                             else:
-                                print(f"\n{self.RED}❌ Step 6 failed.{self.ENDC}")
-                                sys.exit(1)
+                                # Some bots missing matching sheets - continue to Step 7
+                                step7_success = self.run_step7()
+                                if step7_success:
+                                    print("\n" + "=" * 50)
+                                    print("✓ Step 7 completed successfully!")
+                                    print("=" * 50)
+                                else:
+                                    print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
+                                    sys.exit(1)
                         else:
-                            # Some bots missing matching sheets - continue to Step 7
-                            step7_success = self.run_step7()
-                            if step7_success:
-                                print("\n" + "=" * 50)
-                                print("✓ Step 7 completed successfully!")
-                                print("=" * 50)
-                            else:
-                                print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
-                                sys.exit(1)
+                            print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
+                            sys.exit(1)
                     else:
-                        print(f"\n{self.RED}❌ Step 5 failed. Cannot continue.{self.ENDC}")
+                        print(f"\n{self.RED}❌ Step 4 failed. Cannot continue to Step 5.{self.ENDC}")
                         sys.exit(1)
                 else:
-                    print(f"\n{self.RED}❌ Step 4 failed. Cannot continue to Step 5.{self.ENDC}")
+                    print(f"\n{self.RED}❌ Step 3 failed. Cannot continue to Step 4.{self.ENDC}")
                     sys.exit(1)
             else:
-                print(f"\n{self.RED}❌ Step 3 failed. Cannot continue to Step 4.{self.ENDC}")
+                print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
                 sys.exit(1)
-        else:
-            print(f"\n{self.RED}❌ Step 2 failed. Cannot continue to Step 3.{self.ENDC}")
-            sys.exit(1)
+                
+        finally:
+            # Always cleanup before exit
+            self.cleanup()
 
 def main():
-    """Main function"""
+    """Main function with signal handling"""
+    scheduler = None
     try:
+        # Set up signal handlers for proper cleanup
+        def signal_handler(sig, frame):
+            print(f"\n\nScript interrupted by user.")
+            if scheduler:
+                scheduler.cleanup()
+            sys.exit(1)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
         scheduler = BotScheduler()
         scheduler.run()
+        
     except KeyboardInterrupt:
-        print("\n\nScript interrupted by user. Exiting...")
+        print(f"\n\nScript interrupted by user.")
+        if scheduler:
+            scheduler.cleanup()
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
+        if scheduler:
+            scheduler.cleanup()
         sys.exit(1)
 
 if __name__ == "__main__":
