@@ -1329,7 +1329,7 @@ class BotScheduler:
             return False
 
     def run_step7l(self):
-        """Step 7l: Send message"""
+        """Step 7l: Send message using alternative methods"""
         print("\n" + "=" * 50)
         print("STEP 7l: Sending Message")
         print("=" * 50)
@@ -1339,13 +1339,59 @@ class BotScheduler:
             print("⏳ Waiting 2 seconds for stability before sending...")
             time.sleep(2)
             
-            # Press Enter to send the message
-            print("Pressing Enter key to send message...")
-            body = self.driver.find_element(By.TAG_NAME, 'body')
-            body.send_keys(Keys.ENTER)
-            print("✓ Enter pressed - Message sent")
+            # Try multiple methods to send the message
             
-            return True
+            # Method 1: Press Enter on message input field
+            print("Attempting to send message using Enter key on message input field...")
+            try:
+                message_input = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                )
+                message_input.send_keys(Keys.ENTER)
+                print("✓ Enter pressed on message input field")
+                print("✓ Message sent")
+                return True
+            except Exception as e1:
+                print(f"⚠ Method 1 failed: {e1}")
+                
+                # Method 2: Click the send button using Xpath005
+                print("Attempting to send message using Xpath005 (send button)...")
+                try:
+                    send_button = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, self.xpaths.get("Xpath005", "//span[@data-icon='send']")))
+                    )
+                    send_button.click()
+                    print("✓ Send button clicked using Xpath005")
+                    print("✓ Message sent")
+                    return True
+                except Exception as e2:
+                    print(f"⚠ Method 2 failed: {e2}")
+                    
+                    # Method 3: Try alternative send button selector
+                    print("Attempting to send using alternative send button selector...")
+                    try:
+                        send_button_alt = WebDriverWait(self.driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Send']"))
+                        )
+                        send_button_alt.click()
+                        print("✓ Send button clicked using alternative selector")
+                        print("✓ Message sent")
+                        return True
+                    except Exception as e3:
+                        print(f"⚠ Method 3 failed: {e3}")
+                        
+                        # Method 4: Press Enter on body as final fallback
+                        print("Attempting to send using Enter key on body element...")
+                        try:
+                            body = self.driver.find_element(By.TAG_NAME, 'body')
+                            body.send_keys(Keys.ENTER)
+                            print("✓ Enter pressed on body element")
+                            print("✓ Message sent")
+                            return True
+                        except Exception as e4:
+                            print(f"❌ All sending methods failed: {e4}")
+                            return False
+        
         except Exception as e:
             print(f"{self.RED}❌ Error sending message: {e}{self.ENDC}")
             return False
