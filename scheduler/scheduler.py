@@ -1712,6 +1712,37 @@ class BotScheduler:
                                     print("✓ Step 7 completed successfully!")
                                     print("✓ WhatsApp notification sent for missing sheets")
                                     print("=" * 50)
+                                    
+                                    # AFTER STEP 7 SUCCESS, CONTINUE WITH STEP 6
+                                    print(f"\n{self.BLUE}Continuing with CSV header comparison after successful WhatsApp notification...{self.ENDC}")
+                                    step6_success, all_sheets_available = self.run_step6()
+                                    
+                                    if step6_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ Step 6 completed successfully!")
+                                        print("=" * 50)
+                                        
+                                        # Continue to Step 8
+                                        step8_success = self.run_step8()
+                                        if step8_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
+                                            print("✓ Bots are ready to use")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                            sys.exit(1)
+                                    else:
+                                        print(f"\n{self.YELLOW}⚠ Step 6 had issues, but continuing...{self.ENDC}")
+                                        # Even if Step 6 fails, continue to Step 8
+                                        step8_success = self.run_step8()
+                                        if step8_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Setup completed with warnings")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                            sys.exit(1)
                                 else:
                                     print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
                                     sys.exit(1)
