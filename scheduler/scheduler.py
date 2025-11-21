@@ -1975,7 +1975,7 @@ class BotScheduler:
                     self.driver.quit()
                     self.driver = None
         
-        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
+        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attemps} ATTEMPTS{self.ENDC}")
         return False
 
     def run_step8(self):
@@ -2124,17 +2124,20 @@ class BotScheduler:
                 stop_time = row.get(stop_col, '').strip()
                 switch = row.get('switch', '').strip().lower()
                 
-                # Skip if start or stop time is empty
-                if not start_time or not stop_time:
-                    continue
-                
-                display_data.append({
-                    'bot_name': bot_name,
-                    'start_at': start_time,
-                    'stop_at': stop_time,
-                    'switch': switch
-                })
-        
+                # Only skip if both start and stop time are empty
+                # If at least one has time, include the bot
+                if start_time or stop_time:
+                    # Use empty string if time is missing
+                    start_time = start_time if start_time else 'N/A'
+                    stop_time = stop_time if stop_time else 'N/A'
+                    
+                    display_data.append({
+                        'bot_name': bot_name,
+                        'start_at': start_time,
+                        'stop_at': stop_time,
+                        'switch': switch
+                    })
+    
         return current_day.capitalize(), current_date, display_data
 
     def display_schedule_table(self, day, date, schedule_data):
