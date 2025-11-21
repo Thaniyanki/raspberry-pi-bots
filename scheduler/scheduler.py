@@ -1688,22 +1688,32 @@ class BotScheduler:
             print(f"Running installation command...")
             print(f"URL: {venv_sh_url}")
             
-            # Run the installation command
+            # Run the installation command with LIVE output
             command = f'bash <(curl -sL {venv_sh_url})'
-            process = subprocess.run(
+            print(f"Executing: {command}")
+            
+            # Use subprocess with live output
+            process = subprocess.Popen(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
             )
+            
+            # Print live output
+            for line in process.stdout:
+                print(line, end='')
+            
+            # Wait for process to complete
+            process.wait()
             
             if process.returncode == 0:
                 print(f"{self.GREEN}✓ Successfully installed {github_bot_name}{self.ENDC}")
                 return True
             else:
-                print(f"{self.RED}❌ Failed to install {github_bot_name}{self.ENDC}")
-                print(f"Error: {process.stderr}")
+                print(f"{self.RED}❌ Failed to install {github_bot_name} with return code: {process.returncode}{self.ENDC}")
                 return False
                 
         except Exception as e:
@@ -1970,13 +1980,33 @@ class BotScheduler:
                     print(f"     GitHub name: {new_bot}")
                     print(f"     Local name: {local_name}")
                 
-                # Install new bots
+                print(f"\n{self.YELLOW}⚠ ACTION REQUIRED:{self.ENDC}")
+                print(f"{self.YELLOW}   New bots detected from GitHub that need to be installed:{self.ENDC}")
                 for new_bot in new_bots:
-                    self.install_new_bot(new_bot)
+                    local_name = self.convert_github_to_local_name(new_bot)
+                    print(f"{self.YELLOW}   - {local_name}{self.ENDC}")
+                
+                # Install new bots
+                print(f"\n{self.BOLD}Starting installation of new bots...{self.ENDC}")
+                installation_success = True
+                for new_bot in new_bots:
+                    if not self.install_new_bot(new_bot):
+                        installation_success = False
+                        print(f"{self.RED}❌ Failed to install {new_bot}{self.ENDC}")
+                    else:
+                        print(f"{self.GREEN}✓ Successfully installed {new_bot}{self.ENDC}")
+                
+                if not installation_success:
+                    print(f"{self.RED}❌ Some bots failed to install{self.ENDC}")
+                    return False, new_bots
                 
                 # Send WhatsApp notification for new bots
-                self.run_step8_whatsapp_notification(new_bots)
+                print(f"\n{self.BOLD}Sending WhatsApp notification for new bots...{self.ENDC}")
+                if not self.run_step8_whatsapp_notification(new_bots):
+                    print(f"{self.RED}❌ Failed to send WhatsApp notification{self.ENDC}")
+                    return False, new_bots
                 
+                print(f"{self.GREEN}✓ New bots installed and notification sent successfully{self.ENDC}")
                 return False, new_bots
             else:
                 print(f"\n{self.GREEN}✓ All GitHub bots are already installed locally{self.ENDC}")
