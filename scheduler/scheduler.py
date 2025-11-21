@@ -1980,7 +1980,7 @@ class BotScheduler:
                     self.driver.quit()
                     self.driver = None
         
-        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attemps} ATTEMPTS{self.ENDC}")
+        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
         return False
 
     def run_step8(self):
@@ -2040,23 +2040,23 @@ class BotScheduler:
                 
                 if not installation_success:
                     print(f"{self.RED}❌ Some bots failed to install{self.ENDC}")
-                    return False, new_bots
+                    return True, new_bots
                 
                 # Send WhatsApp notification for new bots
                 print(f"\n{self.BOLD}Sending WhatsApp notification for new bots...{self.ENDC}")
                 if not self.run_step8_whatsapp_notification(new_bots):
                     print(f"{self.RED}❌ Failed to send WhatsApp notification{self.ENDC}")
-                    return False, new_bots
+                    return True, new_bots
                 
                 print(f"{self.GREEN}✓ New bots installed and notification sent successfully{self.ENDC}")
-                return False, new_bots
+                return True, new_bots
             else:
                 print(f"\n{self.GREEN}✓ All GitHub bots are already installed locally{self.ENDC}")
                 return True, []
             
         except Exception as e:
             print(f"{self.RED}❌ Error in Step 8: {e}{self.ENDC}")
-            return False, []
+            return True, []
 
     def get_valid_bot_names(self):
         """Get valid bot names that exist in both local folders and Google Sheets (case-sensitive)"""
@@ -2510,49 +2510,31 @@ class BotScheduler:
                                     # Run Step 8 - Detect new bots
                                     step8_success, new_bots = self.run_step8()
                                     
-                                    if step8_success:
-                                        # No new bots found, continue to Step 9
-                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
-                                        step9_success = self.run_step9()
-                                        if step9_success:
-                                            print("\n" + "=" * 50)
-                                            print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
-                                            print("✓ Bots are ready to use")
-                                            print("=" * 50)
-                                        else:
-                                            print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
-                                            sys.exit(1)
+                                    # Continue to Step 9 regardless of new bots
+                                    print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                    step9_success = self.run_step9()
+                                    if step9_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
+                                        print("✓ Bots are ready to use")
+                                        print("=" * 50)
                                     else:
-                                        # New bots found, inform user
-                                        print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
-                                        for new_bot in new_bots:
-                                            local_name = self.convert_github_to_local_name(new_bot)
-                                            print(f"{self.RED}   - {local_name}{self.ENDC}")
-                                        print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
+                                        print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
                                         sys.exit(1)
                                 else:
                                     print(f"\n{self.YELLOW}⚠ Step 6 had issues, but continuing...{self.ENDC}")
                                     # Even if Step 6 fails, continue to Step 8
                                     step8_success, new_bots = self.run_step8()
                                     
-                                    if step8_success:
-                                        # No new bots found, continue to Step 9
-                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
-                                        step9_success = self.run_step9()
-                                        if step9_success:
-                                            print("\n" + "=" * 50)
-                                            print("✓ Setup completed with warnings")
-                                            print("=" * 50)
-                                        else:
-                                            print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
-                                            sys.exit(1)
+                                    # Continue to Step 9 regardless of new bots
+                                    print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                    step9_success = self.run_step9()
+                                    if step9_success:
+                                        print("\n" + "=" * 50)
+                                        print("✓ Setup completed with warnings")
+                                        print("=" * 50)
                                     else:
-                                        # New bots found, inform user
-                                        print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
-                                        for new_bot in new_bots:
-                                            local_name = self.convert_github_to_local_name(new_bot)
-                                            print(f"{self.RED}   - {local_name}{self.ENDC}")
-                                        print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
+                                        print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
                                         sys.exit(1)
                             else:
                                 # Some bots missing matching sheets - continue to Step 7
@@ -2575,49 +2557,31 @@ class BotScheduler:
                                         # Run Step 8 - Detect new bots
                                         step8_success, new_bots = self.run_step8()
                                         
-                                        if step8_success:
-                                            # No new bots found, continue to Step 9
-                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
-                                            step9_success = self.run_step9()
-                                            if step9_success:
-                                                print("\n" + "=" * 50)
-                                                print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
-                                                print("✓ Bots are ready to use")
-                                                print("=" * 50)
-                                            else:
-                                                print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
-                                                sys.exit(1)
+                                        # Continue to Step 9 regardless of new bots
+                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                        step9_success = self.run_step9()
+                                        if step9_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
+                                            print("✓ Bots are ready to use")
+                                            print("=" * 50)
                                         else:
-                                            # New bots found, inform user
-                                            print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
-                                            for new_bot in new_bots:
-                                                local_name = self.convert_github_to_local_name(new_bot)
-                                                print(f"{self.RED}   - {local_name}{self.ENDC}")
-                                            print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
+                                            print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
                                             sys.exit(1)
                                     else:
                                         print(f"\n{self.YELLOW}⚠ Step 6 had issues, but continuing...{self.ENDC}")
                                         # Even if Step 6 fails, continue to Step 8
                                         step8_success, new_bots = self.run_step8()
                                         
-                                        if step8_success:
-                                            # No new bots found, continue to Step 9
-                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
-                                            step9_success = self.run_step9()
-                                            if step9_success:
-                                                print("\n" + "=" * 50)
-                                                print("✓ Setup completed with warnings")
-                                                print("=" * 50)
-                                            else:
-                                                print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
-                                                sys.exit(1)
+                                        # Continue to Step 9 regardless of new bots
+                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                        step9_success = self.run_step9()
+                                        if step9_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Setup completed with warnings")
+                                            print("=" * 50)
                                         else:
-                                            # New bots found, inform user
-                                            print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
-                                            for new_bot in new_bots:
-                                                local_name = self.convert_github_to_local_name(new_bot)
-                                                print(f"{self.RED}   - {local_name}{self.ENDC}")
-                                            print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
+                                            print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
                                             sys.exit(1)
                                 else:
                                     print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
