@@ -1677,6 +1677,260 @@ class BotScheduler:
         # GitHub: whatsapp-messenger -> Local: whatsapp messenger
         return github_name.replace('-', ' ')
 
+    def install_new_bot(self, github_bot_name):
+        """Install a new bot using its venv.sh script"""
+        print(f"\n{self.BOLD}Installing new bot: {github_bot_name}{self.ENDC}")
+        
+        try:
+            # Construct the venv.sh URL
+            venv_sh_url = f"https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/venv.sh"
+            
+            print(f"Running installation command...")
+            print(f"URL: {venv_sh_url}")
+            
+            # Run the installation command
+            command = f'bash <(curl -sL {venv_sh_url})'
+            process = subprocess.run(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            if process.returncode == 0:
+                print(f"{self.GREEN}✓ Successfully installed {github_bot_name}{self.ENDC}")
+                return True
+            else:
+                print(f"{self.RED}❌ Failed to install {github_bot_name}{self.ENDC}")
+                print(f"Error: {process.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"{self.RED}❌ Error installing {github_bot_name}: {e}{self.ENDC}")
+            return False
+
+    def run_step8_whatsapp_notification(self, new_bots):
+        """Send WhatsApp notification for new bots detected"""
+        print(f"\n{self.BOLD}Sending WhatsApp notification for new bots...{self.ENDC}")
+        
+        # Fetch all WhatsApp XPaths from database first
+        if not self.fetch_all_whatsapp_xpaths():
+            return False
+        
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attempts} ==={self.ENDC}")
+            
+            try:
+                # Step 8a: Close and reopen browser
+                print(f"\n{self.BLUE}Step 8a: Browser Management{self.ENDC}")
+                self.close_chrome_browser()
+                time.sleep(3)
+                if not self.setup_selenium_driver():
+                    print("❌ Browser setup failed, restarting...")
+                    continue
+                
+                # Step 8b: Check internet connection
+                print(f"\n{self.BLUE}Step 8b: Internet Connection Check{self.ENDC}")
+                if not self.check_internet_connection():
+                    if not self.wait_for_internet_connection():
+                        print("❌ No internet connection, restarting...")
+                        continue
+                
+                # Step 8c: Open WhatsApp Web
+                print(f"\n{self.BLUE}Step 8c: Opening WhatsApp Web{self.ENDC}")
+                try:
+                    self.driver.get("https://web.whatsapp.com/")
+                    print("✓ WhatsApp Web opened")
+                except Exception as e:
+                    print(f"❌ Error opening WhatsApp Web: {e}")
+                    continue
+                
+                # Step 8d: Wait for search field (Xpath001)
+                print(f"\n{self.BLUE}Step 8d: Waiting for Search Field{self.ENDC}")
+                search_field = self.wait_for_element("search_field", timeout=120)
+                if not search_field:
+                    print("❌ Search field not found within 120 seconds")
+                    
+                    # Step 8f: Check for loading indicator (Xpath011)
+                    print(f"{self.BLUE}Step 8f: Checking Loading Indicator{self.ENDC}")
+                    loading_indicator = self.check_element_present("pending_indicator")  # Using pending_indicator as Xpath011 placeholder
+                    if loading_indicator:
+                        print("✓ Loading indicator found, retrying...")
+                        continue
+                    else:
+                        print("❌ No loading indicator, restarting browser...")
+                        continue
+                
+                print("✓ Entered Mobile number search field")
+                
+                # Step 8e: Check report number file
+                print(f"\n{self.BLUE}Step 8e: Checking Report Number File{self.ENDC}")
+                report_number = self.get_report_number()
+                if not report_number:
+                    print("❌ Report number file not available")
+                    return False
+                print("✓ Report number file available")
+                
+                # Step 8g: Validate phone number
+                print(f"\n{self.BLUE}Step 8g: Validating Phone Number{self.ENDC}")
+                if not self.is_valid_phone_number(report_number):
+                    print("❌ Phone number is not available or invalid")
+                    return False
+                print("✓ Phone number is available")
+                
+                # Step 8h: Enter phone number
+                print(f"\n{self.BLUE}Step 8h: Entering Phone Number{self.ENDC}")
+                try:
+                    search_field.clear()
+                    search_field.send_keys(report_number)
+                    print(f"✓ Phone number entered: {report_number}")
+                    time.sleep(1)
+                    search_field.send_keys(Keys.ENTER)
+                    print("✓ Enter key pressed")
+                    time.sleep(10)  # Wait for stability
+                except Exception as e:
+                    print(f"❌ Error entering phone number: {e}")
+                    continue
+                
+                # Step 8i: Check contact existence
+                print(f"\n{self.BLUE}Step 8i: Checking Contact Existence{self.ENDC}")
+                if self.check_element_present("contact_not_found"):
+                    print("❌ Contact not found")
+                    if self.check_internet_connection():
+                        print("✗ Invalid Mobile Number")
+                        return False
+                    else:
+                        print("No internet connection, restarting...")
+                        continue
+                else:
+                    print("✓ Contact found")
+                
+                # Step 8j: Select contact
+                print(f"\n{self.BLUE}Step 8j: Selecting Contact{self.ENDC}")
+                try:
+                    body = self.driver.find_element(By.TAG_NAME, 'body')
+                    body.send_keys(Keys.ARROW_DOWN)
+                    print("✓ Down arrow pressed")
+                    time.sleep(2)  # Wait for stability
+                    body.send_keys(Keys.ENTER)
+                    print("✓ Enter pressed - Entered Message Field")
+                except Exception as e:
+                    print(f"❌ Error selecting contact: {e}")
+                    continue
+                
+                # Step 8k: Type new bot notification message
+                print(f"\n{self.BLUE}Step 8k: Composing New Bot Notification{self.ENDC}")
+                if not new_bots:
+                    print("No new bots to report")
+                    return False
+                
+                # Create message for new bots
+                message_lines = []
+                for new_bot in new_bots:
+                    local_name = self.convert_github_to_local_name(new_bot)
+                    message_lines.append(f"New bot ({local_name}) is deducted!")
+                
+                message_lines.append("")
+                message_lines.append("Need to create Google sheet configuration")
+                message_lines.append("---------------------------------------------")
+                message_lines.append("Step to create sheet")
+                message_lines.append("-Sign in your Google account")
+                message_lines.append("-Create new spread sheet named as the bot name")
+                message_lines.append("-Share with your google service account")
+                message_lines.append("---------------------------------------------")
+                
+                message = "\n".join(message_lines)
+                
+                try:
+                    time.sleep(2)
+                    message_input = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                    )
+                    message_input.click()
+                    time.sleep(1)
+                    
+                    # Type message with Shift+Enter for new lines
+                    lines = message.split('\n')
+                    for i, line in enumerate(lines):
+                        message_input.send_keys(line)
+                        if i < len(lines) - 1:
+                            message_input.send_keys(Keys.SHIFT + Keys.ENTER)
+                            time.sleep(0.5)
+                    
+                    print("✓ New bot notification message composed")
+                except Exception as e:
+                    print(f"❌ Error composing message: {e}")
+                    continue
+                
+                # Step 8l: Send message
+                print(f"\n{self.BLUE}Step 8l: Sending Message{self.ENDC}")
+                try:
+                    time.sleep(2)  # Wait for stability
+                    message_input = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                    )
+                    message_input.send_keys(Keys.ENTER)
+                    print("✓ Message sent")
+                except Exception as e:
+                    print(f"❌ Error sending message: {e}")
+                    continue
+                
+                # Step 8m: Wait for message delivery
+                print(f"\n{self.BLUE}Step 8m: Waiting for Message Delivery{self.ENDC}")
+                try:
+                    time.sleep(2)  # Wait for stability
+                    print("Monitoring message delivery...")
+                    
+                    start_time = time.time()
+                    check_count = 0
+                    pending_indicator_was_present = False
+                    
+                    while time.time() - start_time < 300:  # 5 minute timeout
+                        check_count += 1
+                        elapsed_time = int(time.time() - start_time)
+                        
+                        pending_indicator_present = self.check_element_present("pending_indicator")
+                        
+                        if pending_indicator_present:
+                            if not pending_indicator_was_present:
+                                print(f"  ✓ Message is pending delivery (check {check_count})")
+                                pending_indicator_was_present = True
+                            
+                            if check_count % 10 == 0:
+                                print(f"  ⏳ Still pending... {elapsed_time}s elapsed")
+                        else:
+                            if pending_indicator_was_present:
+                                print(f"  ✓ Message delivered after {elapsed_time}s!")
+                                print("✓ New bot notification sent successfully")
+                                return True
+                            else:
+                                print(f"  ✓ Message delivered instantly after {elapsed_time}s")
+                                print("✓ New bot notification sent successfully")
+                                return True
+                        
+                        time.sleep(1)
+                    
+                    print(f"✗ Message delivery timeout after 300 seconds")
+                    return False
+                    
+                except Exception as e:
+                    print(f"❌ Error in delivery monitoring: {e}")
+                    return False
+                
+            except Exception as e:
+                print(f"{self.RED}❌ Unexpected error in attempt {attempt}: {e}{self.ENDC}")
+                continue
+            
+            finally:
+                if self.driver:
+                    self.driver.quit()
+                    self.driver = None
+        
+        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
+        return False
+
     def run_step8(self):
         """Step 8: Detect New Bots from GitHub"""
         print("\n" + "=" * 50)
@@ -1716,11 +1970,12 @@ class BotScheduler:
                     print(f"     GitHub name: {new_bot}")
                     print(f"     Local name: {local_name}")
                 
-                print(f"\n{self.YELLOW}⚠ ACTION REQUIRED:{self.ENDC}")
-                print(f"{self.YELLOW}   New bots detected from GitHub that need to be installed:{self.ENDC}")
+                # Install new bots
                 for new_bot in new_bots:
-                    local_name = self.convert_github_to_local_name(new_bot)
-                    print(f"{self.YELLOW}   - {local_name}{self.ENDC}")
+                    self.install_new_bot(new_bot)
+                
+                # Send WhatsApp notification for new bots
+                self.run_step8_whatsapp_notification(new_bots)
                 
                 return False, new_bots
             else:
