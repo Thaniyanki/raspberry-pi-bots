@@ -2053,15 +2053,180 @@ class BotScheduler:
             print(f"{self.RED}❌ Error in Step 8: {e}{self.ENDC}")
             return False, []
 
+    def get_valid_bot_names(self):
+        """Get valid bot names that exist in both local folders and Google Sheets (case-sensitive)"""
+        local_bot_folders = self.get_bot_folders()
+        local_bot_names = [folder.name for folder in local_bot_folders]
+        
+        if not hasattr(self, 'available_sheets') or not self.available_sheets:
+            return []
+        
+        sheet_names = [sheet['name'] for sheet in self.available_sheets]
+        
+        # Filter bots that exist in both local folders and Google Sheets (case-sensitive)
+        valid_bots = []
+        for bot_name in local_bot_names:
+            if bot_name in sheet_names and bot_name != "scheduler":
+                valid_bots.append(bot_name)
+        
+        return valid_bots
+
+    def get_scheduler_data(self, gc):
+        """Get scheduler data from Google Sheets"""
+        try:
+            # Check if scheduler sheet exists
+            sheet_names = [sheet['name'] for sheet in self.available_sheets]
+            if "scheduler" not in sheet_names:
+                return None
+            
+            # Open scheduler sheet
+            sheet = gc.open("scheduler")
+            worksheet = sheet.sheet1
+            
+            # Get all data
+            data = worksheet.get_all_records()
+            return data
+            
+        except Exception as e:
+            print(f"Error accessing scheduler sheet: {e}")
+            return None
+
+    def format_schedule_display(self, schedule_data, valid_bots):
+        """Format the schedule display for terminal output"""
+        # Get current day
+        current_day = datetime.now().strftime("%A").lower()
+        
+        # Map day names to column names
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at', 'fri_stop at'],
+            'saturday': ['sat_start at', 'sat_stop at']
+        }
+        
+        if current_day not in day_columns:
+            return None
+        
+        start_col, stop_col = day_columns[current_day]
+        current_date = datetime.now().strftime("%d-%m-%Y")
+        
+        # Filter and format data
+        display_data = []
+        for row in schedule_data:
+            bot_name = row.get('bots name', '').strip()
+            
+            # Only include valid bots that exist in both local and sheets
+            if bot_name in valid_bots:
+                start_time = row.get(start_col, '').strip()
+                stop_time = row.get(stop_col, '').strip()
+                switch = row.get('switch', '').strip().lower()
+                
+                # Skip if start or stop time is empty
+                if not start_time or not stop_time:
+                    continue
+                
+                display_data.append({
+                    'bot_name': bot_name,
+                    'start_at': start_time,
+                    'stop_at': stop_time,
+                    'switch': switch
+                })
+        
+        return current_day.capitalize(), current_date, display_data
+
+    def display_schedule_table(self, day, date, schedule_data):
+        """Display the schedule in a formatted table"""
+        print(f"\n{day} {date}")
+        print("-" * 80)
+        
+        if not schedule_data:
+            print("No scheduled bots for today")
+            return
+        
+        # Calculate column widths
+        max_name_len = max(len(item['bot_name']) for item in schedule_data)
+        max_name_len = max(max_name_len, len("bots name"))
+        
+        # Header
+        header = f"{'bots name':<{max_name_len}} {'start_at':<12} {'stop_at':<12} {'switch':<6}"
+        print(header)
+        print("-" * len(header))
+        
+        # Data rows
+        for item in schedule_data:
+            row = f"{item['bot_name']:<{max_name_len}} {item['start_at']:<12} {item['stop_at']:<12} {item['switch']:<6}"
+            print(row)
+
     def run_step9(self):
-        """Step 9: Final step - All setup completed"""
+        """Step 9: Monitor Scheduler Sheet and Display Schedule"""
         print("\n" + "=" * 50)
-        print("STEP 9: Setup Completed")
+        print("STEP 9: SCHEDULER MONITORING")
         print("=" * 50)
-        print(f"{self.GREEN}✓ All steps completed successfully!{self.ENDC}")
-        print(f"{self.GREEN}✓ Bots are ready to run{self.ENDC}")
-        print(f"{self.GREEN}✓ Google Sheets are properly configured{self.ENDC}")
-        return True
+        
+        try:
+            # Get spreadsheet key
+            bot_folders = self.get_bot_folders()
+            key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+            
+            if not key_exists:
+                print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
+                return False
+            
+            # Authorize with Google Sheets
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/drive.readonly"
+            ]
+            
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            
+            # Get valid bot names (from Step 5 comparison)
+            valid_bots = self.get_valid_bot_names()
+            print(f"Valid bots (local + sheets): {len(valid_bots)}")
+            
+            # Monitor scheduler sheet
+            check_count = 0
+            while True:
+                check_count += 1
+                print(f"\n📋 Check #{check_count} - {datetime.now().strftime('%H:%M:%S')}")
+                
+                # Get scheduler data
+                schedule_data = self.get_scheduler_data(gc)
+                
+                if schedule_data is None:
+                    print(f"{self.RED}scheduler not available{self.ENDC}")
+                    print("Waiting 60 seconds...")
+                    time.sleep(60)
+                    continue
+                
+                # Format and display schedule
+                result = self.format_schedule_display(schedule_data, valid_bots)
+                
+                if result:
+                    day, date, display_data = result
+                    self.display_schedule_table(day, date, display_data)
+                    print(f"\n{self.GREEN}✓ Scheduler data synchronized successfully{self.ENDC}")
+                else:
+                    print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
+                
+                print("Waiting 60 seconds for next sync...")
+                time.sleep(60)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n{self.YELLOW}Scheduler monitoring stopped by user{self.ENDC}")
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error in Step 9: {e}{self.ENDC}")
+            return False
 
     def cleanup(self):
         """Cleanup method to be called before exit"""
@@ -2144,6 +2309,7 @@ class BotScheduler:
                                     
                                     if step8_success:
                                         # No new bots found, continue to Step 9
+                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
                                         step9_success = self.run_step9()
                                         if step9_success:
                                             print("\n" + "=" * 50)
@@ -2168,6 +2334,7 @@ class BotScheduler:
                                     
                                     if step8_success:
                                         # No new bots found, continue to Step 9
+                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
                                         step9_success = self.run_step9()
                                         if step9_success:
                                             print("\n" + "=" * 50)
@@ -2207,6 +2374,7 @@ class BotScheduler:
                                         
                                         if step8_success:
                                             # No new bots found, continue to Step 9
+                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
                                             step9_success = self.run_step9()
                                             if step9_success:
                                                 print("\n" + "=" * 50)
@@ -2231,6 +2399,7 @@ class BotScheduler:
                                         
                                         if step8_success:
                                             # No new bots found, continue to Step 9
+                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
                                             step9_success = self.run_step9()
                                             if step9_success:
                                                 print("\n" + "=" * 50)
