@@ -1612,10 +1612,129 @@ class BotScheduler:
         print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
         return False
 
+    def check_github_bot_requirements(self, bot_folder_name):
+        """Check if a GitHub bot folder has all required files (venv.sh, sheets format folder, README.md)"""
+        try:
+            # Check if bot folder exists on GitHub
+            api_url = f"https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/{bot_folder_name}"
+            response = requests.get(api_url, timeout=30)
+            
+            if response.status_code != 200:
+                return False
+            
+            contents = response.json()
+            
+            # Check for required files/folders
+            has_venv_sh = any(content['name'] == 'venv.sh' and content['type'] == 'file' for content in contents)
+            has_sheets_format = any(content['name'] == 'sheets format' and content['type'] == 'dir' for content in contents)
+            has_readme = any(content['name'] == 'README.md' and content['type'] == 'file' for content in contents)
+            
+            return has_venv_sh and has_sheets_format and has_readme
+            
+        except Exception as e:
+            print(f"  Error checking requirements for {bot_folder_name}: {e}")
+            return False
+
+    def get_completed_github_bots(self):
+        """Get list of completed bots from GitHub that have all required files"""
+        print("Fetching completed bots from GitHub repository...")
+        
+        try:
+            # Get the main repository structure
+            api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents/"
+            response = requests.get(api_url, timeout=30)
+            
+            if response.status_code != 200:
+                print(f"Error accessing GitHub repository: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            completed_bots = []
+            
+            for item in contents:
+                if item['type'] == 'dir':
+                    folder_name = item['name']
+                    # Skip non-bot folders
+                    if folder_name in ['all-in-one-venv', '.github']:
+                        continue
+                    
+                    # Check if this bot has all required files
+                    if self.check_github_bot_requirements(folder_name):
+                        completed_bots.append(folder_name)
+                        print(f"  ✓ Completed bot: {folder_name}")
+                    else:
+                        print(f"  ⚠ Incomplete bot (missing files): {folder_name}")
+            
+            print(f"{self.GREEN}✓ Found {len(completed_bots)} completed bots on GitHub{self.ENDC}")
+            return completed_bots
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error fetching GitHub repository: {e}{self.ENDC}")
+            return []
+
+    def convert_github_to_local_name(self, github_name):
+        """Convert GitHub bot name to local bot name format"""
+        # GitHub: whatsapp-messenger -> Local: whatsapp messenger
+        return github_name.replace('-', ' ')
+
     def run_step8(self):
-        """Step 8: Final step - All setup completed"""
+        """Step 8: Detect New Bots from GitHub"""
         print("\n" + "=" * 50)
-        print("STEP 8: Setup Completed")
+        print("STEP 8: DETECTING NEW BOTS FROM GITHUB")
+        print("=" * 50)
+        
+        try:
+            # Get completed bots from GitHub
+            github_bots = self.get_completed_github_bots()
+            if not github_bots:
+                print(f"{self.YELLOW}⚠ No completed bots found on GitHub{self.ENDC}")
+                return True, []
+            
+            # Get local bot folders
+            local_bot_folders = self.get_bot_folders()
+            local_bot_names = [folder.name for folder in local_bot_folders]
+            
+            print(f"\n{self.BOLD}Comparing GitHub bots with local bots...{self.ENDC}")
+            print(f"GitHub bots: {len(github_bots)}")
+            print(f"Local bots: {len(local_bot_names)}")
+            
+            # Find new bots that are on GitHub but not locally
+            new_bots = []
+            for github_bot in github_bots:
+                local_bot_name = self.convert_github_to_local_name(github_bot)
+                if local_bot_name not in local_bot_names:
+                    new_bots.append(github_bot)
+                    print(f"{self.YELLOW}  ⚠ New bot detected: {github_bot} -> {local_bot_name}{self.ENDC}")
+                else:
+                    print(f"{self.GREEN}  ✓ Bot already installed: {github_bot} -> {local_bot_name}{self.ENDC}")
+            
+            if new_bots:
+                print(f"\n{self.BOLD}NEW BOTS FOUND:{self.ENDC}")
+                for new_bot in new_bots:
+                    local_name = self.convert_github_to_local_name(new_bot)
+                    print(f"{self.RED}  ✗ New bot needs installation: {local_name}{self.ENDC}")
+                    print(f"     GitHub name: {new_bot}")
+                    print(f"     Local name: {local_name}")
+                
+                print(f"\n{self.YELLOW}⚠ ACTION REQUIRED:{self.ENDC}")
+                print(f"{self.YELLOW}   New bots detected from GitHub that need to be installed:{self.ENDC}")
+                for new_bot in new_bots:
+                    local_name = self.convert_github_to_local_name(new_bot)
+                    print(f"{self.YELLOW}   - {local_name}{self.ENDC}")
+                
+                return False, new_bots
+            else:
+                print(f"\n{self.GREEN}✓ All GitHub bots are already installed locally{self.ENDC}")
+                return True, []
+            
+        except Exception as e:
+            print(f"{self.RED}❌ Error in Step 8: {e}{self.ENDC}")
+            return False, []
+
+    def run_step9(self):
+        """Step 9: Final step - All setup completed"""
+        print("\n" + "=" * 50)
+        print("STEP 9: Setup Completed")
         print("=" * 50)
         print(f"{self.GREEN}✓ All steps completed successfully!{self.ENDC}")
         print(f"{self.GREEN}✓ Bots are ready to run{self.ENDC}")
@@ -1698,26 +1817,50 @@ class BotScheduler:
                                     print("✓ Step 6 completed successfully!")
                                     print("=" * 50)
                                     
-                                    # Continue to Step 8
-                                    step8_success = self.run_step8()
+                                    # Run Step 8 - Detect new bots
+                                    step8_success, new_bots = self.run_step8()
+                                    
                                     if step8_success:
-                                        print("\n" + "=" * 50)
-                                        print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
-                                        print("✓ Bots are ready to use")
-                                        print("=" * 50)
+                                        # No new bots found, continue to Step 9
+                                        step9_success = self.run_step9()
+                                        if step9_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
+                                            print("✓ Bots are ready to use")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
+                                            sys.exit(1)
                                     else:
-                                        print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                        # New bots found, inform user
+                                        print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
+                                        for new_bot in new_bots:
+                                            local_name = self.convert_github_to_local_name(new_bot)
+                                            print(f"{self.RED}   - {local_name}{self.ENDC}")
+                                        print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
                                         sys.exit(1)
                                 else:
                                     print(f"\n{self.YELLOW}⚠ Step 6 had issues, but continuing...{self.ENDC}")
                                     # Even if Step 6 fails, continue to Step 8
-                                    step8_success = self.run_step8()
+                                    step8_success, new_bots = self.run_step8()
+                                    
                                     if step8_success:
-                                        print("\n" + "=" * 50)
-                                        print("✓ Setup completed with warnings")
-                                        print("=" * 50)
+                                        # No new bots found, continue to Step 9
+                                        step9_success = self.run_step9()
+                                        if step9_success:
+                                            print("\n" + "=" * 50)
+                                            print("✓ Setup completed with warnings")
+                                            print("=" * 50)
+                                        else:
+                                            print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
+                                            sys.exit(1)
                                     else:
-                                        print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                        # New bots found, inform user
+                                        print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
+                                        for new_bot in new_bots:
+                                            local_name = self.convert_github_to_local_name(new_bot)
+                                            print(f"{self.RED}   - {local_name}{self.ENDC}")
+                                        print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
                                         sys.exit(1)
                             else:
                                 # Some bots missing matching sheets - continue to Step 7
@@ -1737,26 +1880,50 @@ class BotScheduler:
                                         print("✓ Step 6 completed successfully!")
                                         print("=" * 50)
                                         
-                                        # Continue to Step 8
-                                        step8_success = self.run_step8()
+                                        # Run Step 8 - Detect new bots
+                                        step8_success, new_bots = self.run_step8()
+                                        
                                         if step8_success:
-                                            print("\n" + "=" * 50)
-                                            print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
-                                            print("✓ Bots are ready to use")
-                                            print("=" * 50)
+                                            # No new bots found, continue to Step 9
+                                            step9_success = self.run_step9()
+                                            if step9_success:
+                                                print("\n" + "=" * 50)
+                                                print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
+                                                print("✓ Bots are ready to use")
+                                                print("=" * 50)
+                                            else:
+                                                print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
+                                                sys.exit(1)
                                         else:
-                                            print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                            # New bots found, inform user
+                                            print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
+                                            for new_bot in new_bots:
+                                                local_name = self.convert_github_to_local_name(new_bot)
+                                                print(f"{self.RED}   - {local_name}{self.ENDC}")
+                                            print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
                                             sys.exit(1)
                                     else:
                                         print(f"\n{self.YELLOW}⚠ Step 6 had issues, but continuing...{self.ENDC}")
                                         # Even if Step 6 fails, continue to Step 8
-                                        step8_success = self.run_step8()
+                                        step8_success, new_bots = self.run_step8()
+                                        
                                         if step8_success:
-                                            print("\n" + "=" * 50)
-                                            print("✓ Setup completed with warnings")
-                                            print("=" * 50)
+                                            # No new bots found, continue to Step 9
+                                            step9_success = self.run_step9()
+                                            if step9_success:
+                                                print("\n" + "=" * 50)
+                                                print("✓ Setup completed with warnings")
+                                                print("=" * 50)
+                                            else:
+                                                print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
+                                                sys.exit(1)
                                         else:
-                                            print(f"\n{self.RED}❌ Step 8 failed.{self.ENDC}")
+                                            # New bots found, inform user
+                                            print(f"\n{self.RED}❌ NEW BOTS DETECTED THAT NEED INSTALLATION:{self.ENDC}")
+                                            for new_bot in new_bots:
+                                                local_name = self.convert_github_to_local_name(new_bot)
+                                                print(f"{self.RED}   - {local_name}{self.ENDC}")
+                                            print(f"\n{self.YELLOW}Please install the new bots and run the scheduler again.{self.ENDC}")
                                             sys.exit(1)
                                 else:
                                     print(f"\n{self.RED}❌ Step 7 failed.{self.ENDC}")
