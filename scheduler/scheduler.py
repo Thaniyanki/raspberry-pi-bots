@@ -1677,7 +1677,7 @@ class BotScheduler:
         # GitHub: whatsapp-messenger -> Local: whatsapp messenger
         return github_name.replace('-', ' ')
 
-        def install_new_bot(self, github_bot_name):
+    def install_new_bot(self, github_bot_name):
         """Install a new bot using its venv.sh script"""
         print(f"\n{self.BOLD}Installing new bot: {github_bot_name}{self.ENDC}")
         
