@@ -2096,95 +2096,28 @@ class BotScheduler:
         # Get current day
         current_day = datetime.now().strftime("%A").lower()
         
-        # Map day names to column names - try different variations
-        day_columns_variations = {
-            'sunday': [
-                ['sun_start at', 'sun_stop at'],
-                ['sun_start_at', 'sun_stop_at'],
-                ['sun_start', 'sun_stop'],
-                ['Sunday Start', 'Sunday Stop']
-            ],
-            'monday': [
-                ['mon_start at', 'mon_stop at'],
-                ['mon_start_at', 'mon_stop_at'],
-                ['mon_start', 'mon_stop'],
-                ['Monday Start', 'Monday Stop']
-            ],
-            'tuesday': [
-                ['tue_start at', 'tue_stop at'],
-                ['tue_start_at', 'tue_stop_at'],
-                ['tue_start', 'tue_stop'],
-                ['Tuesday Start', 'Tuesday Stop']
-            ],
-            'wednesday': [
-                ['wed_start at', 'wed_stop at'],
-                ['wed_start_at', 'wed_stop_at'],
-                ['wed_start', 'wed_stop'],
-                ['Wednesday Start', 'Wednesday Stop']
-            ],
-            'thursday': [
-                ['thu_start at', 'thu_stop at'],
-                ['thu_start_at', 'thu_stop_at'],
-                ['thu_start', 'thu_stop'],
-                ['Thursday Start', 'Thursday Stop']
-            ],
-            'friday': [
-                ['fri_start at', 'fri_stop at'],
-                ['fri_start_at', 'fri_stop_at'],
-                ['fri_start', 'fri_stop'],
-                ['Friday Start', 'Friday Stop']
-            ],
-            'saturday': [
-                ['sat_start at', 'sat_stop at'],
-                ['sat_start_at', 'sat_stop_at'],
-                ['sat_start', 'sat_stop'],
-                ['Saturday Start', 'Saturday Stop']
-            ]
+        # Map day names to column names - FIXED for the actual column names in your sheet
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at ', 'fri_stop at'],  # FIXED: Friday start has extra space
+            'saturday': ['sat_start at', 'sat_stop at']
         }
         
-        if current_day not in day_columns_variations:
+        if current_day not in day_columns:
+            print(f"  Error: No column mapping for {current_day}")
             return None
         
+        start_col, stop_col = day_columns[current_day]
         current_date = datetime.now().strftime("%d-%m-%Y")
         
-        # Try different column name variations
-        display_data = []
-        start_col = None
-        stop_col = None
-        
-        for col_variation in day_columns_variations[current_day]:
-            start_col_candidate, stop_col_candidate = col_variation
-            
-            # Check if these columns exist in the data
-            if schedule_data and len(schedule_data) > 0:
-                if start_col_candidate in schedule_data[0] and stop_col_candidate in schedule_data[0]:
-                    start_col = start_col_candidate
-                    stop_col = stop_col_candidate
-                    break
-        
-        if not start_col or not stop_col:
-            # If no exact match found, try case-insensitive search
-            for col_variation in day_columns_variations[current_day]:
-                start_col_candidate, stop_col_candidate = col_variation
-                
-                for row in schedule_data:
-                    for key in row.keys():
-                        if key.lower() == start_col_candidate.lower():
-                            start_col = key
-                        if key.lower() == stop_col_candidate.lower():
-                            stop_col = key
-                    if start_col and stop_col:
-                        break
-                if start_col and stop_col:
-                    break
-        
-        if not start_col or not stop_col:
-            print(f"  Could not find schedule columns for {current_day}")
-            return None
-        
-        print(f"  Using columns: '{start_col}' and '{stop_col}'")
+        print(f"  Looking for columns: '{start_col}' and '{stop_col}'")
         
         # Filter and format data
+        display_data = []
         for row in schedule_data:
             bot_name = row.get('bots name', '').strip()
             
@@ -2194,6 +2127,9 @@ class BotScheduler:
                 stop_time = row.get(stop_col, '').strip()
                 switch = row.get('switch', '').strip().lower()
                 
+                # Debug output for each bot
+                print(f"  Bot: {bot_name} -> Start: '{start_time}', Stop: '{stop_time}', Switch: '{switch}'")
+                
                 # Only include if we have at least one time value
                 if start_time or stop_time:
                     display_data.append({
@@ -2202,6 +2138,8 @@ class BotScheduler:
                         'stop_at': stop_time if stop_time else 'N/A',
                         'switch': switch
                     })
+                else:
+                    print(f"    Skipping {bot_name} - no time data")
     
         return current_day.capitalize(), current_date, display_data
 
@@ -2263,14 +2201,6 @@ class BotScheduler:
             # Get valid bot names (from Step 5 comparison)
             valid_bots = self.get_valid_bot_names()
             print(f"Valid bots (local + sheets): {len(valid_bots)}")
-            
-            # First, let's debug the actual column names in the scheduler sheet
-            print(f"\n{self.BLUE}Checking scheduler sheet structure...{self.ENDC}")
-            schedule_data = self.get_scheduler_data(gc)
-            if schedule_data and len(schedule_data) > 0:
-                print("Available columns in scheduler sheet:")
-                for key in schedule_data[0].keys():
-                    print(f"  - '{key}'")
             
             # Monitor scheduler sheet
             check_count = 0
