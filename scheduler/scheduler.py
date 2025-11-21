@@ -28,6 +28,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from datetime import datetime
+import threading
 
 class BotScheduler:
     def __init__(self):
@@ -57,6 +58,11 @@ class BotScheduler:
         self.BLUE = '\033[94m'
         self.ENDC = '\033[0m'
         self.BOLD = '\033[1m'
+        
+        # Bot management
+        self.bot_processes = {}
+        self.schedule_data = {}
+        self.last_sync_time = None
         
         # Browser management
         self.driver = None
@@ -2169,10 +2175,196 @@ class BotScheduler:
             row = f"{item['bot_name']:<{max_name_len}} {item['start_at']:<12} {item['stop_at']:<12} {item['switch']:<6}"
             print(row)
 
+    def get_bot_main_script(self, bot_folder):
+        """Get the main Python script for a bot folder"""
+        bot_path = self.bots_base_path / bot_folder
+        
+        # Look for main Python files
+        python_files = list(bot_path.glob("*.py"))
+        
+        # Prioritize files that look like main scripts
+        main_scripts = []
+        for py_file in python_files:
+            if py_file.name != "scheduler.py" and not py_file.name.startswith('test'):
+                main_scripts.append(py_file)
+        
+        if main_scripts:
+            # Return the first main script found
+            return main_scripts[0]
+        
+        return None
+
+    def is_bot_running(self, bot_name):
+        """Check if a bot is currently running"""
+        return bot_name in self.bot_processes and self.bot_processes[bot_name] is not None
+
+    def start_bot(self, bot_name):
+        """Start a bot process"""
+        if self.is_bot_running(bot_name):
+            print(f"  {bot_name} is already running")
+            return True
+        
+        try:
+            bot_folder = self.bots_base_path / bot_name
+            main_script = self.get_bot_main_script(bot_name)
+            
+            if not main_script:
+                print(f"  ❌ No main script found for {bot_name}")
+                return False
+            
+            # Get venv path
+            venv_path = self.get_venv_path(bot_folder)
+            if not venv_path:
+                print(f"  ❌ No venv found for {bot_name}")
+                return False
+            
+            # Activate venv and run the bot
+            python_executable = venv_path / "bin" / "python3"
+            
+            if not python_executable.exists():
+                print(f"  ❌ Python executable not found in venv for {bot_name}")
+                return False
+            
+            # Start the bot process
+            process = subprocess.Popen(
+                [str(python_executable), str(main_script)],
+                cwd=str(bot_folder),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            self.bot_processes[bot_name] = process
+            print(f"  ✅ Started {bot_name} (PID: {process.pid})")
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Error starting {bot_name}: {e}")
+            return False
+
+    def stop_bot(self, bot_name):
+        """Stop a bot process"""
+        if not self.is_bot_running(bot_name):
+            print(f"  {bot_name} is not running")
+            return True
+        
+        try:
+            process = self.bot_processes[bot_name]
+            
+            # Try to terminate gracefully
+            process.terminate()
+            
+            # Wait for process to end
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                # Force kill if not responding
+                process.kill()
+                process.wait()
+            
+            self.bot_processes[bot_name] = None
+            print(f"  ✅ Stopped {bot_name}")
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Error stopping {bot_name}: {e}")
+            return False
+
+    def should_bot_run_now(self, bot_schedule):
+        """Check if a bot should be running based on current time and schedule"""
+        current_time = datetime.now().strftime("%H:%M")
+        switch = bot_schedule.get('switch', '').lower()
+        
+        # If switch is off, don't run
+        if switch != 'on':
+            return False
+        
+        start_time = bot_schedule.get('start_at', '')
+        stop_time = bot_schedule.get('stop_at', '')
+        
+        # If no times specified, run based on switch only
+        if not start_time and not stop_time:
+            return switch == 'on'
+        
+        # If only start time specified, run from start time onwards
+        if start_time and not stop_time:
+            return current_time >= start_time
+        
+        # If only stop time specified, run until stop time
+        if not start_time and stop_time:
+            return current_time <= stop_time
+        
+        # If both times specified
+        if start_time and stop_time:
+            # Handle overnight schedules (stop time < start time)
+            if stop_time < start_time:
+                return current_time >= start_time or current_time <= stop_time
+            else:
+                return start_time <= current_time <= stop_time
+        
+        return False
+
+    def sync_bots_with_schedule(self, schedule_data, valid_bots):
+        """Sync bot processes with current schedule"""
+        current_day = datetime.now().strftime("%A").lower()
+        
+        # Map day names to column names
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at ', 'fri_stop at'],
+            'saturday': ['sat_start at', 'sat_stop at']
+        }
+        
+        if current_day not in day_columns:
+            return
+        
+        start_col, stop_col = day_columns[current_day]
+        
+        print(f"\n🔄 Syncing bots with schedule ({current_day.capitalize()})...")
+        
+        # Process each valid bot
+        for bot_name in valid_bots:
+            # Find bot schedule
+            bot_schedule = None
+            for row in schedule_data:
+                if row.get('bots name', '').strip() == bot_name:
+                    bot_schedule = {
+                        'start_at': row.get(start_col, '').strip(),
+                        'stop_at': row.get(stop_col, '').strip(),
+                        'switch': row.get('switch', '').strip().lower()
+                    }
+                    break
+            
+            if not bot_schedule:
+                print(f"  ⚠ No schedule found for {bot_name}")
+                continue
+            
+            should_run = self.should_bot_run_now(bot_schedule)
+            is_running = self.is_bot_running(bot_name)
+            
+            print(f"  {bot_name}: Switch={bot_schedule['switch']}, Start={bot_schedule['start_at']}, Stop={bot_schedule['stop_at']}")
+            print(f"    Should run: {should_run}, Is running: {is_running}")
+            
+            # Start or stop bot based on schedule
+            if should_run and not is_running:
+                print(f"    🚀 Starting {bot_name}...")
+                self.start_bot(bot_name)
+            elif not should_run and is_running:
+                print(f"    🛑 Stopping {bot_name}...")
+                self.stop_bot(bot_name)
+            elif should_run and is_running:
+                print(f"    ✅ {bot_name} is running as scheduled")
+            else:
+                print(f"    💤 {bot_name} is stopped as scheduled")
+
     def run_step9(self):
-        """Step 9: Monitor Scheduler Sheet and Display Schedule"""
+        """Step 9: Monitor Scheduler Sheet and Control Bots"""
         print("\n" + "=" * 50)
-        print("STEP 9: SCHEDULER MONITORING")
+        print("STEP 9: SCHEDULER MONITORING & BOT CONTROL")
         print("=" * 50)
         
         try:
@@ -2202,11 +2394,17 @@ class BotScheduler:
             valid_bots = self.get_valid_bot_names()
             print(f"Valid bots (local + sheets): {len(valid_bots)}")
             
-            # Monitor scheduler sheet
+            # Initialize bot processes dictionary
+            for bot_name in valid_bots:
+                if bot_name not in self.bot_processes:
+                    self.bot_processes[bot_name] = None
+            
+            # Monitor scheduler sheet and control bots
             check_count = 0
             while True:
                 check_count += 1
-                print(f"\n📋 Check #{check_count} - {datetime.now().strftime('%H:%M:%S')}")
+                current_time = datetime.now().strftime('%H:%M:%S')
+                print(f"\n📋 Check #{check_count} - {current_time}")
                 
                 # Get scheduler data
                 schedule_data = self.get_scheduler_data(gc)
@@ -2223,23 +2421,53 @@ class BotScheduler:
                 if result:
                     day, date, display_data = result
                     self.display_schedule_table(day, date, display_data)
-                    print(f"\n{self.GREEN}✓ Scheduler data synchronized successfully{self.ENDC}")
+                    
+                    # Sync bots with current schedule
+                    self.sync_bots_with_schedule(schedule_data, valid_bots)
+                    
+                    print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                 else:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
+                
+                # Store current schedule data
+                self.schedule_data = schedule_data
+                self.last_sync_time = datetime.now()
                 
                 print("Waiting 60 seconds for next sync...")
                 time.sleep(60)
                 
         except KeyboardInterrupt:
             print(f"\n\n{self.YELLOW}Scheduler monitoring stopped by user{self.ENDC}")
+            
+            # Stop all running bots before exit
+            print("Stopping all running bots...")
+            for bot_name in list(self.bot_processes.keys()):
+                if self.is_bot_running(bot_name):
+                    self.stop_bot(bot_name)
+            
             return True
         except Exception as e:
             print(f"{self.RED}❌ Error in Step 9: {e}{self.ENDC}")
+            
+            # Stop all running bots on error
+            print("Stopping all running bots due to error...")
+            for bot_name in list(self.bot_processes.keys()):
+                if self.is_bot_running(bot_name):
+                    self.stop_bot(bot_name)
+            
             return False
 
     def cleanup(self):
         """Cleanup method to be called before exit"""
         print("\nPerforming cleanup...")
+        
+        # Stop all running bots
+        print("Stopping all running bots...")
+        for bot_name in list(self.bot_processes.keys()):
+            if self.is_bot_running(bot_name):
+                self.stop_bot(bot_name)
+        
+        # Close browser
         self.close_chrome_browser()
 
     def run(self):
@@ -2318,7 +2546,7 @@ class BotScheduler:
                                     
                                     if step8_success:
                                         # No new bots found, continue to Step 9
-                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
+                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
                                         step9_success = self.run_step9()
                                         if step9_success:
                                             print("\n" + "=" * 50)
@@ -2343,7 +2571,7 @@ class BotScheduler:
                                     
                                     if step8_success:
                                         # No new bots found, continue to Step 9
-                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
+                                        print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
                                         step9_success = self.run_step9()
                                         if step9_success:
                                             print("\n" + "=" * 50)
@@ -2383,7 +2611,7 @@ class BotScheduler:
                                         
                                         if step8_success:
                                             # No new bots found, continue to Step 9
-                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
+                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
                                             step9_success = self.run_step9()
                                             if step9_success:
                                                 print("\n" + "=" * 50)
@@ -2408,7 +2636,7 @@ class BotScheduler:
                                         
                                         if step8_success:
                                             # No new bots found, continue to Step 9
-                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring{self.ENDC}")
+                                            print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
                                             step9_success = self.run_step9()
                                             if step9_success:
                                                 print("\n" + "=" * 50)
