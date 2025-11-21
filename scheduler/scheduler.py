@@ -1677,7 +1677,7 @@ class BotScheduler:
         # GitHub: whatsapp-messenger -> Local: whatsapp messenger
         return github_name.replace('-', ' ')
 
-    def install_new_bot(self, github_bot_name):
+        def install_new_bot(self, github_bot_name):
         """Install a new bot using its venv.sh script"""
         print(f"\n{self.BOLD}Installing new bot: {github_bot_name}{self.ENDC}")
         
@@ -1688,13 +1688,44 @@ class BotScheduler:
             print(f"Running installation command...")
             print(f"URL: {venv_sh_url}")
             
-            # Run the installation command with LIVE output
-            command = f'bash <(curl -sL {venv_sh_url})'
-            print(f"Executing: {command}")
+            # Download and execute the script in two separate steps
+            # This is more compatible than bash <(curl) syntax
+            temp_script = Path("/tmp/install_bot.sh")
+            
+            # Download the script first
+            download_cmd = f'curl -sL {venv_sh_url} -o {temp_script}'
+            print(f"Downloading script: {download_cmd}")
+            
+            download_process = subprocess.run(
+                download_cmd,
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            
+            if download_process.returncode != 0:
+                print(f"{self.RED}❌ Failed to download script: {download_process.stderr}{self.ENDC}")
+                return False
+            
+            # Make the script executable
+            chmod_process = subprocess.run(
+                f'chmod +x {temp_script}',
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            
+            if chmod_process.returncode != 0:
+                print(f"{self.RED}❌ Failed to make script executable: {chmod_process.stderr}{self.ENDC}")
+                return False
+            
+            # Execute the script with live output
+            print(f"Executing installation script...")
+            execute_cmd = f'bash {temp_script}'
             
             # Use subprocess with live output
             process = subprocess.Popen(
-                command,
+                execute_cmd,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1708,6 +1739,12 @@ class BotScheduler:
             
             # Wait for process to complete
             process.wait()
+            
+            # Clean up temporary script
+            try:
+                temp_script.unlink()
+            except:
+                pass
             
             if process.returncode == 0:
                 print(f"{self.GREEN}✓ Successfully installed {github_bot_name}{self.ENDC}")
