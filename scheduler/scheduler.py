@@ -28,7 +28,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from datetime import datetime
-import threading
 
 class BotScheduler:
     def __init__(self):
@@ -1981,7 +1980,7 @@ class BotScheduler:
                     self.driver.quit()
                     self.driver = None
         
-        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attempts} ATTEMPTS{self.ENDC}")
+        print(f"\n{self.RED}❌ FAILED TO SEND WHATSAPP NOTIFICATION AFTER {max_attemps} ATTEMPTS{self.ENDC}")
         return False
 
     def run_step8(self):
@@ -2102,25 +2101,22 @@ class BotScheduler:
         # Get current day
         current_day = datetime.now().strftime("%A").lower()
         
-        # Map day names to column names - FIXED for the actual column names in your sheet
+        # Map day names to column names
         day_columns = {
             'sunday': ['sun_start at', 'sun_stop at'],
             'monday': ['mon_start at', 'mon_stop at'],
             'tuesday': ['tue_start at', 'tue_stop at'],
             'wednesday': ['wed_start at', 'wed_stop at'],
             'thursday': ['thu_start at', 'thu_stop at'],
-            'friday': ['fri_start at ', 'fri_stop at'],  # FIXED: Friday start has extra space
+            'friday': ['fri_start at ', 'fri_stop at'],
             'saturday': ['sat_start at', 'sat_stop at']
         }
         
         if current_day not in day_columns:
-            print(f"  Error: No column mapping for {current_day}")
             return None
         
         start_col, stop_col = day_columns[current_day]
         current_date = datetime.now().strftime("%d-%m-%Y")
-        
-        print(f"  Looking for columns: '{start_col}' and '{stop_col}'")
         
         # Filter and format data
         display_data = []
@@ -2133,9 +2129,6 @@ class BotScheduler:
                 stop_time = row.get(stop_col, '').strip()
                 switch = row.get('switch', '').strip().lower()
                 
-                # Debug output for each bot
-                print(f"  Bot: {bot_name} -> Start: '{start_time}', Stop: '{stop_time}', Switch: '{switch}'")
-                
                 # Only include if we have at least one time value
                 if start_time or stop_time:
                     display_data.append({
@@ -2144,15 +2137,13 @@ class BotScheduler:
                         'stop_at': stop_time if stop_time else 'N/A',
                         'switch': switch
                     })
-                else:
-                    print(f"    Skipping {bot_name} - no time data")
     
         return current_day.capitalize(), current_date, display_data
 
     def display_schedule_table(self, day, date, schedule_data):
-        """Display the schedule in a formatted table - refresh in place"""
-        # Clear previous output and display at same position
-        print("\033[2J\033[H")  # Clear screen and move cursor to top
+        """Display the schedule in a formatted table"""
+        # Clear screen and move cursor to top
+        print("\033[2J\033[H")
         
         print(f"{day} {date}")
         print("-" * 80)
@@ -2201,7 +2192,6 @@ class BotScheduler:
     def start_bot(self, bot_name):
         """Start a bot process"""
         if self.is_bot_running(bot_name):
-            print(f"  {bot_name} is already running")
             return True
         
         try:
@@ -2209,20 +2199,17 @@ class BotScheduler:
             main_script = self.get_bot_main_script(bot_name)
             
             if not main_script:
-                print(f"  ❌ No main script found for {bot_name}")
                 return False
             
             # Get venv path
             venv_path = self.get_venv_path(bot_folder)
             if not venv_path:
-                print(f"  ❌ No venv found for {bot_name}")
                 return False
             
             # Activate venv and run the bot
             python_executable = venv_path / "bin" / "python3"
             
             if not python_executable.exists():
-                print(f"  ❌ Python executable not found in venv for {bot_name}")
                 return False
             
             # Start the bot process
@@ -2235,17 +2222,14 @@ class BotScheduler:
             )
             
             self.bot_processes[bot_name] = process
-            print(f"  ✅ Started {bot_name} (PID: {process.pid})")
             return True
             
         except Exception as e:
-            print(f"  ❌ Error starting {bot_name}: {e}")
             return False
 
     def stop_bot(self, bot_name):
         """Stop a bot process"""
         if not self.is_bot_running(bot_name):
-            print(f"  {bot_name} is not running")
             return True
         
         try:
@@ -2263,11 +2247,9 @@ class BotScheduler:
                 process.wait()
             
             self.bot_processes[bot_name] = None
-            print(f"  ✅ Stopped {bot_name}")
             return True
             
         except Exception as e:
-            print(f"  ❌ Error stopping {bot_name}: {e}")
             return False
 
     def should_bot_run_now(self, bot_schedule):
@@ -2324,8 +2306,6 @@ class BotScheduler:
         
         start_col, stop_col = day_columns[current_day]
         
-        print(f"\n🔄 Syncing bots with schedule ({current_day.capitalize()})...")
-        
         # Process each valid bot
         for bot_name in valid_bots:
             # Find bot schedule
@@ -2340,26 +2320,16 @@ class BotScheduler:
                     break
             
             if not bot_schedule:
-                print(f"  ⚠ No schedule found for {bot_name}")
                 continue
             
             should_run = self.should_bot_run_now(bot_schedule)
             is_running = self.is_bot_running(bot_name)
             
-            print(f"  {bot_name}: Switch={bot_schedule['switch']}, Start={bot_schedule['start_at']}, Stop={bot_schedule['stop_at']}")
-            print(f"    Should run: {should_run}, Is running: {is_running}")
-            
             # Start or stop bot based on schedule
             if should_run and not is_running:
-                print(f"    🚀 Starting {bot_name}...")
                 self.start_bot(bot_name)
             elif not should_run and is_running:
-                print(f"    🛑 Stopping {bot_name}...")
                 self.stop_bot(bot_name)
-            elif should_run and is_running:
-                print(f"    ✅ {bot_name} is running as scheduled")
-            else:
-                print(f"    💤 {bot_name} is stopped as scheduled")
 
     def run_step9(self):
         """Step 9: Monitor Scheduler Sheet and Control Bots"""
@@ -2392,7 +2362,6 @@ class BotScheduler:
             
             # Get valid bot names (from Step 5 comparison)
             valid_bots = self.get_valid_bot_names()
-            print(f"Valid bots (local + sheets): {len(valid_bots)}")
             
             # Initialize bot processes dictionary
             for bot_name in valid_bots:
@@ -2440,7 +2409,6 @@ class BotScheduler:
             print(f"\n\n{self.YELLOW}Scheduler monitoring stopped by user{self.ENDC}")
             
             # Stop all running bots before exit
-            print("Stopping all running bots...")
             for bot_name in list(self.bot_processes.keys()):
                 if self.is_bot_running(bot_name):
                     self.stop_bot(bot_name)
@@ -2450,7 +2418,6 @@ class BotScheduler:
             print(f"{self.RED}❌ Error in Step 9: {e}{self.ENDC}")
             
             # Stop all running bots on error
-            print("Stopping all running bots due to error...")
             for bot_name in list(self.bot_processes.keys()):
                 if self.is_bot_running(bot_name):
                     self.stop_bot(bot_name)
@@ -2462,7 +2429,6 @@ class BotScheduler:
         print("\nPerforming cleanup...")
         
         # Stop all running bots
-        print("Stopping all running bots...")
         for bot_name in list(self.bot_processes.keys()):
             if self.is_bot_running(bot_name):
                 self.stop_bot(bot_name)
