@@ -2547,6 +2547,14 @@ class BotScheduler:
             consecutive_failures = 0
             max_consecutive_failures = 5
             
+            # Initial display
+            schedule_data = self.get_scheduler_data(gc, max_retries=3)
+            if schedule_data:
+                result = self.format_schedule_display(schedule_data, valid_bots)
+                if result:
+                    day, date, display_data = result
+                    self.display_schedule_table(day, date, display_data)
+            
             while True:
                 check_count += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
@@ -2559,55 +2567,58 @@ class BotScheduler:
                     print(f"\n📋 Check #{check_count} - {current_date} {current_time}")
                     print(f"{self.BLUE}BOT IN PROGRESS - No table refresh | Monitoring active bots{self.ENDC}")
                     
-                    # Just monitor bot completion without refreshing table
+                    # Just monitor bot completion without refreshing table or checking scheduler
                     for bot_name in valid_bots:
                         self.monitor_bot_completion(bot_name, gc)
                     
-                    # Check for force stop conditions only
-                    schedule_data = self.get_scheduler_data(gc, max_retries=1)
-                    if schedule_data:
-                        current_day = datetime.now().strftime("%A").lower()
-                        day_columns = {
-                            'sunday': ['sun_start at', 'sun_stop at'],
-                            'monday': ['mon_start at', 'mon_stop at'],
-                            'tuesday': ['tue_start at', 'tue_stop at'],
-                            'wednesday': ['wed_start at', 'wed_stop at'],
-                            'thursday': ['thu_start at', 'thu_stop at'],
-                            'friday': ['fri_start at ', 'fri_stop at'],
-                            'saturday': ['sat_start at', 'sat_stop at']
-                        }
-                        
-                        if current_day in day_columns:
-                            start_col, stop_col = day_columns[current_day]
+                    # Check for force stop conditions only (minimal scheduler access)
+                    try:
+                        schedule_data = self.get_scheduler_data(gc, max_retries=1)
+                        if schedule_data:
+                            current_day = datetime.now().strftime("%A").lower()
+                            day_columns = {
+                                'sunday': ['sun_start at', 'sun_stop at'],
+                                'monday': ['mon_start at', 'mon_stop at'],
+                                'tuesday': ['tue_start at', 'tue_stop at'],
+                                'wednesday': ['wed_start at', 'wed_stop at'],
+                                'thursday': ['thu_start at', 'thu_stop at'],
+                                'friday': ['fri_start at ', 'fri_stop at'],
+                                'saturday': ['sat_start at', 'sat_stop at']
+                            }
                             
-                            for row in schedule_data:
-                                bot_name = row.get('bots name', '').strip()
-                                if bot_name not in valid_bots:
-                                    continue
+                            if current_day in day_columns:
+                                start_col, stop_col = day_columns[current_day]
                                 
-                                stop_time = row.get(stop_col, '').strip()
-                                switch = row.get('switch', '').strip().lower()
-                                
-                                bot_schedule = {
-                                    'bot_name': bot_name,
-                                    'stop_at': stop_time,
-                                    'switch': switch
-                                }
-                                
-                                # Check if running bot should be force stopped
-                                if self.is_bot_running(bot_name) and self.should_force_stop_bot(bot_schedule):
-                                    print(f"⏰ FORCE STOPPING {bot_name} - Exceeded stop time")
-                                    self.stop_bot(bot_name)
-                                    self.bot_status[bot_name] = "idle"
-                                    last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-                                    self.update_scheduler_status(gc, bot_name, "idle", last_run, "forcefully stopped")
-                                    print(f"✅ {bot_name} force stopped and status updated")
+                                for row in schedule_data:
+                                    bot_name = row.get('bots name', '').strip()
+                                    if bot_name not in valid_bots:
+                                        continue
+                                    
+                                    stop_time = row.get(stop_col, '').strip()
+                                    switch = row.get('switch', '').strip().lower()
+                                    
+                                    bot_schedule = {
+                                        'bot_name': bot_name,
+                                        'stop_at': stop_time,
+                                        'switch': switch
+                                    }
+                                    
+                                    # Check if running bot should be force stopped
+                                    if self.is_bot_running(bot_name) and self.should_force_stop_bot(bot_schedule):
+                                        print(f"⏰ FORCE STOPPING {bot_name} - Exceeded stop time")
+                                        self.stop_bot(bot_name)
+                                        self.bot_status[bot_name] = "idle"
+                                        last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                        self.update_scheduler_status(gc, bot_name, "idle", last_run, "forcefully stopped")
+                                        print(f"✅ {bot_name} force stopped and status updated")
+                    except Exception as e:
+                        print(f"⚠️ Minimal scheduler check failed: {e}")
                     
                     print("⏳ Bot in progress - waiting 10 seconds...")
                     time.sleep(10)
                     continue
                 
-                # If no bots are running, proceed with normal check
+                # If no bots are running, proceed with normal check and table refresh
                 print(f"\n📋 Check #{check_count} - {current_date} {current_time}")
                 print(f"{self.BLUE}FOCUS: Start time execution | ALWAYS USING LATEST GITHUB CODE{self.ENDC}")
                 
