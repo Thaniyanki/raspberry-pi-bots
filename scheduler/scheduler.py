@@ -1438,7 +1438,7 @@ class BotScheduler:
         
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
-            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attemps} ==={self.ENDC}")
+            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attempts} ==={self.ENDC}")
             
             try:
                 # Setup browser
@@ -2087,25 +2087,43 @@ class BotScheduler:
         
         return valid_bots
 
-    def get_scheduler_data(self, gc):
-        """Get scheduler data from Google Sheets"""
-        try:
-            # Check if scheduler sheet exists
-            sheet_names = [sheet['name'] for sheet in self.available_sheets]
-            if "scheduler" not in sheet_names:
-                return None
-            
-            # Open scheduler sheet
-            sheet = gc.open("scheduler")
-            worksheet = sheet.sheet1
-            
-            # Get all data
-            data = worksheet.get_all_records()
-            return data
-            
-        except Exception as e:
-            print(f"Error accessing scheduler sheet: {e}")
-            return None
+    def get_scheduler_data(self, gc, max_retries=3):
+        """Get scheduler data from Google Sheets with retry logic"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Check if scheduler sheet exists
+                sheet_names = [sheet['name'] for sheet in self.available_sheets]
+                if "scheduler" not in sheet_names:
+                    print(f"❌ Scheduler sheet not found in available sheets")
+                    return None
+                
+                # Open scheduler sheet
+                print(f"📊 Attempting to access scheduler sheet (Attempt {attempt}/{max_retries})...")
+                sheet = gc.open("scheduler")
+                worksheet = sheet.sheet1
+                
+                # Get all data
+                data = worksheet.get_all_records()
+                print(f"✅ Successfully fetched scheduler data (Attempt {attempt})")
+                return data
+                
+            except Exception as e:
+                print(f"❌ Error accessing scheduler sheet (Attempt {attempt}): {e}")
+                
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
+                    print(f"🔄 Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    
+                    # Reauthorize if connection was closed
+                    try:
+                        gc.login()
+                        print("🔄 Reauthorized Google Sheets connection")
+                    except:
+                        print("⚠️ Could not reauthorize, will retry with current connection")
+                else:
+                    print(f"❌ Failed to access scheduler sheet after {max_retries} attempts")
+                    return None
 
     def format_schedule_display(self, schedule_data, valid_bots):
         """Format the schedule display for terminal output"""
@@ -2214,6 +2232,7 @@ class BotScheduler:
     def start_bot(self, bot_name):
         """Start a bot process using the latest code from GitHub"""
         if self.is_bot_running(bot_name):
+            print(f"⚠️ {bot_name} is already running, skipping duplicate start")
             return True
         
         try:
@@ -2405,36 +2424,44 @@ class BotScheduler:
                 print(f"🔄 Stopping {bot_name} based on schedule")
                 self.stop_bot(bot_name)
 
-    def update_scheduler_status(self, gc, bot_name, status, last_run=None, remark=None):
-        """Update scheduler sheet with bot status, last run time, and remarks"""
-        try:
-            sheet = gc.open("scheduler")
-            worksheet = sheet.sheet1
-            
-            # Get all data to find the row for this bot
-            data = worksheet.get_all_records()
-            
-            for i, row in enumerate(data, start=2):  # start=2 because row 1 is header
-                if row.get('bots name', '').strip() == bot_name:
-                    # Update status (column Q)
-                    worksheet.update_cell(i, 17, status)
-                    
-                    # Update last_run (column R) if provided
-                    if last_run:
-                        worksheet.update_cell(i, 18, last_run)
-                    
-                    # Update remark (column S) if provided
-                    if remark:
-                        worksheet.update_cell(i, 19, remark)
-                    
-                    print(f"✓ Updated scheduler for {bot_name}: status={status}, last_run={last_run}, remark={remark}")
-                    return True
-            
-            return False
-            
-        except Exception as e:
-            print(f"❌ Error updating scheduler status for {bot_name}: {e}")
-            return False
+    def update_scheduler_status(self, gc, bot_name, status, last_run=None, remark=None, max_retries=2):
+        """Update scheduler sheet with bot status, last run time, and remarks with retry logic"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                sheet = gc.open("scheduler")
+                worksheet = sheet.sheet1
+                
+                # Get all data to find the row for this bot
+                data = worksheet.get_all_records()
+                
+                for i, row in enumerate(data, start=2):  # start=2 because row 1 is header
+                    if row.get('bots name', '').strip() == bot_name:
+                        # Update status (column Q)
+                        worksheet.update_cell(i, 17, status)
+                        
+                        # Update last_run (column R) if provided
+                        if last_run:
+                            worksheet.update_cell(i, 18, last_run)
+                        
+                        # Update remark (column S) if provided
+                        if remark:
+                            worksheet.update_cell(i, 19, remark)
+                        
+                        print(f"✓ Updated scheduler for {bot_name}: status={status}, last_run={last_run}, remark={remark}")
+                        return True
+                
+                print(f"⚠️ Bot {bot_name} not found in scheduler sheet")
+                return False
+                
+            except Exception as e:
+                print(f"❌ Error updating scheduler status for {bot_name} (Attempt {attempt}): {e}")
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    print(f"🔄 Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ Failed to update scheduler status after {max_retries} attempts")
+                    return False
 
     def check_and_force_stop_bots(self, schedule_data, valid_bots, gc):
         """Check if any running bots have exceeded their stop time and force stop them"""
@@ -2610,6 +2637,9 @@ class BotScheduler:
             
             # Monitor scheduler sheet and control bots
             check_count = 0
+            consecutive_failures = 0
+            max_consecutive_failures = 5
+            
             while True:
                 check_count += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
@@ -2617,14 +2647,45 @@ class BotScheduler:
                 print(f"\n📋 Check #{check_count} - {current_date} {current_time}")
                 print(f"{self.BLUE}ALWAYS USING LATEST CODE FROM GITHUB{self.ENDC}")
                 
-                # Get scheduler data
-                schedule_data = self.get_scheduler_data(gc)
+                # Get scheduler data with retry logic
+                schedule_data = self.get_scheduler_data(gc, max_retries=3)
                 
                 if schedule_data is None:
-                    print(f"{self.RED}scheduler not available{self.ENDC}")
-                    print("Waiting 60 seconds...")
-                    time.sleep(60)
+                    consecutive_failures += 1
+                    print(f"{self.RED}❌ Failed to get scheduler data ({consecutive_failures}/{max_consecutive_failures} consecutive failures){self.ENDC}")
+                    
+                    if consecutive_failures >= max_consecutive_failures:
+                        print(f"{self.RED}🚨 Too many consecutive failures, attempting to reauthorize...{self.ENDC}")
+                        try:
+                            gc.login()
+                            print("🔄 Google Sheets connection reauthorized")
+                            consecutive_failures = 0
+                        except Exception as e:
+                            print(f"{self.RED}❌ Reauthorization failed: {e}{self.ENDC}")
+                    
+                    # Even if scheduler is unavailable, continue monitoring running bots
+                    print("🔄 Continuing to monitor running bots despite scheduler unavailability...")
+                    
+                    # Check if any running bots should be stopped (basic time-based check)
+                    current_datetime = datetime.now()
+                    for bot_name in list(self.bot_processes.keys()):
+                        if self.is_bot_running(bot_name):
+                            # Check if bot has been running for more than 2 hours (safety measure)
+                            if bot_name in self.bot_start_times:
+                                running_time = current_datetime - self.bot_start_times[bot_name]
+                                if running_time.total_seconds() > 7200:  # 2 hours
+                                    print(f"⏰ Safety stop: {bot_name} has been running for over 2 hours")
+                                    self.stop_bot(bot_name)
+                                    self.bot_status[bot_name] = "idle"
+                                    print(f"✅ {bot_name} stopped by safety timer")
+                    
+                    wait_time = 30  # Shorter wait time when scheduler is unavailable
+                    print(f"Waiting {wait_time} seconds before retry...")
+                    time.sleep(wait_time)
                     continue
+                
+                # Reset consecutive failures counter on successful data fetch
+                consecutive_failures = 0
                 
                 # Format and display schedule
                 result = self.format_schedule_display(schedule_data, valid_bots)
