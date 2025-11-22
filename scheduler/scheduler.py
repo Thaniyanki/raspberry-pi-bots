@@ -62,6 +62,8 @@ class BotScheduler:
         self.bot_processes = {}
         self.schedule_data = {}
         self.last_sync_time = None
+        self.bot_status = {}  # Track bot status: 'idle', 'in progress', 'force stopped'
+        self.bot_start_times = {}  # Track when bots started
         
         # Browser management
         self.driver = None
@@ -2331,10 +2333,155 @@ class BotScheduler:
             elif not should_run and is_running:
                 self.stop_bot(bot_name)
 
+    def update_scheduler_status(self, gc, bot_name, status, last_run=None, remark=None):
+        """Update scheduler sheet with bot status, last run time, and remarks"""
+        try:
+            sheet = gc.open("scheduler")
+            worksheet = sheet.sheet1
+            
+            # Get all data to find the row for this bot
+            data = worksheet.get_all_records()
+            
+            for i, row in enumerate(data, start=2):  # start=2 because row 1 is header
+                if row.get('bots name', '').strip() == bot_name:
+                    # Update status (column Q)
+                    worksheet.update_cell(i, 17, status)
+                    
+                    # Update last_run (column R) if provided
+                    if last_run:
+                        worksheet.update_cell(i, 18, last_run)
+                    
+                    # Update remark (column S) if provided
+                    if remark:
+                        worksheet.update_cell(i, 19, remark)
+                    
+                    print(f"✓ Updated scheduler for {bot_name}: status={status}, last_run={last_run}, remark={remark}")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error updating scheduler status for {bot_name}: {e}")
+            return False
+
+    def check_and_force_stop_bots(self, schedule_data, valid_bots, gc):
+        """Check if any running bots have exceeded their stop time and force stop them"""
+        current_day = datetime.now().strftime("%A").lower()
+        current_time = datetime.now().strftime("%H:%M")
+        
+        # Map day names to column names
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at ', 'fri_stop at'],
+            'saturday': ['sat_start at', 'sat_stop at']
+        }
+        
+        if current_day not in day_columns:
+            return
+        
+        start_col, stop_col = day_columns[current_day]
+        
+        for bot_name in valid_bots:
+            if not self.is_bot_running(bot_name):
+                continue
+            
+            # Find bot schedule
+            bot_schedule = None
+            for row in schedule_data:
+                if row.get('bots name', '').strip() == bot_name:
+                    bot_schedule = {
+                        'start_at': row.get(start_col, '').strip(),
+                        'stop_at': row.get(stop_col, '').strip(),
+                        'switch': row.get('switch', '').strip().lower()
+                    }
+                    break
+            
+            if not bot_schedule:
+                continue
+            
+            stop_time = bot_schedule.get('stop_at', '')
+            if stop_time and current_time > stop_time:
+                print(f"⏰ {bot_name} exceeded stop time {stop_time}, force stopping...")
+                self.stop_bot(bot_name)
+                
+                # Update scheduler sheet
+                last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                self.update_scheduler_status(gc, bot_name, "idle", last_run, "forcefully stopped")
+                print(f"✓ Force stopped {bot_name} and updated scheduler")
+
+    def run_bot_with_venv(self, bot_name):
+        """Run a bot using its local venv and main script"""
+        try:
+            bot_folder = self.bots_base_path / bot_name
+            main_script = self.get_bot_main_script(bot_name)
+            
+            if not main_script:
+                print(f"❌ No main script found for {bot_name}")
+                return False
+            
+            # Get venv path
+            venv_path = self.get_venv_path(bot_folder)
+            if not venv_path:
+                print(f"❌ No venv found for {bot_name}")
+                return False
+            
+            python_executable = venv_path / "bin" / "python3"
+            
+            if not python_executable.exists():
+                print(f"❌ Python executable not found in venv for {bot_name}")
+                return False
+            
+            print(f"🚀 Starting {bot_name}...")
+            print(f"   Folder: {bot_folder}")
+            print(f"   Script: {main_script}")
+            print(f"   Python: {python_executable}")
+            
+            # Start the bot process
+            process = subprocess.Popen(
+                [str(python_executable), str(main_script)],
+                cwd=str(bot_folder),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            self.bot_processes[bot_name] = process
+            self.bot_start_times[bot_name] = datetime.now()
+            print(f"✅ {bot_name} started successfully")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error starting {bot_name}: {e}")
+            return False
+
+    def monitor_bot_completion(self, bot_name, gc):
+        """Monitor if a bot has completed its execution"""
+        if bot_name not in self.bot_processes or self.bot_processes[bot_name] is None:
+            return
+        
+        process = self.bot_processes[bot_name]
+        
+        # Check if process has finished
+        if process.poll() is not None:
+            print(f"✅ {bot_name} completed execution")
+            
+            # Update scheduler sheet
+            last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+            self.update_scheduler_status(gc, bot_name, "idle", last_run)
+            
+            # Clean up process
+            self.bot_processes[bot_name] = None
+            if bot_name in self.bot_start_times:
+                del self.bot_start_times[bot_name]
+
     def run_step9(self):
-        """Step 9: Monitor Scheduler Sheet and Control Bots"""
+        """Step 9: Enhanced Scheduler Monitoring & Bot Control with Status Tracking"""
         print("\n" + "=" * 50)
-        print("STEP 9: SCHEDULER MONITORING & BOT CONTROL")
+        print("STEP 9: ENHANCED SCHEDULER MONITORING & BOT CONTROL")
         print("=" * 50)
         
         try:
@@ -2348,8 +2495,8 @@ class BotScheduler:
             
             # Authorize with Google Sheets
             SCOPES = [
-                "https://www.googleapis.com/auth/spreadsheets.readonly",
-                "https://www.googleapis.com/auth/drive.readonly"
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
             ]
             
             creds = Credentials.from_service_account_file(
@@ -2363,10 +2510,12 @@ class BotScheduler:
             # Get valid bot names (from Step 5 comparison)
             valid_bots = self.get_valid_bot_names()
             
-            # Initialize bot processes dictionary
+            # Initialize bot processes dictionary and status
             for bot_name in valid_bots:
                 if bot_name not in self.bot_processes:
                     self.bot_processes[bot_name] = None
+                if bot_name not in self.bot_status:
+                    self.bot_status[bot_name] = "idle"
             
             # Monitor scheduler sheet and control bots
             check_count = 0
@@ -2391,8 +2540,61 @@ class BotScheduler:
                     day, date, display_data = result
                     self.display_schedule_table(day, date, display_data)
                     
+                    # Check for bots that need to be started based on schedule
+                    current_day = datetime.now().strftime("%A").lower()
+                    day_columns = {
+                        'sunday': ['sun_start at', 'sun_stop at'],
+                        'monday': ['mon_start at', 'mon_stop at'],
+                        'tuesday': ['tue_start at', 'tue_stop at'],
+                        'wednesday': ['wed_start at', 'wed_stop at'],
+                        'thursday': ['thu_start at', 'thu_stop at'],
+                        'friday': ['fri_start at ', 'fri_stop at'],
+                        'saturday': ['sat_start at', 'sat_stop at']
+                    }
+                    
+                    if current_day in day_columns:
+                        start_col, stop_col = day_columns[current_day]
+                        current_time_str = datetime.now().strftime("%H:%M:%S")
+                        
+                        for row in schedule_data:
+                            bot_name = row.get('bots name', '').strip()
+                            if bot_name not in valid_bots:
+                                continue
+                            
+                            start_time = row.get(start_col, '').strip()
+                            stop_time = row.get(stop_col, '').strip()
+                            switch = row.get('switch', '').strip().lower()
+                            
+                            # Check if it's time to start this bot
+                            if (switch == 'on' and 
+                                start_time and 
+                                start_time <= current_time_str <= stop_time and
+                                not self.is_bot_running(bot_name)):
+                                
+                                print(f"⏰ Time to start {bot_name} (start: {start_time}, current: {current_time_str})")
+                                
+                                # Set all other bots to idle status
+                                for other_bot in valid_bots:
+                                    if other_bot != bot_name and self.bot_status.get(other_bot) == "in progress":
+                                        self.bot_status[other_bot] = "idle"
+                                        self.update_scheduler_status(gc, other_bot, "idle")
+                                
+                                # Set current bot to in progress
+                                self.bot_status[bot_name] = "in progress"
+                                self.update_scheduler_status(gc, bot_name, "in progress")
+                                
+                                # Start the bot
+                                self.run_bot_with_venv(bot_name)
+                    
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
+                    
+                    # Check for force stop conditions
+                    self.check_and_force_stop_bots(schedule_data, valid_bots, gc)
+                    
+                    # Monitor bot completion
+                    for bot_name in valid_bots:
+                        self.monitor_bot_completion(bot_name, gc)
                     
                     print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                 else:
@@ -2412,6 +2614,7 @@ class BotScheduler:
             for bot_name in list(self.bot_processes.keys()):
                 if self.is_bot_running(bot_name):
                     self.stop_bot(bot_name)
+                    self.update_scheduler_status(gc, bot_name, "idle", remark="stopped by user")
             
             return True
         except Exception as e:
@@ -2421,6 +2624,7 @@ class BotScheduler:
             for bot_name in list(self.bot_processes.keys()):
                 if self.is_bot_running(bot_name):
                     self.stop_bot(bot_name)
+                    self.update_scheduler_status(gc, bot_name, "idle", remark="stopped due to error")
             
             return False
 
