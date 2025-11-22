@@ -2140,45 +2140,56 @@ class BotScheduler:
     
         return current_day.capitalize(), current_date, display_data
 
-    def display_schedule_table(self, day, date, schedule_data):
+    def display_schedule_table(self, day, date, schedule_data, countdown=None, check_count=None):
         """Display the schedule in a formatted table with countdown timer"""
         # Clear screen and move cursor to top
         print("\033[2J\033[H")
         
-        # Display header with countdown timer
-        symbols = ["/", "-", "\\", "|"]
-        symbol_index = 0
-        start_time = time.time()
-        
-        # Display initial header
-        print(f"{day} {date} | next sync 60{symbols[symbol_index]}")
+        # Header with countdown and check count
+        header_line = f"{day} {date}"
+        if countdown is not None and check_count is not None:
+            header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
+        print(header_line)
         print("-" * 80)
         
         if not schedule_data:
             print("No scheduled bots for today")
             return
         
-        # Calculate column widths
+        # Calculate column widths based on content
         max_name_len = max(len(item['bot_name']) for item in schedule_data)
         max_name_len = max(max_name_len, len("bots name"))
         
+        max_start_len = max(len(item['start_at']) for item in schedule_data)
+        max_start_len = max(max_start_len, len("start_at"))
+        
+        max_stop_len = max(len(item['stop_at']) for item in schedule_data)
+        max_stop_len = max(max_stop_len, len("stop_at"))
+        
+        max_switch_len = max(len(item['switch']) for item in schedule_data)
+        max_switch_len = max(max_switch_len, len("switch"))
+        
+        # Add some padding
+        max_name_len += 2
+        max_start_len += 2
+        max_stop_len += 2
+        max_switch_len += 2
+        
         # Header
-        header = f"{'bots name':<{max_name_len}} {'start_at':<12} {'stop_at':<12} {'switch':<6}"
+        header = (f"{'bots name':<{max_name_len}} "
+                 f"{'start_at':<{max_start_len}} "
+                 f"{'stop_at':<{max_stop_len}} "
+                 f"{'switch':<{max_switch_len}}")
         print(header)
         print("-" * len(header))
         
         # Data rows
         for item in schedule_data:
-            row = f"{item['bot_name']:<{max_name_len}} {item['start_at']:<12} {item['stop_at']:<12} {item['switch']:<6}"
+            row = (f"{item['bot_name']:<{max_name_len}} "
+                   f"{item['start_at']:<{max_start_len}} "
+                   f"{item['stop_at']:<{max_stop_len}} "
+                   f"{item['switch']:<{max_switch_len}}")
             print(row)
-        
-        # Update countdown in real-time without blocking
-        elapsed = time.time() - start_time
-        remaining = max(0, 60 - int(elapsed))
-        
-        # Update the header line with current countdown
-        symbol_index = (symbol_index + 1) % 4
-        print(f"\033[1;1H{day} {date} | next sync {remaining:2d}{symbols[symbol_index]}\033[0K")
 
     def get_bot_main_script(self, bot_folder):
         """Get the main Python script for a bot folder"""
@@ -2387,7 +2398,6 @@ class BotScheduler:
             while True:
                 check_count += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
-                print(f"\n📋 Check #{check_count} - {current_time}")
                 
                 # Get scheduler data
                 schedule_data = self.get_scheduler_data(gc)
@@ -2403,21 +2413,33 @@ class BotScheduler:
                 
                 if result:
                     day, date, display_data = result
-                    self.display_schedule_table(day, date, display_data)
+                    
+                    # Display initial table
+                    self.display_schedule_table(day, date, display_data, countdown=60, check_count=check_count)
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
                     print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    
+                    # Countdown timer
+                    for countdown in range(59, -1, -1):
+                        time.sleep(1)
+                        # Update the display with countdown
+                        self.display_schedule_table(day, date, display_data, countdown=countdown, check_count=check_count)
+                        print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    
                 else:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
+                    # Wait 60 seconds even if no data
+                    for countdown in range(60, 0, -1):
+                        print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 50 + "\r", end="", flush=True)
                 
                 # Store current schedule data
                 self.schedule_data = schedule_data
                 self.last_sync_time = datetime.now()
-                
-                print("Waiting 60 seconds for next sync...")
-                time.sleep(60)
                 
         except KeyboardInterrupt:
             print(f"\n\n{self.YELLOW}Scheduler monitoring stopped by user{self.ENDC}")
