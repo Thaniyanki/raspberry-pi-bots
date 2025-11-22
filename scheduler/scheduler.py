@@ -2256,7 +2256,7 @@ class BotScheduler:
 
     def should_bot_run_now(self, bot_schedule):
         """Check if a bot should be running based on current time and schedule"""
-        current_time = datetime.now().strftime("%H:%M")
+        current_time = datetime.now().strftime("%H:%M:%S")
         switch = bot_schedule.get('switch', '').lower()
         
         # If switch is off, don't run
@@ -2265,6 +2265,12 @@ class BotScheduler:
         
         start_time = bot_schedule.get('start_at', '')
         stop_time = bot_schedule.get('stop_at', '')
+        
+        # Clean time strings (remove extra spaces, ensure proper format)
+        start_time = start_time.strip() if start_time else ''
+        stop_time = stop_time.strip() if stop_time else ''
+        
+        print(f"  Checking {bot_schedule.get('bot_name', 'unknown')}: current={current_time}, start={start_time}, stop={stop_time}, switch={switch}")
         
         # If no times specified, run based on switch only
         if not start_time and not stop_time:
@@ -2280,16 +2286,28 @@ class BotScheduler:
         
         # If both times specified
         if start_time and stop_time:
+            # Ensure times have seconds if missing
+            if len(start_time.split(':')) == 2:
+                start_time += ':00'
+            if len(stop_time.split(':')) == 2:
+                stop_time += ':00'
+            
+            print(f"    Comparing: {current_time} >= {start_time} and {current_time} <= {stop_time}")
+            
             # Handle overnight schedules (stop time < start time)
             if stop_time < start_time:
-                return current_time >= start_time or current_time <= stop_time
+                result = current_time >= start_time or current_time <= stop_time
+                print(f"    Overnight schedule result: {result}")
+                return result
             else:
-                return start_time <= current_time <= stop_time
+                result = start_time <= current_time <= stop_time
+                print(f"    Normal schedule result: {result}")
+                return result
         
         return False
 
     def sync_bots_with_schedule(self, schedule_data, valid_bots):
-        """Sync bot processes with current schedule"""
+        """Sync bot processes with current schedule using improved time checking"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2315,6 +2333,7 @@ class BotScheduler:
             for row in schedule_data:
                 if row.get('bots name', '').strip() == bot_name:
                     bot_schedule = {
+                        'bot_name': bot_name,
                         'start_at': row.get(start_col, '').strip(),
                         'stop_at': row.get(stop_col, '').strip(),
                         'switch': row.get('switch', '').strip().lower()
@@ -2329,8 +2348,10 @@ class BotScheduler:
             
             # Start or stop bot based on schedule
             if should_run and not is_running:
+                print(f"🔄 Starting {bot_name} based on schedule")
                 self.start_bot(bot_name)
             elif not should_run and is_running:
+                print(f"🔄 Stopping {bot_name} based on schedule")
                 self.stop_bot(bot_name)
 
     def update_scheduler_status(self, gc, bot_name, status, last_run=None, remark=None):
@@ -2367,7 +2388,7 @@ class BotScheduler:
     def check_and_force_stop_bots(self, schedule_data, valid_bots, gc):
         """Check if any running bots have exceeded their stop time and force stop them"""
         current_day = datetime.now().strftime("%A").lower()
-        current_time = datetime.now().strftime("%H:%M")
+        current_time = datetime.now().strftime("%H:%M:%S")
         
         # Map day names to column names
         day_columns = {
@@ -2404,6 +2425,10 @@ class BotScheduler:
                 continue
             
             stop_time = bot_schedule.get('stop_at', '')
+            # Ensure stop_time has seconds if missing
+            if stop_time and len(stop_time.split(':')) == 2:
+                stop_time += ':00'
+            
             if stop_time and current_time > stop_time:
                 print(f"⏰ {bot_name} exceeded stop time {stop_time}, force stopping...")
                 self.stop_bot(bot_name)
@@ -2522,7 +2547,8 @@ class BotScheduler:
             while True:
                 check_count += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
-                print(f"\n📋 Check #{check_count} - {current_time}")
+                current_date = datetime.now().strftime('%d-%m-%Y')
+                print(f"\n📋 Check #{check_count} - {current_date} {current_time}")
                 
                 # Get scheduler data
                 schedule_data = self.get_scheduler_data(gc)
@@ -2556,6 +2582,8 @@ class BotScheduler:
                         start_col, stop_col = day_columns[current_day]
                         current_time_str = datetime.now().strftime("%H:%M:%S")
                         
+                        print(f"\n🕒 Checking schedules for {current_day} at {current_time_str}")
+                        
                         for row in schedule_data:
                             bot_name = row.get('bots name', '').strip()
                             if bot_name not in valid_bots:
@@ -2565,17 +2593,25 @@ class BotScheduler:
                             stop_time = row.get(stop_col, '').strip()
                             switch = row.get('switch', '').strip().lower()
                             
+                            # Create bot schedule object
+                            bot_schedule = {
+                                'bot_name': bot_name,
+                                'start_at': start_time,
+                                'stop_at': stop_time,
+                                'switch': switch
+                            }
+                            
                             # Check if it's time to start this bot
-                            if (switch == 'on' and 
-                                start_time and 
-                                start_time <= current_time_str <= stop_time and
-                                not self.is_bot_running(bot_name)):
-                                
-                                print(f"⏰ Time to start {bot_name} (start: {start_time}, current: {current_time_str})")
+                            should_run = self.should_bot_run_now(bot_schedule)
+                            is_running = self.is_bot_running(bot_name)
+                            
+                            if should_run and not is_running:
+                                print(f"🚀 Starting {bot_name} - switch is ON and within scheduled time")
                                 
                                 # Set all other bots to idle status
                                 for other_bot in valid_bots:
                                     if other_bot != bot_name and self.bot_status.get(other_bot) == "in progress":
+                                        print(f"  Setting {other_bot} to idle status")
                                         self.bot_status[other_bot] = "idle"
                                         self.update_scheduler_status(gc, other_bot, "idle")
                                 
@@ -2584,21 +2620,31 @@ class BotScheduler:
                                 self.update_scheduler_status(gc, bot_name, "in progress")
                                 
                                 # Start the bot
-                                self.run_bot_with_venv(bot_name)
-                    
-                    # Sync bots with current schedule
-                    self.sync_bots_with_schedule(schedule_data, valid_bots)
-                    
-                    # Check for force stop conditions
-                    self.check_and_force_stop_bots(schedule_data, valid_bots, gc)
-                    
-                    # Monitor bot completion
-                    for bot_name in valid_bots:
-                        self.monitor_bot_completion(bot_name, gc)
-                    
-                    print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                else:
-                    print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
+                                if self.run_bot_with_venv(bot_name):
+                                    print(f"✅ Successfully started {bot_name}")
+                                else:
+                                    print(f"❌ Failed to start {bot_name}")
+                                    self.bot_status[bot_name] = "idle"
+                                    self.update_scheduler_status(gc, bot_name, "idle", remark="failed to start")
+                            
+                            elif not should_run and is_running:
+                                print(f"🛑 Stopping {bot_name} - outside scheduled time or switch is OFF")
+                                self.stop_bot(bot_name)
+                                self.bot_status[bot_name] = "idle"
+                                last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                self.update_scheduler_status(gc, bot_name, "idle", last_run, "stopped by schedule")
+                
+                # Sync bots with current schedule (legacy method for backward compatibility)
+                self.sync_bots_with_schedule(schedule_data, valid_bots)
+                
+                # Check for force stop conditions
+                self.check_and_force_stop_bots(schedule_data, valid_bots, gc)
+                
+                # Monitor bot completion
+                for bot_name in valid_bots:
+                    self.monitor_bot_completion(bot_name, gc)
+                
+                print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                 
                 # Store current schedule data
                 self.schedule_data = schedule_data
