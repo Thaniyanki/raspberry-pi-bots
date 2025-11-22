@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scheduler Script for Managing Python Bots
+Scheduler Script for Managing Python Bots - ALWAYS RUNS LATEST CODE FROM GITHUB
 """
 
 import os
@@ -28,6 +28,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from datetime import datetime
+import tempfile
 
 class BotScheduler:
     def __init__(self):
@@ -77,6 +78,14 @@ class BotScheduler:
             "message_input": "Xpath002", 
             "pending_indicator": "Xpath003",
             "contact_not_found": "Xpath004"
+        }
+        
+        # GitHub bot name to script mapping
+        self.github_bot_scripts = {
+            "facebook birthday wisher": "facebook-birthday-wisher/facebook%20birthday%20wisher.py",
+            "facebook profile liker": "facebook-profile-liker/facebook%20profile%20liker.py", 
+            "whatsapp birthday wisher": "whatsapp-birthday-wisher/whatsapp%20birthday%20wisher.py",
+            "whatsapp messenger": "whatsapp-messenger/whatsapp%20messenger.py"
         }
         
     def initialize_firebase(self):
@@ -1111,7 +1120,7 @@ class BotScheduler:
         """Step 6: Compare CSV headers with Google Sheets and create/update worksheets"""
         print("\n" + "=" * 50)
         print("STEP 6: Comparing CSV Headers with Google Sheets")
-        print("=" * 50)
+        print="=" * 50)
         print(f"{self.YELLOW}Note: Comparing CSV headers from GitHub with Google Sheets worksheets{self.ENDC}")
         
         try:
@@ -2168,55 +2177,73 @@ class BotScheduler:
             row = f"{item['bot_name']:<{max_name_len}} {item['start_at']:<12} {item['stop_at']:<12} {item['switch']:<6}"
             print(row)
 
-    def get_bot_main_script(self, bot_folder):
-        """Get the main Python script for a bot folder"""
-        bot_path = self.bots_base_path / bot_folder
+    def download_latest_bot_script(self, bot_name):
+        """Download the latest bot script from GitHub"""
+        if bot_name not in self.github_bot_scripts:
+            print(f"❌ No GitHub script mapping found for {bot_name}")
+            return None
         
-        # Look for main Python files
-        python_files = list(bot_path.glob("*.py"))
+        github_script_path = self.github_bot_scripts[bot_name]
+        script_url = f"{self.github_raw_base}/{github_script_path}"
         
-        # Prioritize files that look like main scripts
-        main_scripts = []
-        for py_file in python_files:
-            if py_file.name != "scheduler.py" and not py_file.name.startswith('test'):
-                main_scripts.append(py_file)
-        
-        if main_scripts:
-            # Return the first main script found
-            return main_scripts[0]
-        
-        return None
+        try:
+            print(f"📥 Downloading latest {bot_name} script from GitHub...")
+            response = requests.get(script_url, timeout=30)
+            
+            if response.status_code == 200:
+                # Create temporary file
+                temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+                temp_file.write(response.text)
+                temp_file.flush()
+                temp_file.close()
+                
+                print(f"✅ Downloaded latest {bot_name} script")
+                return temp_file.name
+            else:
+                print(f"❌ Failed to download {bot_name} script: HTTP {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error downloading {bot_name} script: {e}")
+            return None
 
     def is_bot_running(self, bot_name):
         """Check if a bot is currently running"""
         return bot_name in self.bot_processes and self.bot_processes[bot_name] is not None
 
     def start_bot(self, bot_name):
-        """Start a bot process"""
+        """Start a bot process using the latest code from GitHub"""
         if self.is_bot_running(bot_name):
             return True
         
         try:
             bot_folder = self.bots_base_path / bot_name
-            main_script = self.get_bot_main_script(bot_name)
             
-            if not main_script:
+            # Download latest script from GitHub
+            temp_script_path = self.download_latest_bot_script(bot_name)
+            if not temp_script_path:
                 return False
             
             # Get venv path
             venv_path = self.get_venv_path(bot_folder)
             if not venv_path:
+                print(f"❌ No venv found for {bot_name}")
                 return False
             
-            # Activate venv and run the bot
             python_executable = venv_path / "bin" / "python3"
             
             if not python_executable.exists():
+                print(f"❌ Python executable not found in venv for {bot_name}")
                 return False
             
-            # Start the bot process
+            print(f"🚀 Starting {bot_name} with LATEST code from GitHub...")
+            print(f"   Folder: {bot_folder}")
+            print(f"   Script: {temp_script_path}")
+            print(f"   Python: {python_executable}")
+            
+            # Start the bot process with the downloaded script
             process = subprocess.Popen(
-                [str(python_executable), str(main_script)],
+                [str(python_executable), temp_script_path],
                 cwd=str(bot_folder),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -2224,9 +2251,12 @@ class BotScheduler:
             )
             
             self.bot_processes[bot_name] = process
+            self.bot_start_times[bot_name] = datetime.now()
+            print(f"✅ {bot_name} started successfully with latest code")
             return True
             
         except Exception as e:
+            print(f"❌ Error starting {bot_name}: {e}")
             return False
 
     def stop_bot(self, bot_name):
@@ -2474,13 +2504,13 @@ class BotScheduler:
                     print(f"✓ Force stopped {bot_name} and updated scheduler")
 
     def run_bot_with_venv(self, bot_name):
-        """Run a bot using its local venv and main script"""
+        """Run a bot using its local venv and LATEST script from GitHub"""
         try:
             bot_folder = self.bots_base_path / bot_name
-            main_script = self.get_bot_main_script(bot_name)
             
-            if not main_script:
-                print(f"❌ No main script found for {bot_name}")
+            # Download latest script from GitHub
+            temp_script_path = self.download_latest_bot_script(bot_name)
+            if not temp_script_path:
                 return False
             
             # Get venv path
@@ -2495,14 +2525,14 @@ class BotScheduler:
                 print(f"❌ Python executable not found in venv for {bot_name}")
                 return False
             
-            print(f"🚀 Starting {bot_name}...")
+            print(f"🚀 Starting {bot_name} with LATEST code from GitHub...")
             print(f"   Folder: {bot_folder}")
-            print(f"   Script: {main_script}")
+            print(f"   Script: {temp_script_path} (downloaded from GitHub)")
             print(f"   Python: {python_executable}")
             
-            # Start the bot process
+            # Start the bot process with the downloaded script
             process = subprocess.Popen(
-                [str(python_executable), str(main_script)],
+                [str(python_executable), temp_script_path],
                 cwd=str(bot_folder),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -2511,7 +2541,7 @@ class BotScheduler:
             
             self.bot_processes[bot_name] = process
             self.bot_start_times[bot_name] = datetime.now()
-            print(f"✅ {bot_name} started successfully")
+            print(f"✅ {bot_name} started successfully with latest code")
             return True
             
         except Exception as e:
@@ -2539,10 +2569,11 @@ class BotScheduler:
                 del self.bot_start_times[bot_name]
 
     def run_step9(self):
-        """Step 9: Enhanced Scheduler Monitoring & Bot Control with Status Tracking"""
+        """Step 9: Enhanced Scheduler Monitoring & Bot Control with Status Tracking - ALWAYS USES LATEST GITHUB CODE"""
         print("\n" + "=" * 50)
         print("STEP 9: ENHANCED SCHEDULER MONITORING & BOT CONTROL")
         print("=" * 50)
+        print(f"{self.YELLOW}ALWAYS RUNNING LATEST CODE FROM GITHUB{self.ENDC}")
         
         try:
             # Get spreadsheet key
@@ -2584,6 +2615,7 @@ class BotScheduler:
                 current_time = datetime.now().strftime('%H:%M:%S')
                 current_date = datetime.now().strftime('%d-%m-%Y')
                 print(f"\n📋 Check #{check_count} - {current_date} {current_time}")
+                print(f"{self.BLUE}ALWAYS USING LATEST CODE FROM GITHUB{self.ENDC}")
                 
                 # Get scheduler data
                 schedule_data = self.get_scheduler_data(gc)
@@ -2617,6 +2649,7 @@ class BotScheduler:
                         start_col, stop_col = day_columns[current_day]
                         
                         print(f"\n🕒 Checking schedules for {current_day} at {current_time}")
+                        print(f"{self.BLUE}All bots will run LATEST code from GitHub{self.ENDC}")
                         
                         for row in schedule_data:
                             bot_name = row.get('bots name', '').strip()
@@ -2641,6 +2674,7 @@ class BotScheduler:
                             
                             if should_run and not is_running:
                                 print(f"🚀 Starting {bot_name} - switch is ON and within scheduled time")
+                                print(f"📥 Downloading LATEST code from GitHub for {bot_name}")
                                 
                                 # Set all other bots to idle status
                                 for other_bot in valid_bots:
@@ -2653,9 +2687,9 @@ class BotScheduler:
                                 self.bot_status[bot_name] = "in progress"
                                 self.update_scheduler_status(gc, bot_name, "in progress")
                                 
-                                # Start the bot
+                                # Start the bot with LATEST code from GitHub
                                 if self.run_bot_with_venv(bot_name):
-                                    print(f"✅ Successfully started {bot_name}")
+                                    print(f"✅ Successfully started {bot_name} with LATEST GitHub code")
                                 else:
                                     print(f"❌ Failed to start {bot_name}")
                                     self.bot_status[bot_name] = "idle"
@@ -2679,6 +2713,7 @@ class BotScheduler:
                     self.monitor_bot_completion(bot_name, gc)
                 
                 print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                print(f"{self.GREEN}✓ All bots running LATEST code from GitHub{self.ENDC}")
                 
                 # Store current schedule data
                 self.schedule_data = schedule_data
@@ -2727,6 +2762,7 @@ class BotScheduler:
             print("Bot Scheduler Starting...")
             print(f"Username: {self.username}")
             print(f"Bots path: {self.bots_base_path}")
+            print(f"{self.BOLD}ALWAYS RUNS LATEST CODE FROM GITHUB{self.ENDC}")
             print("=" * 50)
             
             if not self.check_bots_folder():
@@ -2796,11 +2832,13 @@ class BotScheduler:
                                     
                                     # Continue to Step 9 regardless of new bots
                                     print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                    print(f"{self.BOLD}ALWAYS RUNNING LATEST CODE FROM GITHUB{self.ENDC}")
                                     step9_success = self.run_step9()
                                     if step9_success:
                                         print("\n" + "=" * 50)
                                         print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
                                         print("✓ Bots are ready to use")
+                                        print("✓ ALWAYS RUNNING LATEST GITHUB CODE")
                                         print("=" * 50)
                                     else:
                                         print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
@@ -2812,6 +2850,7 @@ class BotScheduler:
                                     
                                     # Continue to Step 9 regardless of new bots
                                     print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                    print(f"{self.BOLD}ALWAYS RUNNING LATEST CODE FROM GITHUB{self.ENDC}")
                                     step9_success = self.run_step9()
                                     if step9_success:
                                         print("\n" + "=" * 50)
@@ -2843,11 +2882,13 @@ class BotScheduler:
                                         
                                         # Continue to Step 9 regardless of new bots
                                         print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                        print(f"{self.BOLD}ALWAYS RUNNING LATEST CODE FROM GITHUB{self.ENDC}")
                                         step9_success = self.run_step9()
                                         if step9_success:
                                             print("\n" + "=" * 50)
                                             print("✓ ALL STEPS COMPLETED SUCCESSFULLY!")
                                             print("✓ Bots are ready to use")
+                                            print("✓ ALWAYS RUNNING LATEST GITHUB CODE")
                                             print("=" * 50)
                                         else:
                                             print(f"\n{self.RED}❌ Step 9 failed.{self.ENDC}")
@@ -2859,6 +2900,7 @@ class BotScheduler:
                                         
                                         # Continue to Step 9 regardless of new bots
                                         print(f"\n{self.BLUE}Starting Step 9: Scheduler Monitoring & Bot Control{self.ENDC}")
+                                        print(f"{self.BOLD}ALWAYS RUNNING LATEST CODE FROM GITHUB{self.ENDC}")
                                         step9_success = self.run_step9()
                                         if step9_success:
                                             print("\n" + "=" * 50)
