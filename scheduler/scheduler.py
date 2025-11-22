@@ -77,9 +77,6 @@ class BotScheduler:
             "contact_not_found": "Xpath004"
         }
         
-        # Terminal management
-        self.terminal_processes = {}
-        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -1182,7 +1179,7 @@ class BotScheduler:
                         # Process each CSV file
                         for csv_file in csv_files:
                             worksheet_name = csv_file.replace('.csv', '')
-                            print(f"  Processing: {csv_file} -> {worksheet_name}")
+                            print(f"  Processing: {worksheet_name}")
                             
                             # Download CSV header from GitHub with retry logic
                             csv_header = self.download_csv_header_with_retry(github_bot, csv_file)
@@ -2144,12 +2141,24 @@ class BotScheduler:
         return current_day.capitalize(), current_date, display_data
 
     def display_schedule_table(self, day, date, schedule_data):
-        """Display the schedule in a formatted table"""
+        """Display the schedule in a formatted table with countdown timer"""
         # Clear screen and move cursor to top
         print("\033[2J\033[H")
         
-        print(f"{day} {date}")
-        print("-" * 80)
+        # Display header with countdown timer
+        print(f"{day} {date} | next sync ", end="", flush=True)
+        
+        # Countdown timer with rotating symbol
+        symbols = ["/", "-", "\\", "|"]
+        for countdown in range(60, -1, -1):
+            symbol = symbols[countdown % 4]
+            if countdown > 0:
+                print(f"\r{day} {date} | next sync {countdown:2d}{symbol}", end="", flush=True)
+                time.sleep(1)
+            else:
+                print(f"\r{day} {date} | next sync {countdown:2d}{symbol}", end="", flush=True)
+        
+        print("\n" + "-" * 80)
         
         if not schedule_data:
             print("No scheduled bots for today")
@@ -2334,124 +2343,6 @@ class BotScheduler:
             elif not should_run and is_running:
                 self.stop_bot(bot_name)
 
-    def close_all_terminals_except_current(self):
-        """Close all terminal windows except the current scheduler terminal"""
-        print(f"{self.YELLOW}Closing all other terminal windows...{self.ENDC}")
-        
-        try:
-            # Get current terminal PID
-            current_pid = os.getpid()
-            
-            # Find all terminal processes except current
-            result = subprocess.run(['pgrep', '-f', 'gnome-terminal'], 
-                                  capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                terminal_pids = result.stdout.strip().split('\n')
-                
-                for pid in terminal_pids:
-                    if pid and int(pid) != current_pid:
-                        try:
-                            os.kill(int(pid), signal.SIGTERM)
-                            print(f"  ✓ Closed terminal PID: {pid}")
-                        except:
-                            try:
-                                os.kill(int(pid), signal.SIGKILL)
-                                print(f"  ✓ Force closed terminal PID: {pid}")
-                            except:
-                                print(f"  ✗ Could not close terminal PID: {pid}")
-            
-            # Also try to close other common terminal processes
-            terminals = ['xfce4-terminal', 'konsole', 'xterm', 'lxterminal']
-            
-            for terminal in terminals:
-                try:
-                    subprocess.run(['pkill', '-f', terminal], 
-                                 capture_output=True, timeout=5)
-                    print(f"  ✓ Closed {terminal} processes")
-                except:
-                    pass
-                    
-            time.sleep(2)  # Give time for terminals to close
-            print(f"{self.GREEN}✓ All other terminals closed{self.ENDC}")
-            
-        except Exception as e:
-            print(f"{self.RED}❌ Error closing terminals: {e}{self.ENDC}")
-
-    def get_bot_run_command(self, bot_name):
-        """Generate the run command for a bot based on its name"""
-        # Convert bot name to GitHub format
-        github_bot_name = bot_name.replace(' ', '-')
-        
-        # Generate the run command
-        run_command = f'cd "/home/{self.username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{bot_name.replace(" ", "%20")}.py" | python3'
-        
-        return run_command
-
-    def start_bot_in_new_terminal(self, bot_name, run_command):
-        """Start a bot in a new terminal window"""
-        print(f"{self.YELLOW}Starting {bot_name} in new terminal...{self.ENDC}")
-        print(f"Command: {run_command}")
-        
-        try:
-            # Use gnome-terminal to open new terminal and run the command
-            terminal_command = [
-                'gnome-terminal',
-                '--',
-                'bash',
-                '-c',
-                f'{run_command}; exec bash'  # Keep terminal open after command completes
-            ]
-            
-            process = subprocess.Popen(
-                terminal_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
-            self.terminal_processes[bot_name] = process
-            print(f"{self.GREEN}✓ {bot_name} started in new terminal{self.ENDC}")
-            return True
-            
-        except Exception as e:
-            print(f"{self.RED}❌ Failed to start {bot_name} in new terminal: {e}{self.ENDC}")
-            return False
-
-    def check_start_time_matches(self, schedule_data, valid_bots):
-        """Check if any bot's start_at time matches current time exactly"""
-        current_time = datetime.now().strftime("%H:%M:%S")
-        current_day = datetime.now().strftime("%A").lower()
-        
-        # Map day names to column names
-        day_columns = {
-            'sunday': 'sun_start at',
-            'monday': 'mon_start at',
-            'tuesday': 'tue_start at',
-            'wednesday': 'wed_start at',
-            'thursday': 'thu_start at',
-            'friday': 'fri_start at ',
-            'saturday': 'sat_start at'
-        }
-        
-        if current_day not in day_columns:
-            return None
-        
-        start_col = day_columns[current_day]
-        
-        # Check each valid bot
-        for bot_name in valid_bots:
-            # Find bot schedule
-            for row in schedule_data:
-                if row.get('bots name', '').strip() == bot_name:
-                    start_time = row.get(start_col, '').strip()
-                    switch = row.get('switch', '').strip().lower()
-                    
-                    # Check if start time matches current time exactly and switch is on
-                    if start_time == current_time and switch == 'on':
-                        return bot_name, start_time
-        
-        return None
-
     def run_step9(self):
         """Step 9: Monitor Scheduler Sheet and Control Bots"""
         print("\n" + "=" * 50)
@@ -2514,25 +2405,6 @@ class BotScheduler:
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
-                    
-                    # Check if any bot's start time matches current time exactly
-                    start_match = self.check_start_time_matches(schedule_data, valid_bots)
-                    
-                    if start_match:
-                        bot_name, start_time = start_match
-                        print(f"\n{self.GREEN}🚨 START TIME MATCHED: {bot_name} at {start_time}{self.ENDC}")
-                        
-                        # Close all other terminals except current
-                        self.close_all_terminals_except_current()
-                        
-                        # Generate and execute run command
-                        run_command = self.get_bot_run_command(bot_name)
-                        print(f"{self.BLUE}Executing: {run_command}{self.ENDC}")
-                        
-                        # Start bot in new terminal
-                        self.start_bot_in_new_terminal(bot_name, run_command)
-                        
-                        print(f"{self.GREEN}✓ {bot_name} launched successfully{self.ENDC}")
                     
                     print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                 else:
