@@ -1988,7 +1988,7 @@ class BotScheduler:
     def run_step8(self):
         """Step 8: Detect New Bots from GitHub"""
         print("\n" + "=" * 50)
-        print("STEP 8: DETECTING NEW BOTS FROM GITHUB")
+        print("STEP 8: DETECTING NEW Bots from GitHub")
         print("=" * 50)
         
         try:
@@ -2256,46 +2256,67 @@ class BotScheduler:
 
     def should_bot_run_now(self, bot_schedule):
         """Check if a bot should be running based on current time and schedule"""
-        current_time = datetime.now().strftime("%H:%M:%S")
+        from datetime import datetime
+        
+        current_time = datetime.now()
         switch = bot_schedule.get('switch', '').lower()
         
         # If switch is off, don't run
         if switch != 'on':
             return False
         
-        start_time = bot_schedule.get('start_at', '')
-        stop_time = bot_schedule.get('stop_at', '')
+        start_time_str = bot_schedule.get('start_at', '').strip()
+        stop_time_str = bot_schedule.get('stop_at', '').strip()
         
-        # Clean time strings (remove extra spaces, ensure proper format)
-        start_time = start_time.strip() if start_time else ''
-        stop_time = stop_time.strip() if stop_time else ''
-        
-        print(f"  Checking {bot_schedule.get('bot_name', 'unknown')}: current={current_time}, start={start_time}, stop={stop_time}, switch={switch}")
+        print(f"  Checking {bot_schedule.get('bot_name', 'unknown')}: current={current_time.strftime('%H:%M:%S')}, start={start_time_str}, stop={stop_time_str}, switch={switch}")
         
         # If no times specified, run based on switch only
-        if not start_time and not stop_time:
+        if not start_time_str and not stop_time_str:
             return switch == 'on'
+        
+        def parse_time(time_str):
+            """Parse time string to datetime object"""
+            if not time_str:
+                return None
+            
+            # Ensure time has seconds if missing
+            time_parts = time_str.split(':')
+            if len(time_parts) == 2:
+                time_str += ':00'
+            
+            try:
+                # Parse as today's date with the given time
+                return datetime.strptime(time_str, '%H:%M:%S').replace(
+                    year=current_time.year,
+                    month=current_time.month,
+                    day=current_time.day
+                )
+            except ValueError:
+                print(f"    Error parsing time: {time_str}")
+                return None
+        
+        start_time = parse_time(start_time_str)
+        stop_time = parse_time(stop_time_str)
         
         # If only start time specified, run from start time onwards
         if start_time and not stop_time:
-            return current_time >= start_time
+            result = current_time >= start_time
+            print(f"    Only start time result: {result}")
+            return result
         
         # If only stop time specified, run until stop time
         if not start_time and stop_time:
-            return current_time <= stop_time
+            result = current_time <= stop_time
+            print(f"    Only stop time result: {result}")
+            return result
         
         # If both times specified
         if start_time and stop_time:
-            # Ensure times have seconds if missing
-            if len(start_time.split(':')) == 2:
-                start_time += ':00'
-            if len(stop_time.split(':')) == 2:
-                stop_time += ':00'
-            
-            print(f"    Comparing: {current_time} >= {start_time} and {current_time} <= {stop_time}")
+            print(f"    Comparing: {current_time.time()} between {start_time.time()} and {stop_time.time()}")
             
             # Handle overnight schedules (stop time < start time)
             if stop_time < start_time:
+                # If stop time is earlier than start time, it means overnight
                 result = current_time >= start_time or current_time <= stop_time
                 print(f"    Overnight schedule result: {result}")
                 return result
@@ -2388,7 +2409,7 @@ class BotScheduler:
     def check_and_force_stop_bots(self, schedule_data, valid_bots, gc):
         """Check if any running bots have exceeded their stop time and force stop them"""
         current_day = datetime.now().strftime("%A").lower()
-        current_time = datetime.now().strftime("%H:%M:%S")
+        current_time = datetime.now()
         
         # Map day names to column names
         day_columns = {
@@ -2424,19 +2445,33 @@ class BotScheduler:
             if not bot_schedule:
                 continue
             
-            stop_time = bot_schedule.get('stop_at', '')
-            # Ensure stop_time has seconds if missing
-            if stop_time and len(stop_time.split(':')) == 2:
-                stop_time += ':00'
-            
-            if stop_time and current_time > stop_time:
-                print(f"⏰ {bot_name} exceeded stop time {stop_time}, force stopping...")
-                self.stop_bot(bot_name)
+            stop_time_str = bot_schedule.get('stop_at', '')
+            if stop_time_str:
+                # Parse stop time
+                def parse_time(time_str):
+                    if not time_str:
+                        return None
+                    time_parts = time_str.split(':')
+                    if len(time_parts) == 2:
+                        time_str += ':00'
+                    try:
+                        return datetime.strptime(time_str, '%H:%M:%S').replace(
+                            year=current_time.year,
+                            month=current_time.month,
+                            day=current_time.day
+                        )
+                    except ValueError:
+                        return None
                 
-                # Update scheduler sheet
-                last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-                self.update_scheduler_status(gc, bot_name, "idle", last_run, "forcefully stopped")
-                print(f"✓ Force stopped {bot_name} and updated scheduler")
+                stop_time = parse_time(stop_time_str)
+                if stop_time and current_time > stop_time:
+                    print(f"⏰ {bot_name} exceeded stop time {stop_time_str}, force stopping...")
+                    self.stop_bot(bot_name)
+                    
+                    # Update scheduler sheet
+                    last_run = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                    self.update_scheduler_status(gc, bot_name, "idle", last_run, "forcefully stopped")
+                    print(f"✓ Force stopped {bot_name} and updated scheduler")
 
     def run_bot_with_venv(self, bot_name):
         """Run a bot using its local venv and main script"""
@@ -2580,9 +2615,8 @@ class BotScheduler:
                     
                     if current_day in day_columns:
                         start_col, stop_col = day_columns[current_day]
-                        current_time_str = datetime.now().strftime("%H:%M:%S")
                         
-                        print(f"\n🕒 Checking schedules for {current_day} at {current_time_str}")
+                        print(f"\n🕒 Checking schedules for {current_day} at {current_time}")
                         
                         for row in schedule_data:
                             bot_name = row.get('bots name', '').strip()
