@@ -2146,19 +2146,13 @@ class BotScheduler:
         print("\033[2J\033[H")
         
         # Display header with countdown timer
-        print(f"{day} {date} | next sync ", end="", flush=True)
-        
-        # Countdown timer with rotating symbol
         symbols = ["/", "-", "\\", "|"]
-        for countdown in range(60, -1, -1):
-            symbol = symbols[countdown % 4]
-            if countdown > 0:
-                print(f"\r{day} {date} | next sync {countdown:2d}{symbol}", end="", flush=True)
-                time.sleep(1)
-            else:
-                print(f"\r{day} {date} | next sync {countdown:2d}{symbol}", end="", flush=True)
+        symbol_index = 0
+        start_time = time.time()
         
-        print("\n" + "-" * 80)
+        # Display initial header
+        print(f"{day} {date} | next sync 60{symbols[symbol_index]}")
+        print("-" * 80)
         
         if not schedule_data:
             print("No scheduled bots for today")
@@ -2177,6 +2171,14 @@ class BotScheduler:
         for item in schedule_data:
             row = f"{item['bot_name']:<{max_name_len}} {item['start_at']:<12} {item['stop_at']:<12} {item['switch']:<6}"
             print(row)
+        
+        # Update countdown in real-time without blocking
+        elapsed = time.time() - start_time
+        remaining = max(0, 60 - int(elapsed))
+        
+        # Update the header line with current countdown
+        symbol_index = (symbol_index + 1) % 4
+        print(f"\033[1;1H{day} {date} | next sync {remaining:2d}{symbols[symbol_index]}\033[0K")
 
     def get_bot_main_script(self, bot_folder):
         """Get the main Python script for a bot folder"""
