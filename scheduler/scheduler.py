@@ -2128,6 +2128,9 @@ class BotScheduler:
                 start_time = row.get(start_col, '').strip()
                 stop_time = row.get(stop_col, '').strip()
                 switch = row.get('switch', '').strip().lower()
+                q_status = row.get('Q status', '').strip()
+                last_run = row.get('R last_run', '').strip()
+                remark = row.get('S remark', '').strip()
                 
                 # Only include if we have at least one time value
                 if start_time or stop_time:
@@ -2135,7 +2138,10 @@ class BotScheduler:
                         'bot_name': bot_name,
                         'start_at': start_time if start_time else 'N/A',
                         'stop_at': stop_time if stop_time else 'N/A',
-                        'switch': switch
+                        'switch': switch,
+                        'q_status': q_status if q_status else 'N/A',
+                        'last_run': last_run if last_run else 'N/A',
+                        'remark': remark if remark else 'N/A'
                     })
     
         return current_day.capitalize(), current_date, display_data
@@ -2149,46 +2155,75 @@ class BotScheduler:
         header_line = f"{day} {date}"
         if countdown is not None and check_count is not None:
             header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
+        
+        # Calculate the total width needed for the table
+        if schedule_data:
+            # Calculate column widths based on content
+            max_name_len = max(len(item['bot_name']) for item in schedule_data)
+            max_name_len = max(max_name_len, len("bots name"))
+            
+            max_start_len = max(len(item['start_at']) for item in schedule_data)
+            max_start_len = max(max_start_len, len("start_at"))
+            
+            max_stop_len = max(len(item['stop_at']) for item in schedule_data)
+            max_stop_len = max(max_stop_len, len("stop_at"))
+            
+            max_switch_len = max(len(item['switch']) for item in schedule_data)
+            max_switch_len = max(max_switch_len, len("switch"))
+            
+            max_q_status_len = max(len(item['q_status']) for item in schedule_data)
+            max_q_status_len = max(max_q_status_len, len("Q status"))
+            
+            max_last_run_len = max(len(item['last_run']) for item in schedule_data)
+            max_last_run_len = max(max_last_run_len, len("last_run"))
+            
+            max_remark_len = max(len(item['remark']) for item in schedule_data)
+            max_remark_len = max(max_remark_len, len("remark"))
+            
+            # Add some padding
+            max_name_len += 2
+            max_start_len += 2
+            max_stop_len += 2
+            max_switch_len += 2
+            max_q_status_len += 2
+            max_last_run_len += 2
+            max_remark_len += 2
+            
+            # Calculate total table width
+            table_width = (max_name_len + max_start_len + max_stop_len + 
+                          max_switch_len + max_q_status_len + max_last_run_len + max_remark_len)
+        else:
+            table_width = 120  # Default width if no data
+        
+        # Ensure header line matches table width
+        header_line = header_line.ljust(table_width)
         print(header_line)
-        print("-" * 80)
+        print("-" * table_width)
         
         if not schedule_data:
             print("No scheduled bots for today")
             return
         
-        # Calculate column widths based on content
-        max_name_len = max(len(item['bot_name']) for item in schedule_data)
-        max_name_len = max(max_name_len, len("bots name"))
-        
-        max_start_len = max(len(item['start_at']) for item in schedule_data)
-        max_start_len = max(max_start_len, len("start_at"))
-        
-        max_stop_len = max(len(item['stop_at']) for item in schedule_data)
-        max_stop_len = max(max_stop_len, len("stop_at"))
-        
-        max_switch_len = max(len(item['switch']) for item in schedule_data)
-        max_switch_len = max(max_switch_len, len("switch"))
-        
-        # Add some padding
-        max_name_len += 2
-        max_start_len += 2
-        max_stop_len += 2
-        max_switch_len += 2
-        
         # Header
         header = (f"{'bots name':<{max_name_len}} "
                  f"{'start_at':<{max_start_len}} "
                  f"{'stop_at':<{max_stop_len}} "
-                 f"{'switch':<{max_switch_len}}")
+                 f"{'switch':<{max_switch_len}} "
+                 f"{'Q status':<{max_q_status_len}} "
+                 f"{'last_run':<{max_last_run_len}} "
+                 f"{'remark':<{max_remark_len}}")
         print(header)
-        print("-" * len(header))
+        print("-" * table_width)
         
         # Data rows
         for item in schedule_data:
             row = (f"{item['bot_name']:<{max_name_len}} "
                    f"{item['start_at']:<{max_start_len}} "
                    f"{item['stop_at']:<{max_stop_len}} "
-                   f"{item['switch']:<{max_switch_len}}")
+                   f"{item['switch']:<{max_switch_len}} "
+                   f"{item['q_status']:<{max_q_status_len}} "
+                   f"{item['last_run']:<{max_last_run_len}} "
+                   f"{item['remark']:<{max_remark_len}}")
             print(row)
 
     def get_bot_main_script(self, bot_folder):
