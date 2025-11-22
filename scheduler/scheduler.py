@@ -1120,7 +1120,7 @@ class BotScheduler:
         """Step 6: Compare CSV headers with Google Sheets and create/update worksheets"""
         print("\n" + "=" * 50)
         print("STEP 6: Comparing CSV Headers with Google Sheets")
-        print="=" * 50)
+        print("=" * 50)
         print(f"{self.YELLOW}Note: Comparing CSV headers from GitHub with Google Sheets worksheets{self.ENDC}")
         
         try:
@@ -1438,7 +1438,7 @@ class BotScheduler:
         
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
-            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attempts} ==={self.ENDC}")
+            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attemps} ==={self.ENDC}")
             
             try:
                 # Setup browser
