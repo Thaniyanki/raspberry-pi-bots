@@ -2140,13 +2140,15 @@ class BotScheduler:
     
         return current_day.capitalize(), current_date, display_data
 
-    def display_schedule_table(self, day, date, schedule_data):
-        """Display the schedule in a formatted table"""
+    def display_schedule_table(self, day, date, schedule_data, countdown=None, check_count=None):
+        """Display the schedule in a formatted table with countdown timer"""
         # Clear screen and move cursor to top
         print("\033[2J\033[H")
         
-        # Header
-        header_line = f"{day} {date} | Check #1 | Next sync: 60s"
+        # Header with countdown and check count
+        header_line = f"{day} {date}"
+        if countdown is not None and check_count is not None:
+            header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
         print(header_line)
         print("-" * 80)
         
@@ -2188,8 +2190,6 @@ class BotScheduler:
                    f"{item['stop_at']:<{max_stop_len}} "
                    f"{item['switch']:<{max_switch_len}}")
             print(row)
-        
-        print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
 
     def get_bot_main_script(self, bot_folder):
         """Get the main Python script for a bot folder"""
@@ -2414,18 +2414,24 @@ class BotScheduler:
                 if result:
                     day, date, display_data = result
                     
-                    # Display the table only once per sync cycle
-                    self.display_schedule_table(day, date, display_data)
+                    # Display initial table
+                    self.display_schedule_table(day, date, display_data, countdown=60, check_count=check_count)
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
-                    # Countdown timer - update only the header line
+                    print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    
+                    # Countdown timer - update only the countdown without redrawing the entire table
                     for countdown in range(59, -1, -1):
                         time.sleep(1)
-                        # Move cursor to top and update only the header line
-                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s\033[K")
-                
+                        # Update only the header line with new countdown
+                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        print(f"\033[2H" + "-" * 80)
+                        # Move cursor to bottom to avoid overwriting
+                        print(f"\033[{len(display_data) + 6}H")
+                        print(f"{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    
                 else:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     # Wait 60 seconds even if no data
