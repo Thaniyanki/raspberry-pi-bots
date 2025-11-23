@@ -2117,7 +2117,6 @@ class BotScheduler:
         
         start_col, stop_col = day_columns[current_day]
         current_date = datetime.now().strftime("%d-%m-%Y")
-        current_time = datetime.now().strftime("%H:%M:%S")
         
         # Filter and format data
         display_data = []
@@ -2129,11 +2128,6 @@ class BotScheduler:
                 start_time = row.get(start_col, '').strip()
                 stop_time = row.get(stop_col, '').strip()
                 switch = row.get('switch', '').strip().lower()
-                last_run = row.get('R last_run', '').strip()
-                remark = row.get('S remark', '').strip()
-                
-                # Determine Q status based on current bot state and schedule
-                q_status = self.get_bot_status(bot_name, switch, start_time, stop_time, current_time)
                 
                 # Only include if we have at least one time value
                 if start_time or stop_time:
@@ -2141,46 +2135,10 @@ class BotScheduler:
                         'bot_name': bot_name,
                         'start_at': start_time if start_time else 'N/A',
                         'stop_at': stop_time if stop_time else 'N/A',
-                        'switch': switch,
-                        'q_status': q_status,
-                        'last_run': last_run if last_run else 'N/A',
-                        'remark': remark if remark else 'N/A'
+                        'switch': switch
                     })
     
         return current_day.capitalize(), current_date, display_data
-
-    def get_bot_status(self, bot_name, switch, start_time, stop_time, current_time):
-        """Determine the current status of a bot"""
-        is_running = self.is_bot_running(bot_name)
-        
-        # If switch is off, bot should not be running
-        if switch != 'on':
-            if is_running:
-                return 'ERROR'  # Should be off but is running
-            else:
-                return 'OFF'    # Properly turned off
-        
-        # If switch is on but no schedule times, check if running
-        if not start_time and not stop_time:
-            return 'RUNNING' if is_running else 'IDLE'
-        
-        # Check if within scheduled time
-        should_run = self.should_bot_run_now({
-            'start_at': start_time,
-            'stop_at': stop_time,
-            'switch': switch
-        })
-        
-        if should_run:
-            if is_running:
-                return 'RUNNING'
-            else:
-                return 'ERROR'  # Should be running but isn't
-        else:
-            if is_running:
-                return 'ERROR'  # Should be stopped but is running
-            else:
-                return 'IDLE'   # Properly stopped outside schedule
 
     def display_schedule_table(self, day, date, schedule_data, countdown=None, check_count=None):
         """Display the schedule in a formatted table with countdown timer"""
@@ -2191,69 +2149,46 @@ class BotScheduler:
         header_line = f"{day} {date}"
         if countdown is not None and check_count is not None:
             header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
-        
-        # Set fixed column widths for better alignment
-        max_name_len = 22    # Fixed width for bot names
-        max_start_len = 10   # HH:MM:SS format
-        max_stop_len = 10    # HH:MM:SS format
-        max_switch_len = 8   # on/off
-        max_q_status_len = 10 # Status text
-        max_last_run_len = 10 # HH:MM:SS format
-        max_remark_len = 15  # Short remarks
-        
-        # Calculate total table width
-        table_width = (max_name_len + max_start_len + max_stop_len + 
-                      max_switch_len + max_q_status_len + max_last_run_len + max_remark_len + 6)  # +6 for spaces between columns
-        
-        # Ensure header line matches table width
-        header_line = header_line.ljust(table_width)
         print(header_line)
-        print("-" * table_width)
+        print("-" * 80)
         
         if not schedule_data:
             print("No scheduled bots for today")
             return
         
-        # Header with centered column names
+        # Calculate column widths based on content
+        max_name_len = max(len(item['bot_name']) for item in schedule_data)
+        max_name_len = max(max_name_len, len("bots name"))
+        
+        max_start_len = max(len(item['start_at']) for item in schedule_data)
+        max_start_len = max(max_start_len, len("start_at"))
+        
+        max_stop_len = max(len(item['stop_at']) for item in schedule_data)
+        max_stop_len = max(max_stop_len, len("stop_at"))
+        
+        max_switch_len = max(len(item['switch']) for item in schedule_data)
+        max_switch_len = max(max_switch_len, len("switch"))
+        
+        # Add some padding
+        max_name_len += 2
+        max_start_len += 2
+        max_stop_len += 2
+        max_switch_len += 2
+        
+        # Header
         header = (f"{'bots name':<{max_name_len}} "
                  f"{'start_at':<{max_start_len}} "
                  f"{'stop_at':<{max_stop_len}} "
-                 f"{'switch':<{max_switch_len}} "
-                 f"{'status':<{max_q_status_len}} "  # Changed from 'Q status' to 'status'
-                 f"{'last_run':<{max_last_run_len}} "
-                 f"{'remark':<{max_remark_len}}")
+                 f"{'switch':<{max_switch_len}}")
         print(header)
-        print("-" * table_width)
+        print("-" * len(header))
         
         # Data rows
         for item in schedule_data:
-            # Truncate long bot names if necessary
-            bot_name = item['bot_name']
-            if len(bot_name) > max_name_len - 2:
-                bot_name = bot_name[:max_name_len - 3] + "..."
-            
-            # Truncate long remarks if necessary
-            remark = item['remark']
-            if len(remark) > max_remark_len - 2:
-                remark = remark[:max_remark_len - 3] + "..."
-            
-            # Color code the status
-            status = item['q_status']
-            status_color = self.GREEN
-            if status == 'ERROR':
-                status_color = self.RED
-            elif status == 'IDLE':
-                status_color = self.YELLOW
-            elif status == 'OFF':
-                status_color = self.BLUE
-            
-            row = (f"{bot_name:<{max_name_len}} "
+            row = (f"{item['bot_name']:<{max_name_len}} "
                    f"{item['start_at']:<{max_start_len}} "
                    f"{item['stop_at']:<{max_stop_len}} "
-                   f"{item['switch']:<{max_switch_len}} "
-                   f"{status_color}{status:<{max_q_status_len}}{self.ENDC} "
-                   f"{item['last_run']:<{max_last_run_len}} "
-                   f"{remark:<{max_remark_len}}")
+                   f"{item['switch']:<{max_switch_len}}")
             print(row)
 
     def get_bot_main_script(self, bot_folder):
