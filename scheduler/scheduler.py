@@ -2422,13 +2422,14 @@ class BotScheduler:
                     
                     print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
-                    # Countdown timer
+                    # Countdown timer - update the same table instead of creating new ones
                     for countdown in range(59, -1, -1):
                         time.sleep(1)
-                        # Update the display with countdown
-                        self.display_schedule_table(day, date, display_data, countdown=countdown, check_count=check_count)
-                        print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                    
+                        # Update the display with countdown - overwrite the same position
+                        print(f"\033[1;1H")  # Move cursor to top
+                        print(f"{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s")
+                        print("\033[K")  # Clear to end of line
+                
                 else:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     # Wait 60 seconds even if no data
