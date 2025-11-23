@@ -1772,7 +1772,7 @@ class BotScheduler:
         
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
-            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attempts} ==={self.ENDC}")
+            print(f"\n{self.BOLD}=== ATTEMPT {attempt} OF {max_attemps} ==={self.ENDC}")
             
             try:
                 # Step 8a: Close and reopen browser
@@ -2414,21 +2414,62 @@ class BotScheduler:
                 if result:
                     day, date, display_data = result
                     
-                    # Display initial table
-                    self.display_schedule_table(day, date, display_data, countdown=60, check_count=check_count)
+                    # Clear screen and display the table only once per sync
+                    print("\033[2J\033[H")  # Clear screen and move to top
+                    
+                    # Display header
+                    header_line = f"{day} {date} | Check #{check_count} | Next sync: 60s"
+                    print(header_line)
+                    print("-" * 80)
+                    
+                    if not display_data:
+                        print("No scheduled bots for today")
+                    else:
+                        # Calculate column widths
+                        max_name_len = max(len(item['bot_name']) for item in display_data)
+                        max_name_len = max(max_name_len, len("bots name"))
+                        
+                        max_start_len = max(len(item['start_at']) for item in display_data)
+                        max_start_len = max(max_start_len, len("start_at"))
+                        
+                        max_stop_len = max(len(item['stop_at']) for item in display_data)
+                        max_stop_len = max(max_stop_len, len("stop_at"))
+                        
+                        max_switch_len = max(len(item['switch']) for item in display_data)
+                        max_switch_len = max(max_switch_len, len("switch"))
+                        
+                        # Add padding
+                        max_name_len += 2
+                        max_start_len += 2
+                        max_stop_len += 2
+                        max_switch_len += 2
+                        
+                        # Header
+                        header = (f"{'bots name':<{max_name_len}} "
+                                 f"{'start_at':<{max_start_len}} "
+                                 f"{'stop_at':<{max_stop_len}} "
+                                 f"{'switch':<{max_switch_len}}")
+                        print(header)
+                        print("-" * len(header))
+                        
+                        # Data rows
+                        for item in display_data:
+                            row = (f"{item['bot_name']:<{max_name_len}} "
+                                   f"{item['start_at']:<{max_start_len}} "
+                                   f"{item['stop_at']:<{max_stop_len}} "
+                                   f"{item['switch']:<{max_switch_len}}")
+                            print(row)
+                    
+                    print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
-                    print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                    
-                    # Countdown timer - update the same table instead of creating new ones
+                    # Countdown timer - update only the header line
                     for countdown in range(59, -1, -1):
                         time.sleep(1)
-                        # Update the display with countdown - overwrite the same position
-                        print(f"\033[1;1H")  # Move cursor to top
-                        print(f"{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s")
-                        print("\033[K")  # Clear to end of line
+                        # Move cursor to top and update only the header
+                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s\033[K")
                 
                 else:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
