@@ -2092,7 +2092,7 @@ class BotScheduler:
             sheet = gc.open("scheduler")
             worksheet = sheet.sheet1
             
-            # Get all data
+            # Get all data including columns Q, R, S (status, last_run, remark)
             data = worksheet.get_all_records()
             return data
             
@@ -2101,7 +2101,7 @@ class BotScheduler:
             return None
 
     def format_schedule_display(self, schedule_data, valid_bots):
-        """Format the schedule display for terminal output"""
+        """Format the schedule display for terminal output including status, last_run, and remark"""
         # Get current day
         current_day = datetime.now().strftime("%A").lower()
         
@@ -2122,7 +2122,7 @@ class BotScheduler:
         start_col, stop_col = day_columns[current_day]
         current_date = datetime.now().strftime("%d-%m-%Y")
         
-        # Filter and format data
+        # Filter and format data including status, last_run, remark
         display_data = []
         for row in schedule_data:
             bot_name = row.get('bots name', '').strip()
@@ -2132,6 +2132,9 @@ class BotScheduler:
                 start_time = row.get(start_col, '').strip()
                 stop_time = row.get(stop_col, '').strip()
                 switch = row.get('switch', '').strip().lower()
+                status = row.get('status', '').strip()
+                last_run = row.get('last_run', '').strip()
+                remark = row.get('remark', '').strip()
                 
                 # Only include if we have at least one time value
                 if start_time or stop_time:
@@ -2139,13 +2142,16 @@ class BotScheduler:
                         'bot_name': bot_name,
                         'start_at': start_time if start_time else 'N/A',
                         'stop_at': stop_time if stop_time else 'N/A',
-                        'switch': switch
+                        'switch': switch,
+                        'status': status if status else 'N/A',
+                        'last_run': last_run if last_run else 'N/A',
+                        'remark': remark if remark else 'N/A'
                     })
     
         return current_day.capitalize(), current_date, display_data
 
     def display_schedule_table(self, day, date, schedule_data, countdown=None, check_count=None):
-        """Display the schedule in a formatted table with countdown timer"""
+        """Display the schedule in a formatted table with countdown timer including status, last_run, and remark"""
         # Clear screen and move cursor to top
         print("\033[2J\033[H")
         
@@ -2154,7 +2160,7 @@ class BotScheduler:
         if countdown is not None and check_count is not None:
             header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
         print(header_line)
-        print("-" * 80)
+        print("-" * 120)
         
         if not schedule_data:
             print("No scheduled bots for today")
@@ -2173,17 +2179,32 @@ class BotScheduler:
         max_switch_len = max(len(item['switch']) for item in schedule_data)
         max_switch_len = max(max_switch_len, len("switch"))
         
+        max_status_len = max(len(item['status']) for item in schedule_data)
+        max_status_len = max(max_status_len, len("status"))
+        
+        max_last_run_len = max(len(item['last_run']) for item in schedule_data)
+        max_last_run_len = max(max_last_run_len, len("last_run"))
+        
+        max_remark_len = max(len(item['remark']) for item in schedule_data)
+        max_remark_len = max(max_remark_len, len("remark"))
+        
         # Add some padding
         max_name_len += 2
         max_start_len += 2
         max_stop_len += 2
         max_switch_len += 2
+        max_status_len += 2
+        max_last_run_len += 2
+        max_remark_len += 2
         
         # Header
         header = (f"{'bots name':<{max_name_len}} "
                  f"{'start_at':<{max_start_len}} "
                  f"{'stop_at':<{max_stop_len}} "
-                 f"{'switch':<{max_switch_len}}")
+                 f"{'switch':<{max_switch_len}} "
+                 f"{'status':<{max_status_len}} "
+                 f"{'last_run':<{max_last_run_len}} "
+                 f"{'remark':<{max_remark_len}}")
         print(header)
         print("-" * len(header))
         
@@ -2192,7 +2213,10 @@ class BotScheduler:
             row = (f"{item['bot_name']:<{max_name_len}} "
                    f"{item['start_at']:<{max_start_len}} "
                    f"{item['stop_at']:<{max_stop_len}} "
-                   f"{item['switch']:<{max_switch_len}}")
+                   f"{item['switch']:<{max_switch_len}} "
+                   f"{item['status']:<{max_status_len}} "
+                   f"{item['last_run']:<{max_last_run_len}} "
+                   f"{item['remark']:<{max_remark_len}}")
             print(row)
 
     def get_bot_main_script(self, bot_folder):
@@ -2428,16 +2452,16 @@ class BotScheduler:
                     
                     # Move cursor to top and redraw header
                     print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: 60s{' ' * 20}")
-                    print(f"\033[{table_start_line + 1};1H" + "-" * 80)
+                    print(f"\033[{table_start_line + 1};1H" + "-" * 120)
                     
                     if not display_data:
                         # Clear any previous table content
                         for i in range(table_start_line + 2, table_start_line + 2 + self.table_lines):
-                            print(f"\033[{i};1H" + " " * 80)
+                            print(f"\033[{i};1H" + " " * 120)
                         print(f"\033[{table_start_line + 2};1HNo scheduled bots for today")
                         self.table_lines = 1
                     else:
-                        # Calculate column widths
+                        # Calculate column widths for all columns including new ones
                         max_name_len = max(len(item['bot_name']) for item in display_data)
                         max_name_len = max(max_name_len, len("bots name"))
                         max_start_len = max(len(item['start_at']) for item in display_data)
@@ -2446,18 +2470,30 @@ class BotScheduler:
                         max_stop_len = max(max_stop_len, len("stop_at"))
                         max_switch_len = max(len(item['switch']) for item in display_data)
                         max_switch_len = max(max_switch_len, len("switch"))
+                        max_status_len = max(len(item['status']) for item in display_data)
+                        max_status_len = max(max_status_len, len("status"))
+                        max_last_run_len = max(len(item['last_run']) for item in display_data)
+                        max_last_run_len = max(max_last_run_len, len("last_run"))
+                        max_remark_len = max(len(item['remark']) for item in display_data)
+                        max_remark_len = max(max_remark_len, len("remark"))
                         
                         # Add padding
                         max_name_len += 2
                         max_start_len += 2
                         max_stop_len += 2
                         max_switch_len += 2
+                        max_status_len += 2
+                        max_last_run_len += 2
+                        max_remark_len += 2
                         
                         # Table header
                         header = (f"{'bots name':<{max_name_len}} "
                                  f"{'start_at':<{max_start_len}} "
                                  f"{'stop_at':<{max_stop_len}} "
-                                 f"{'switch':<{max_switch_len}}")
+                                 f"{'switch':<{max_switch_len}} "
+                                 f"{'status':<{max_status_len}} "
+                                 f"{'last_run':<{max_last_run_len}} "
+                                 f"{'remark':<{max_remark_len}}")
                         
                         # Move cursor to table position and redraw
                         current_line = table_start_line + 2
@@ -2471,13 +2507,16 @@ class BotScheduler:
                             row = (f"{item['bot_name']:<{max_name_len}} "
                                    f"{item['start_at']:<{max_start_len}} "
                                    f"{item['stop_at']:<{max_stop_len}} "
-                                   f"{item['switch']:<{max_switch_len}}")
+                                   f"{item['switch']:<{max_switch_len}} "
+                                   f"{item['status']:<{max_status_len}} "
+                                   f"{item['last_run']:<{max_last_run_len}} "
+                                   f"{item['remark']:<{max_remark_len}}")
                             print(f"\033[{current_line};1H{row}")
                             current_line += 1
                         
                         # Clear any remaining lines from previous display
                         for i in range(current_line, table_start_line + 2 + self.table_lines):
-                            print(f"\033[{i};1H" + " " * 80)
+                            print(f"\033[{i};1H" + " " * 120)
                         
                         self.table_lines = len(display_data) + 2  # header + separator + rows
                     
