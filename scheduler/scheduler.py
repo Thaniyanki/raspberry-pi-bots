@@ -81,6 +81,12 @@ class BotScheduler:
         self.table_lines = 0
         self.first_display = True
         
+        # Bot execution tracking
+        self.current_running_bot = None
+        self.bot_start_time = None
+        self.bot_process = None
+        self.paused_sync = False
+        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -2389,6 +2395,248 @@ class BotScheduler:
             elif not should_run and is_running:
                 self.stop_bot(bot_name)
 
+    def is_time_between(self, current_time, start_time, stop_time):
+        """Check if current time is between start and stop times"""
+        if not start_time or not stop_time:
+            return False
+        
+        # Handle overnight schedules
+        if stop_time < start_time:
+            return current_time >= start_time or current_time <= stop_time
+        else:
+            return start_time <= current_time <= stop_time
+
+    def get_bot_run_command(self, bot_name):
+        """Get the run command for a specific bot"""
+        # Convert bot name to GitHub format
+        github_bot_name = bot_name.replace(' ', '-')
+        
+        # Prepare the command based on bot name
+        if bot_name == "whatsapp messenger":
+            return f'cd "/home/{self.username}/bots/whatsapp messenger" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/whatsapp-messenger/whatsapp%20messenger.py" | python3'
+        elif bot_name == "facebook profile liker":
+            return f'cd "/home/{self.username}/bots/facebook profile liker" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/facebook-profile-liker/facebook%20profile%20liker.py" | python3'
+        else:
+            # Generic command for other bots
+            return f'cd "/home/{self.username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_bot_name.replace("-", "%20")}.py" | python3'
+
+    def update_google_sheet_status(self, gc, bot_name, status, last_run, remark):
+        """Update Google Sheet with new status, last_run, and remark"""
+        try:
+            sheet = gc.open("scheduler")
+            worksheet = sheet.sheet1
+            
+            # Find the row for this bot
+            all_records = worksheet.get_all_records()
+            row_index = None
+            
+            for i, record in enumerate(all_records):
+                if record.get('bots name', '').strip() == bot_name:
+                    row_index = i + 2  # +2 because header is row 1 and data starts at row 2
+                    break
+            
+            if row_index is None:
+                print(f"Bot {bot_name} not found in scheduler sheet")
+                return False
+            
+            # Update status (column Q), last_run (column R), remark (column S)
+            # Assuming columns: A=1, B=2, ..., Q=17, R=18, S=19
+            worksheet.update_cell(row_index, 17, status)  # Status column
+            worksheet.update_cell(row_index, 18, last_run)  # Last_run column
+            worksheet.update_cell(row_index, 19, remark)  # Remark column
+            
+            print(f"✓ Updated Google Sheet for {bot_name}: status={status}, last_run={last_run}, remark={remark}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error updating Google Sheet for {bot_name}: {e}")
+            return False
+
+    def run_bot_execution(self, gc, bot_name, bot_schedule):
+        """Execute bot based on schedule conditions"""
+        print(f"\n{self.BOLD}=== STARTING BOT EXECUTION: {bot_name} ==={self.ENDC}")
+        
+        # Condition 1: Check if current time is between start_at and stop_at
+        current_time = datetime.now().strftime("%H:%M:%S")
+        start_time = bot_schedule.get('start_at', '')
+        stop_time = bot_schedule.get('stop_at', '')
+        
+        if not self.is_time_between(current_time, start_time, stop_time):
+            print(f"❌ Current time {current_time} not between {start_time} and {stop_time}")
+            return False
+        
+        # Condition 2: Check if switch is on
+        switch = bot_schedule.get('switch', '').lower()
+        if switch != 'on':
+            print(f"❌ Switch is off for {bot_name}")
+            return False
+        
+        # Condition 3: Update status to "in progress" for this bot, set others to "idle"
+        print(f"✓ Updating status: {bot_name} -> 'in progress', others -> 'idle'")
+        
+        # Get all bots from schedule data to update their status
+        all_records = gc.open("scheduler").sheet1.get_all_records()
+        for record in all_records:
+            other_bot_name = record.get('bots name', '').strip()
+            if other_bot_name == bot_name:
+                self.update_google_sheet_status(gc, bot_name, "in progress", "", "")
+            else:
+                # Only update if status is not already idle
+                current_status = record.get('status', '').strip()
+                if current_status != "idle":
+                    self.update_google_sheet_status(gc, other_bot_name, "idle", record.get('last_run', ''), record.get('remark', ''))
+        
+        # Condition 4: Check remark and last_run
+        remark = bot_schedule.get('remark', '').strip()
+        last_run = bot_schedule.get('last_run', '').strip()
+        current_date = datetime.now().strftime("%d-%m-%Y")
+        
+        if "successfully done" in remark.lower() and last_run.startswith(current_date):
+            print(f"✓ Bot {bot_name} already completed successfully today")
+            self.update_google_sheet_status(gc, bot_name, "idle", last_run, remark)
+            return True
+        
+        # Condition 5: Prepare and run command
+        print(f"✓ Preparing run command for {bot_name}")
+        run_command = self.get_bot_run_command(bot_name)
+        print(f"Command: {run_command}")
+        
+        # Set bot as currently running
+        self.current_running_bot = bot_name
+        self.bot_start_time = datetime.now()
+        self.paused_sync = True
+        
+        try:
+            # Run the command
+            print(f"🚀 Executing {bot_name}...")
+            process = subprocess.Popen(
+                run_command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            self.bot_process = process
+            
+            # Monitor the process
+            start_time_dt = datetime.now()
+            stop_time_dt = datetime.strptime(stop_time, "%H:%M:%S").replace(
+                year=start_time_dt.year,
+                month=start_time_dt.month,
+                day=start_time_dt.day
+            )
+            
+            # If stop time is earlier than start time (overnight), add one day
+            if stop_time_dt < start_time_dt:
+                stop_time_dt = stop_time_dt.replace(day=stop_time_dt.day + 1)
+            
+            while process.poll() is None:
+                # Check if we've exceeded the stop time
+                current_dt = datetime.now()
+                if current_dt >= stop_time_dt:
+                    print(f"⏰ Stop time reached! Forcefully stopping {bot_name}")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    
+                    # Update Google Sheet with forceful stop
+                    last_run_time = current_dt.strftime("%d-%m-%Y %H:%M:%S")
+                    self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, "forcefully stopped")
+                    break
+                
+                # Read output if available
+                try:
+                    output = process.stdout.readline()
+                    if output:
+                        print(f"[{bot_name}] {output.strip()}")
+                except:
+                    pass
+                
+                time.sleep(1)
+            
+            # Process completed normally
+            if process.poll() == 0:
+                print(f"✅ {bot_name} completed successfully!")
+                last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, "successfully done")
+            else:
+                print(f"⚠️ {bot_name} exited with code: {process.poll()}")
+                if "forcefully stopped" not in remark:
+                    last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                    self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, f"exited with code {process.poll()}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error running {bot_name}: {e}")
+            last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+            self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, f"error: {str(e)}")
+            return False
+        
+        finally:
+            # Resume sync and cleanup
+            self.current_running_bot = None
+            self.bot_start_time = None
+            self.bot_process = None
+            self.paused_sync = False
+
+    def check_and_execute_bots(self, gc, schedule_data, valid_bots):
+        """Check schedule and execute bots that should run now"""
+        current_day = datetime.now().strftime("%A").lower()
+        
+        # Map day names to column names
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at ', 'fri_stop at'],
+            'saturday': ['sat_start at', 'sat_stop at']
+        }
+        
+        if current_day not in day_columns:
+            return
+        
+        start_col, stop_col = day_columns[current_day]
+        current_time = datetime.now().strftime("%H:%M:%S")
+        
+        # Check each valid bot
+        for bot_name in valid_bots:
+            # Skip if this bot is already running
+            if self.current_running_bot == bot_name:
+                continue
+            
+            # Find bot schedule
+            bot_schedule = None
+            for row in schedule_data:
+                if row.get('bots name', '').strip() == bot_name:
+                    bot_schedule = {
+                        'start_at': row.get(start_col, '').strip(),
+                        'stop_at': row.get(stop_col, '').strip(),
+                        'switch': row.get('switch', '').strip().lower(),
+                        'status': row.get('status', '').strip(),
+                        'last_run': row.get('last_run', '').strip(),
+                        'remark': row.get('remark', '').strip()
+                    }
+                    break
+            
+            if not bot_schedule:
+                continue
+            
+            # Check if bot should run now
+            if (self.is_time_between(current_time, bot_schedule['start_at'], bot_schedule['stop_at']) and
+                bot_schedule['switch'] == 'on' and
+                bot_schedule['status'] != 'in progress'):
+                
+                print(f"🎯 Bot {bot_name} scheduled to run now! (Current: {current_time}, Start: {bot_schedule['start_at']}, Stop: {bot_schedule['stop_at']})")
+                self.run_bot_execution(gc, bot_name, bot_schedule)
+                return  # Only run one bot at a time
+
     def run_step9(self):
         """Step 9: Monitor Scheduler Sheet and Control Bots"""
         print("\n" + "=" * 50)
@@ -2406,7 +2654,7 @@ class BotScheduler:
             
             # Authorize with Google Sheets
             SCOPES = [
-                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive.readonly"
             ]
             
@@ -2486,8 +2734,18 @@ class BotScheduler:
                     # Calculate table position
                     table_start_line = 1
                     
+                    # Check if we should execute any bots
+                    if not self.paused_sync:
+                        self.check_and_execute_bots(gc, schedule_data, valid_bots)
+                    
+                    # Update header based on whether sync is paused
+                    if self.paused_sync and self.current_running_bot:
+                        header_text = f"{day} {date} | Check #{check_count} | Bot running: {self.current_running_bot} | Sync: PAUSED"
+                    else:
+                        header_text = f"{day} {date} | Check #{check_count} | Next sync: 60s"
+                    
                     # Move cursor to top and redraw header
-                    print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: 60s{' ' * 20}")
+                    print(f"\033[{table_start_line};1H{header_text}")
                     
                     if not display_data:
                         # Clear any previous table content
@@ -2562,19 +2820,31 @@ class BotScheduler:
                     
                     # Status line - ALWAYS keep cursor after this line
                     status_line = table_start_line + 2 + self.table_lines + 1
-                    print(f"\033[{status_line};1H{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    if self.paused_sync and self.current_running_bot:
+                        print(f"\033[{status_line};1H{self.YELLOW}⏸️  Bot execution in progress: {self.current_running_bot} - Sync paused{self.ENDC}")
+                    else:
+                        print(f"\033[{status_line};1H{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
                     # Move cursor to the line AFTER the status line
                     print(f"\033[{status_line + 1};1H")
                     
-                    # Sync bots with current schedule
-                    self.sync_bots_with_schedule(schedule_data, valid_bots)
+                    # Sync bots with current schedule (only if not paused)
+                    if not self.paused_sync:
+                        self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
                     # Countdown timer - update only the countdown
-                    for countdown in range(59, -1, -1):
+                    countdown_start = 59 if not self.paused_sync else 5
+                    for countdown in range(countdown_start, -1, -1):
                         time.sleep(1)
-                        # Update only the countdown in header
-                        print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        
+                        # Update header with current status
+                        if self.paused_sync and self.current_running_bot:
+                            header_text = f"{day} {date} | Check #{check_count} | Bot running: {self.current_running_bot} | Sync: PAUSED"
+                        else:
+                            header_text = f"{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s"
+                        
+                        print(f"\033[{table_start_line};1H{header_text}")
+                        
                         # Ensure cursor stays after status line
                         print(f"\033[{status_line + 1};1H")
                     
@@ -2607,6 +2877,14 @@ class BotScheduler:
                 if self.is_bot_running(bot_name):
                     self.stop_bot(bot_name)
             
+            # Stop currently running bot process
+            if self.bot_process:
+                self.bot_process.terminate()
+                try:
+                    self.bot_process.wait(timeout=5)
+                except:
+                    self.bot_process.kill()
+            
             return True
         except Exception as e:
             print(f"{self.RED}❌ Error in Step 9: {e}{self.ENDC}")
@@ -2615,6 +2893,14 @@ class BotScheduler:
             for bot_name in list(self.bot_processes.keys()):
                 if self.is_bot_running(bot_name):
                     self.stop_bot(bot_name)
+            
+            # Stop currently running bot process
+            if self.bot_process:
+                self.bot_process.terminate()
+                try:
+                    self.bot_process.wait(timeout=5)
+                except:
+                    self.bot_process.kill()
             
             return False
 
@@ -2626,6 +2912,14 @@ class BotScheduler:
         for bot_name in list(self.bot_processes.keys()):
             if self.is_bot_running(bot_name):
                 self.stop_bot(bot_name)
+        
+        # Stop currently running bot process
+        if self.bot_process:
+            self.bot_process.terminate()
+            try:
+                self.bot_process.wait(timeout=5)
+            except:
+                self.bot_process.kill()
         
         # Close browser
         self.close_chrome_browser()
