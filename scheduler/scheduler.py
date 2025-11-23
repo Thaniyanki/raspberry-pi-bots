@@ -2560,9 +2560,12 @@ class BotScheduler:
                         
                         self.table_lines = len(display_data) + 2  # header + separator + rows
                     
-                    # Status line
+                    # Status line - ALWAYS keep cursor after this line
                     status_line = table_start_line + 2 + self.table_lines + 1
                     print(f"\033[{status_line};1H{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    
+                    # Move cursor to the line AFTER the status line
+                    print(f"\033[{status_line + 1};1H")
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
@@ -2572,6 +2575,8 @@ class BotScheduler:
                         time.sleep(1)
                         # Update only the countdown in header
                         print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        # Ensure cursor stays after status line
+                        print(f"\033[{status_line + 1};1H")
                     
                 else:
                     # Clear screen and show no data for today
@@ -2579,6 +2584,10 @@ class BotScheduler:
                     print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
+                    # Status line
+                    print(f"{self.YELLOW}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                    # Move cursor to the line AFTER the status line
+                    print()
                     
                     # Wait 60 seconds with countdown
                     for countdown in range(60, 0, -1):
