@@ -2432,13 +2432,44 @@ class BotScheduler:
                 check_count += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
                 
-                # Get scheduler data
-                schedule_data = self.get_scheduler_data(gc)
+                # Get current day and date for display
+                current_day = datetime.now().strftime("%A").lower()
+                current_date = datetime.now().strftime("%d-%m-%Y")
+                day = current_day.capitalize()
+                date = current_date
+                
+                # Get scheduler data with error handling
+                try:
+                    schedule_data = self.get_scheduler_data(gc)
+                except Exception as e:
+                    # Clear screen and show error
+                    print("\033[2J\033[H")
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print("-" * 80)
+                    print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
+                    print(f"{self.YELLOW}scheduler not available{self.ENDC}")
+                    print(f"{self.YELLOW}Waiting 60 seconds...{self.ENDC}")
+                    
+                    # Wait 60 seconds with countdown
+                    for countdown in range(60, 0, -1):
+                        print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 50 + "\r", end="", flush=True)
+                    continue
                 
                 if schedule_data is None:
-                    print(f"{self.RED}scheduler not available{self.ENDC}")
-                    print("Waiting 60 seconds...")
-                    time.sleep(60)
+                    # Clear screen and show no data available
+                    print("\033[2J\033[H")
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print("-" * 80)
+                    print(f"{self.YELLOW}scheduler not available{self.ENDC}")
+                    print(f"{self.YELLOW}Waiting 60 seconds...{self.ENDC}")
+                    
+                    # Wait 60 seconds with countdown
+                    for countdown in range(60, 0, -1):
+                        print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 50 + "\r", end="", flush=True)
                     continue
                 
                 # Format and display schedule
@@ -2543,8 +2574,13 @@ class BotScheduler:
                         print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
                     
                 else:
+                    # Clear screen and show no data for today
+                    print("\033[2J\033[H")
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
-                    # Wait 60 seconds even if no data
+                    
+                    # Wait 60 seconds with countdown
                     for countdown in range(60, 0, -1):
                         print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
                         time.sleep(1)
