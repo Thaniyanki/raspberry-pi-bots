@@ -77,6 +77,10 @@ class BotScheduler:
             "contact_not_found": "Xpath004"
         }
         
+        # Display management for Step 9
+        self.table_lines = 0
+        self.first_display = True
+        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -2414,23 +2418,81 @@ class BotScheduler:
                 if result:
                     day, date, display_data = result
                     
-                    # Display initial table
-                    self.display_schedule_table(day, date, display_data, countdown=60, check_count=check_count)
+                    # Display initial table - only clear screen on first display
+                    if self.first_display:
+                        print("\033[2J\033[H")  # Clear screen only first time
+                        self.first_display = False
+                    
+                    # Calculate table position
+                    table_start_line = 1
+                    
+                    # Move cursor to top and redraw header
+                    print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: 60s{' ' * 20}")
+                    print(f"\033[{table_start_line + 1};1H" + "-" * 80)
+                    
+                    if not display_data:
+                        # Clear any previous table content
+                        for i in range(table_start_line + 2, table_start_line + 2 + self.table_lines):
+                            print(f"\033[{i};1H" + " " * 80)
+                        print(f"\033[{table_start_line + 2};1HNo scheduled bots for today")
+                        self.table_lines = 1
+                    else:
+                        # Calculate column widths
+                        max_name_len = max(len(item['bot_name']) for item in display_data)
+                        max_name_len = max(max_name_len, len("bots name"))
+                        max_start_len = max(len(item['start_at']) for item in display_data)
+                        max_start_len = max(max_start_len, len("start_at"))
+                        max_stop_len = max(len(item['stop_at']) for item in display_data)
+                        max_stop_len = max(max_stop_len, len("stop_at"))
+                        max_switch_len = max(len(item['switch']) for item in display_data)
+                        max_switch_len = max(max_switch_len, len("switch"))
+                        
+                        # Add padding
+                        max_name_len += 2
+                        max_start_len += 2
+                        max_stop_len += 2
+                        max_switch_len += 2
+                        
+                        # Table header
+                        header = (f"{'bots name':<{max_name_len}} "
+                                 f"{'start_at':<{max_start_len}} "
+                                 f"{'stop_at':<{max_stop_len}} "
+                                 f"{'switch':<{max_switch_len}}")
+                        
+                        # Move cursor to table position and redraw
+                        current_line = table_start_line + 2
+                        print(f"\033[{current_line};1H{header}")
+                        current_line += 1
+                        print(f"\033[{current_line};1H" + "-" * len(header))
+                        current_line += 1
+                        
+                        # Data rows
+                        for item in display_data:
+                            row = (f"{item['bot_name']:<{max_name_len}} "
+                                   f"{item['start_at']:<{max_start_len}} "
+                                   f"{item['stop_at']:<{max_stop_len}} "
+                                   f"{item['switch']:<{max_switch_len}}")
+                            print(f"\033[{current_line};1H{row}")
+                            current_line += 1
+                        
+                        # Clear any remaining lines from previous display
+                        for i in range(current_line, table_start_line + 2 + self.table_lines):
+                            print(f"\033[{i};1H" + " " * 80)
+                        
+                        self.table_lines = len(display_data) + 2  # header + separator + rows
+                    
+                    # Status line
+                    status_line = table_start_line + 2 + self.table_lines + 1
+                    print(f"\033[{status_line};1H{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
-                    print(f"\n{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                    
-                    # Countdown timer - update only the countdown without redrawing the entire table
+                    # Countdown timer - update only the countdown
                     for countdown in range(59, -1, -1):
                         time.sleep(1)
-                        # Update only the header line with new countdown
-                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
-                        print(f"\033[2H" + "-" * 80)
-                        # Move cursor to bottom to avoid overwriting
-                        print(f"\033[{len(display_data) + 6}H")
-                        print(f"{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
+                        # Update only the countdown in header
+                        print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
                     
                 else:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
