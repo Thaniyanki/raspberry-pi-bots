@@ -2160,7 +2160,6 @@ class BotScheduler:
         if countdown is not None and check_count is not None:
             header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
         print(header_line)
-        print("-" * 120)
         
         if not schedule_data:
             print("No scheduled bots for today")
@@ -2197,7 +2196,7 @@ class BotScheduler:
         max_last_run_len += 2
         max_remark_len += 2
         
-        # Header
+        # Build header string to calculate total width
         header = (f"{'bots name':<{max_name_len}} "
                  f"{'start_at':<{max_start_len}} "
                  f"{'stop_at':<{max_stop_len}} "
@@ -2205,8 +2204,14 @@ class BotScheduler:
                  f"{'status':<{max_status_len}} "
                  f"{'last_run':<{max_last_run_len}} "
                  f"{'remark':<{max_remark_len}}")
+        
+        # Calculate total table width
+        table_width = len(header)
+        
+        # Print both dash lines with the same length
+        print("-" * table_width)
         print(header)
-        print("-" * len(header))
+        print("-" * table_width)
         
         # Data rows
         for item in schedule_data:
@@ -2452,7 +2457,6 @@ class BotScheduler:
                     
                     # Move cursor to top and redraw header
                     print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: 60s{' ' * 20}")
-                    print(f"\033[{table_start_line + 1};1H" + "-" * 120)
                     
                     if not display_data:
                         # Clear any previous table content
@@ -2486,7 +2490,7 @@ class BotScheduler:
                         max_last_run_len += 2
                         max_remark_len += 2
                         
-                        # Table header
+                        # Build header string to calculate table width
                         header = (f"{'bots name':<{max_name_len}} "
                                  f"{'start_at':<{max_start_len}} "
                                  f"{'stop_at':<{max_stop_len}} "
@@ -2495,11 +2499,16 @@ class BotScheduler:
                                  f"{'last_run':<{max_last_run_len}} "
                                  f"{'remark':<{max_remark_len}}")
                         
+                        # Calculate table width for consistent dash lines
+                        table_width = len(header)
+                        
                         # Move cursor to table position and redraw
                         current_line = table_start_line + 2
+                        print(f"\033[{current_line};1H" + "-" * table_width)
+                        current_line += 1
                         print(f"\033[{current_line};1H{header}")
                         current_line += 1
-                        print(f"\033[{current_line};1H" + "-" * len(header))
+                        print(f"\033[{current_line};1H" + "-" * table_width)
                         current_line += 1
                         
                         # Data rows
