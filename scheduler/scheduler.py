@@ -2416,6 +2416,8 @@ class BotScheduler:
             return f'cd "/home/{self.username}/bots/whatsapp messenger" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/whatsapp-messenger/whatsapp%20messenger.py" | python3'
         elif bot_name == "facebook profile liker":
             return f'cd "/home/{self.username}/bots/facebook profile liker" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/facebook-profile-liker/facebook%20profile%20liker.py" | python3'
+        elif bot_name == "facebook birthday wisher":
+            return f'cd "/home/{self.username}/bots/facebook birthday wisher" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/facebook-birthday-wisher/facebook%20birthday%20wisher.py" | python3'
         else:
             # Generic command for other bots
             return f'cd "/home/{self.username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_bot_name.replace("-", "%20")}.py" | python3'
@@ -2509,6 +2511,33 @@ class BotScheduler:
         try:
             # Run the command
             print(f"🚀 Executing {bot_name}...")
+            
+            # Parse stop time for timeout calculation
+            start_time_dt = datetime.now()
+            try:
+                stop_time_dt = datetime.strptime(stop_time, "%H:%M:%S").replace(
+                    year=start_time_dt.year,
+                    month=start_time_dt.month,
+                    day=start_time_dt.day
+                )
+                
+                # If stop time is earlier than start time (overnight), add one day
+                if stop_time_dt < start_time_dt:
+                    stop_time_dt = stop_time_dt.replace(day=stop_time_dt.day + 1)
+            except ValueError:
+                # If stop time format is invalid, use default timeout (1 hour)
+                stop_time_dt = start_time_dt.replace(hour=start_time_dt.hour + 1)
+            
+            # Calculate timeout in seconds
+            timeout_seconds = (stop_time_dt - start_time_dt).total_seconds()
+            if timeout_seconds <= 0:
+                print(f"❌ Invalid timeout calculation for {bot_name}")
+                self.update_google_sheet_status(gc, bot_name, "idle", datetime.now().strftime("%d-%m-%Y %H:%M:%S"), "invalid schedule")
+                return False
+            
+            print(f"⏰ Timeout set to {timeout_seconds:.0f} seconds")
+            
+            # Run the command with timeout
             process = subprocess.Popen(
                 run_command,
                 shell=True,
@@ -2519,23 +2548,20 @@ class BotScheduler:
             )
             self.bot_process = process
             
-            # Monitor the process
-            start_time_dt = datetime.now()
-            stop_time_dt = datetime.strptime(stop_time, "%H:%M:%S").replace(
-                year=start_time_dt.year,
-                month=start_time_dt.month,
-                day=start_time_dt.day
-            )
+            # Monitor the process with timeout
+            start_time_monitor = time.time()
+            process_completed = False
             
-            # If stop time is earlier than start time (overnight), add one day
-            if stop_time_dt < start_time_dt:
-                stop_time_dt = stop_time_dt.replace(day=stop_time_dt.day + 1)
-            
-            while process.poll() is None:
-                # Check if we've exceeded the stop time
-                current_dt = datetime.now()
-                if current_dt >= stop_time_dt:
-                    print(f"⏰ Stop time reached! Forcefully stopping {bot_name}")
+            while not process_completed:
+                # Check if process has completed
+                if process.poll() is not None:
+                    process_completed = True
+                    break
+                
+                # Check if we've exceeded the timeout
+                elapsed_time = time.time() - start_time_monitor
+                if elapsed_time >= timeout_seconds:
+                    print(f"⏰ Timeout reached! Forcefully stopping {bot_name}")
                     process.terminate()
                     try:
                         process.wait(timeout=10)
@@ -2544,8 +2570,8 @@ class BotScheduler:
                         process.wait()
                     
                     # Update Google Sheet with forceful stop
-                    last_run_time = current_dt.strftime("%d-%m-%Y %H:%M:%S")
-                    self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, "forcefully stopped")
+                    last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                    self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, "forcefully stopped - timeout")
                     break
                 
                 # Read output if available
@@ -2559,17 +2585,30 @@ class BotScheduler:
                 time.sleep(1)
             
             # Process completed normally
-            if process.poll() == 0:
+            return_code = process.poll()
+            if return_code == 0:
                 print(f"✅ {bot_name} completed successfully!")
                 last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
                 self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, "successfully done")
+            elif return_code == 127:
+                print(f"❌ {bot_name} failed: Command not found (exit code 127)")
+                last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, "error: command not found")
+                
+                # Debug: Check if files exist
+                bot_path = self.bots_base_path / bot_name
+                venv_path = self.get_venv_path(bot_path)
+                print(f"🔍 Debug: Bot path exists: {bot_path.exists()}")
+                print(f"🔍 Debug: Venv path exists: {venv_path.exists() if venv_path else False}")
+                if venv_path:
+                    print(f"🔍 Debug: Python executable exists: {(venv_path / 'bin' / 'python3').exists()}")
+                
             else:
-                print(f"⚠️ {bot_name} exited with code: {process.poll()}")
-                if "forcefully stopped" not in remark:
-                    last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-                    self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, f"exited with code {process.poll()}")
+                print(f"⚠️ {bot_name} exited with code: {return_code}")
+                last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                self.update_google_sheet_status(gc, bot_name, "idle", last_run_time, f"exited with code {return_code}")
             
-            return True
+            return return_code == 0
             
         except Exception as e:
             print(f"❌ Error running {bot_name}: {e}")
@@ -2634,6 +2673,14 @@ class BotScheduler:
                 bot_schedule['status'] != 'in progress'):
                 
                 print(f"🎯 Bot {bot_name} scheduled to run now! (Current: {current_time}, Start: {bot_schedule['start_at']}, Stop: {bot_schedule['stop_at']})")
+                
+                # Additional check: don't run if already completed today
+                current_date = datetime.now().strftime("%d-%m-%Y")
+                if ("successfully done" in bot_schedule['remark'].lower() and 
+                    bot_schedule['last_run'].startswith(current_date)):
+                    print(f"✓ Bot {bot_name} already completed successfully today, skipping...")
+                    continue
+                
                 self.run_bot_execution(gc, bot_name, bot_schedule)
                 return  # Only run one bot at a time
 
