@@ -77,10 +77,6 @@ class BotScheduler:
             "contact_not_found": "Xpath004"
         }
         
-        # Display management for Step 9
-        self.table_lines = 0
-        self.first_display = True
-        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -1537,7 +1533,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.click()
                     time.sleep(1)
@@ -1559,7 +1555,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 5).until(
-                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.send_keys(Keys.ENTER)
                     print("✓ Message sent")
@@ -1902,7 +1898,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.click()
                     time.sleep(1)
@@ -1925,7 +1921,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)  # Wait for stability
                     message_input = WebDriverWait(self.driver, 5).until(
-                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.send_keys(Keys.ENTER)
                     print("✓ Message sent")
@@ -2152,9 +2148,6 @@ class BotScheduler:
 
     def display_schedule_table(self, day, date, schedule_data, countdown=None, check_count=None):
         """Display the schedule in a formatted table with countdown timer including status, last_run, and remark"""
-        # Clear screen and move cursor to top
-        print("\033[2J\033[H")
-        
         # Calculate column widths based on content
         max_name_len = max(len(item['bot_name']) for item in schedule_data)
         max_name_len = max(max_name_len, len("bots name"))
@@ -2384,191 +2377,191 @@ class BotScheduler:
                 self.stop_bot(bot_name)
 
     def run_step9(self):
-    """Step 9: Monitor Scheduler Sheet and Control Bots"""
-    print("\n" + "=" * 50)
-    print("STEP 9: SCHEDULER MONITORING & BOT CONTROL")
-    print("=" * 50)
-    
-    try:
-        # Get spreadsheet key
-        bot_folders = self.get_bot_folders()
-        key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
+        """Step 9: Monitor Scheduler Sheet and Control Bots"""
+        print("\n" + "=" * 50)
+        print("STEP 9: SCHEDULER MONITORING & BOT CONTROL")
+        print("=" * 50)
         
-        if not key_exists:
-            print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
-            return False
-        
-        # Authorize with Google Sheets
-        SCOPES = [
-            "https://www.googleapis.com/auth/spreadsheets.readonly",
-            "https://www.googleapis.com/auth/drive.readonly"
-        ]
-        
-        creds = Credentials.from_service_account_file(
-            str(source_key_file),
-            scopes=SCOPES
-        )
-        gc = gspread.authorize(creds)
-        
-        print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
-        
-        # Get valid bot names (from Step 5 comparison)
-        valid_bots = self.get_valid_bot_names()
-        
-        # Initialize bot processes dictionary
-        for bot_name in valid_bots:
-            if bot_name not in self.bot_processes:
-                self.bot_processes[bot_name] = None
-        
-        # Monitor scheduler sheet and control bots
-        check_count = 0
-        
-        while True:
-            check_count += 1
+        try:
+            # Get spreadsheet key
+            bot_folders = self.get_bot_folders()
+            key_exists, source_folder, source_key_file = self.check_spreadsheet_key_exists(bot_folders)
             
-            # Get current day and date for display
-            current_day = datetime.now().strftime("%A").lower()
-            current_date = datetime.now().strftime("%d-%m-%Y")
-            day = current_day.capitalize()
-            date = current_date
+            if not key_exists:
+                print(f"{self.RED}❌ Spreadsheet access key not found{self.ENDC}")
+                return False
             
-            # Get scheduler data with error handling
-            try:
-                schedule_data = self.get_scheduler_data(gc)
-            except Exception as e:
-                # Show error message
-                print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
-                print("-" * 80)
-                print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
-                print(f"{self.YELLOW}scheduler not available{self.ENDC}")
+            # Authorize with Google Sheets
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/drive.readonly"
+            ]
+            
+            creds = Credentials.from_service_account_file(
+                str(source_key_file),
+                scopes=SCOPES
+            )
+            gc = gspread.authorize(creds)
+            
+            print(f"{self.GREEN}✓ Successfully authorized with Google Sheets API{self.ENDC}")
+            
+            # Get valid bot names (from Step 5 comparison)
+            valid_bots = self.get_valid_bot_names()
+            
+            # Initialize bot processes dictionary
+            for bot_name in valid_bots:
+                if bot_name not in self.bot_processes:
+                    self.bot_processes[bot_name] = None
+            
+            # Monitor scheduler sheet and control bots
+            check_count = 0
+            
+            while True:
+                check_count += 1
                 
-                # Wait 60 seconds with countdown
-                for countdown in range(60, 0, -1):
-                    print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
-                    time.sleep(1)
-                print("\r" + " " * 80 + "\r", end="", flush=True)
-                continue
-            
-            if schedule_data is None:
-                # Show no data available
-                print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
-                print("-" * 80)
-                print(f"{self.YELLOW}scheduler not available{self.ENDC}")
+                # Get current day and date for display
+                current_day = datetime.now().strftime("%A").lower()
+                current_date = datetime.now().strftime("%d-%m-%Y")
+                day = current_day.capitalize()
+                date = current_date
                 
-                # Wait 60 seconds with countdown
-                for countdown in range(60, 0, -1):
-                    print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
-                    time.sleep(1)
-                print("\r" + " " * 80 + "\r", end="", flush=True)
-                continue
-            
-            # Format and display schedule - ONLY ONCE per sync
-            result = self.format_schedule_display(schedule_data, valid_bots)
-            
-            if result:
-                day, date, display_data = result
-                
-                if not display_data:
+                # Get scheduler data with error handling
+                try:
+                    schedule_data = self.get_scheduler_data(gc)
+                except Exception as e:
+                    # Show error message
                     print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
-                    print("No scheduled bots for today")
+                    print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
+                    print(f"{self.YELLOW}scheduler not available{self.ENDC}")
+                    
+                    # Wait 60 seconds with countdown
+                    for countdown in range(60, 0, -1):
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
+                    continue
+                
+                if schedule_data is None:
+                    # Show no data available
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print("-" * 80)
+                    print(f"{self.YELLOW}scheduler not available{self.ENDC}")
+                    
+                    # Wait 60 seconds with countdown
+                    for countdown in range(60, 0, -1):
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
+                    continue
+                
+                # Format and display schedule - ONLY ONCE per sync
+                result = self.format_schedule_display(schedule_data, valid_bots)
+                
+                if result:
+                    day, date, display_data = result
+                    
+                    if not display_data:
+                        print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                        print("-" * 80)
+                        print("No scheduled bots for today")
+                    else:
+                        # Calculate column widths for all columns including new ones
+                        max_name_len = max(len(item['bot_name']) for item in display_data)
+                        max_name_len = max(max_name_len, len("bots name"))
+                        max_start_len = max(len(item['start_at']) for item in display_data)
+                        max_start_len = max(max_start_len, len("start_at"))
+                        max_stop_len = max(len(item['stop_at']) for item in display_data)
+                        max_stop_len = max(max_stop_len, len("stop_at"))
+                        max_switch_len = max(len(item['switch']) for item in display_data)
+                        max_switch_len = max(max_switch_len, len("switch"))
+                        max_status_len = max(len(item['status']) for item in display_data)
+                        max_status_len = max(max_status_len, len("status"))
+                        max_last_run_len = max(len(item['last_run']) for item in display_data)
+                        max_last_run_len = max(max_last_run_len, len("last_run"))
+                        max_remark_len = max(len(item['remark']) for item in display_data)
+                        max_remark_len = max(max_remark_len, len("remark"))
+                        
+                        # Add padding
+                        max_name_len += 2
+                        max_start_len += 2
+                        max_stop_len += 2
+                        max_switch_len += 2
+                        max_status_len += 2
+                        max_last_run_len += 2
+                        max_remark_len += 2
+                        
+                        # Build header string to calculate table width
+                        header = (f"{'bots name':<{max_name_len}} "
+                                 f"{'start_at':<{max_start_len}} "
+                                 f"{'stop_at':<{max_stop_len}} "
+                                 f"{'switch':<{max_switch_len}} "
+                                 f"{'status':<{max_status_len}} "
+                                 f"{'last_run':<{max_last_run_len}} "
+                                 f"{'remark':<{max_remark_len}}")
+                        
+                        # Calculate table width for consistent dash lines
+                        table_width = len(header)
+                        
+                        # Display table ONLY ONCE
+                        print("\n" + "-" * table_width)
+                        print(header)
+                        print("-" * table_width)
+                        
+                        # Data rows
+                        for item in display_data:
+                            row = (f"{item['bot_name']:<{max_name_len}} "
+                                   f"{item['start_at']:<{max_start_len}} "
+                                   f"{item['stop_at']:<{max_stop_len}} "
+                                   f"{item['switch']:<{max_switch_len}} "
+                                   f"{item['status']:<{max_status_len}} "
+                                   f"{item['last_run']:<{max_last_run_len}} "
+                                   f"{item['remark']:<{max_remark_len}}")
+                            print(row)
+                    
+                    # Sync bots with current schedule
+                    self.sync_bots_with_schedule(schedule_data, valid_bots)
+                    
+                    # Countdown timer - use carriage return to update in place
+                    for countdown in range(60, 0, -1):
+                        time.sleep(1)
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
+                
                 else:
-                    # Calculate column widths for all columns including new ones
-                    max_name_len = max(len(item['bot_name']) for item in display_data)
-                    max_name_len = max(max_name_len, len("bots name"))
-                    max_start_len = max(len(item['start_at']) for item in display_data)
-                    max_start_len = max(max_start_len, len("start_at"))
-                    max_stop_len = max(len(item['stop_at']) for item in display_data)
-                    max_stop_len = max(max_stop_len, len("stop_at"))
-                    max_switch_len = max(len(item['switch']) for item in display_data)
-                    max_switch_len = max(max_switch_len, len("switch"))
-                    max_status_len = max(len(item['status']) for item in display_data)
-                    max_status_len = max(max_status_len, len("status"))
-                    max_last_run_len = max(len(item['last_run']) for item in display_data)
-                    max_last_run_len = max(max_last_run_len, len("last_run"))
-                    max_remark_len = max(len(item['remark']) for item in display_data)
-                    max_remark_len = max(max_remark_len, len("remark"))
+                    # Show no data for today
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print("-" * 80)
+                    print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     
-                    # Add padding
-                    max_name_len += 2
-                    max_start_len += 2
-                    max_stop_len += 2
-                    max_switch_len += 2
-                    max_status_len += 2
-                    max_last_run_len += 2
-                    max_remark_len += 2
-                    
-                    # Build header string to calculate table width
-                    header = (f"{'bots name':<{max_name_len}} "
-                             f"{'start_at':<{max_start_len}} "
-                             f"{'stop_at':<{max_stop_len}} "
-                             f"{'switch':<{max_switch_len}} "
-                             f"{'status':<{max_status_len}} "
-                             f"{'last_run':<{max_last_run_len}} "
-                             f"{'remark':<{max_remark_len}}")
-                    
-                    # Calculate table width for consistent dash lines
-                    table_width = len(header)
-                    
-                    # Display table ONLY ONCE
-                    print("\n" + "-" * table_width)
-                    print(header)
-                    print("-" * table_width)
-                    
-                    # Data rows
-                    for item in display_data:
-                        row = (f"{item['bot_name']:<{max_name_len}} "
-                               f"{item['start_at']:<{max_start_len}} "
-                               f"{item['stop_at']:<{max_stop_len}} "
-                               f"{item['switch']:<{max_switch_len}} "
-                               f"{item['status']:<{max_status_len}} "
-                               f"{item['last_run']:<{max_last_run_len}} "
-                               f"{item['remark']:<{max_remark_len}}")
-                        print(row)
+                    # Wait 60 seconds with countdown
+                    for countdown in range(60, 0, -1):
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
                 
-                # Sync bots with current schedule
-                self.sync_bots_with_schedule(schedule_data, valid_bots)
+                # Store current schedule data
+                self.schedule_data = schedule_data
+                self.last_sync_time = datetime.now()
                 
-                # Countdown timer - use carriage return to update in place
-                for countdown in range(60, 0, -1):
-                    time.sleep(1)
-                    print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
-                print("\r" + " " * 80 + "\r", end="", flush=True)
+        except KeyboardInterrupt:
+            print(f"\n\n{self.YELLOW}Scheduler monitoring stopped by user{self.ENDC}")
             
-            else:
-                # Show no data for today
-                print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
-                print("-" * 80)
-                print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
-                
-                # Wait 60 seconds with countdown
-                for countdown in range(60, 0, -1):
-                    print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
-                    time.sleep(1)
-                print("\r" + " " * 80 + "\r", end="", flush=True)
+            # Stop all running bots before exit
+            for bot_name in list(self.bot_processes.keys()):
+                if self.is_bot_running(bot_name):
+                    self.stop_bot(bot_name)
             
-            # Store current schedule data
-            self.schedule_data = schedule_data
-            self.last_sync_time = datetime.now()
+            return True
+        except Exception as e:
+            print(f"{self.RED}❌ Error in Step 9: {e}{self.ENDC}")
             
-    except KeyboardInterrupt:
-        print(f"\n\n{self.YELLOW}Scheduler monitoring stopped by user{self.ENDC}")
-        
-        # Stop all running bots before exit
-        for bot_name in list(self.bot_processes.keys()):
-            if self.is_bot_running(bot_name):
-                self.stop_bot(bot_name)
-        
-        return True
-    except Exception as e:
-        print(f"{self.RED}❌ Error in Step 9: {e}{self.ENDC}")
-        
-        # Stop all running bots on error
-        for bot_name in list(self.bot_processes.keys()):
-            if self.is_bot_running(bot_name):
-                self.stop_bot(bot_name)
-        
-        return False
+            # Stop all running bots on error
+            for bot_name in list(self.bot_processes.keys()):
+                if self.is_bot_running(bot_name):
+                    self.stop_bot(bot_name)
+            
+            return False
 
     def cleanup(self):
         """Cleanup method to be called before exit"""
