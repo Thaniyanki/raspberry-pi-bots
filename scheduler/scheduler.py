@@ -1537,7 +1537,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.click()
                     time.sleep(1)
@@ -1559,7 +1559,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.send_keys(Keys.ENTER)
                     print("✓ Message sent")
@@ -1902,7 +1902,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.click()
                     time.sleep(1)
@@ -1925,7 +1925,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)  # Wait for stability
                     message_input = WebDriverWait(self.driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.send_keys(Keys.ENTER)
                     print("✓ Message sent")
@@ -2433,15 +2433,12 @@ class BotScheduler:
                 day = current_day.capitalize()
                 date = current_date
                 
-                # Clear screen at the start of each sync cycle
-                print("\033[2J\033[H")
-                
                 # Get scheduler data with error handling
                 try:
                     schedule_data = self.get_scheduler_data(gc)
                 except Exception as e:
                     # Show error message in the same table format
-                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
@@ -2455,7 +2452,7 @@ class BotScheduler:
                 
                 if schedule_data is None:
                     # Show no data available in the same table format
-                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
                     
@@ -2473,7 +2470,7 @@ class BotScheduler:
                     day, date, display_data = result
                     
                     if not display_data:
-                        print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                        print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
                         print("-" * 80)
                         print("No scheduled bots for today")
                     else:
@@ -2515,7 +2512,7 @@ class BotScheduler:
                         table_width = len(header)
                         
                         # Display table
-                        print("-" * table_width)
+                        print("\n" + "-" * table_width)
                         print(header)
                         print("-" * table_width)
                         
@@ -2541,7 +2538,7 @@ class BotScheduler:
                 
                 else:
                     # Show no data for today
-                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     
