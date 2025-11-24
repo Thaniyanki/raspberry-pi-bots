@@ -77,6 +77,10 @@ class BotScheduler:
             "contact_not_found": "Xpath004"
         }
         
+        # New variables for step 9a-9e
+        self.local_schedule_data = {}  # Store local copy of schedule data
+        self.bot_execution_status = {}  # Track bot execution status
+        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -2376,8 +2380,173 @@ class BotScheduler:
             elif not should_run and is_running:
                 self.stop_bot(bot_name)
 
+    # NEW METHODS FOR STEPS 9a-9e
+
+    def check_time_in_range(self, start_time, stop_time):
+        """Check if current time is between start_time and stop_time"""
+        current_time = datetime.now().strftime("%H:%M")
+        
+        if not start_time or not stop_time:
+            return False
+        
+        # Handle overnight schedules (stop time < start time)
+        if stop_time < start_time:
+            return current_time >= start_time or current_time <= stop_time
+        else:
+            return start_time <= current_time <= stop_time
+
+    def check_remark_and_last_run(self, remark, last_run):
+        """Check remark and last_run conditions for step 9b"""
+        current_date = datetime.now().strftime("%d-%m-%Y")
+        
+        if remark == "sucessfully done":
+            if last_run and last_run.startswith(current_date):
+                return False  # Nothing to do
+            else:
+                return True  # Continue with step 9c
+        else:
+            return True  # Continue with step 9c
+
+    def update_local_status(self, bot_name, status):
+        """Update bot status in local schedule data"""
+        if bot_name in self.local_schedule_data:
+            self.local_schedule_data[bot_name]['status'] = status
+            print(f"  ✓ Updated local status for {bot_name}: {status}")
+
+    def update_google_sheet_status(self, gc, bot_name, status, max_retries=3):
+        """Update bot status in Google Sheet with retry logic"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                sheet = gc.open("scheduler")
+                worksheet = sheet.sheet1
+                
+                # Find the row for this bot
+                all_data = worksheet.get_all_records()
+                for i, row in enumerate(all_data, start=2):  # start=2 because row 1 is header
+                    if row.get('bots name', '').strip() == bot_name:
+                        # Update status column (column Q, which is index 16)
+                        worksheet.update_cell(i, 17, status)
+                        print(f"  ✓ Updated Google Sheet status for {bot_name}: {status}")
+                        return True
+                
+                print(f"  ✗ Bot {bot_name} not found in scheduler sheet")
+                return False
+                
+            except Exception as e:
+                print(f"  ⚠ Attempt {attempt}/{max_retries} failed to update Google Sheet for {bot_name}: {e}")
+                if attempt < max_retries:
+                    time.sleep(2)  # Wait before retry
+                else:
+                    print(f"  ✗ Failed to update Google Sheet for {bot_name} after {max_retries} attempts")
+                    return False
+
+    def execute_steps_9a_to_9e(self, schedule_data, valid_bots, gc, check_count):
+        """Execute steps 9a to 9e for bot execution management"""
+        current_day = datetime.now().strftime("%A").lower()
+        
+        # Map day names to column names
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at ', 'fri_stop at'],
+            'saturday': ['sat_start at', 'sat_stop at']
+        }
+        
+        if current_day not in day_columns:
+            return
+        
+        start_col, stop_col = day_columns[current_day]
+        
+        # Step 9a: Check every second for time range and switch
+        for row in schedule_data:
+            bot_name = row.get('bots name', '').strip()
+            
+            if bot_name not in valid_bots:
+                continue
+            
+            start_time = row.get(start_col, '').strip()
+            stop_time = row.get(stop_col, '').strip()
+            switch = row.get('switch', '').strip().lower()
+            remark = row.get('remark', '').strip()
+            last_run = row.get('last_run', '').strip()
+            
+            # Store in local data for reference
+            if bot_name not in self.local_schedule_data:
+                self.local_schedule_data[bot_name] = {
+                    'start_time': start_time,
+                    'stop_time': stop_time,
+                    'switch': switch,
+                    'remark': remark,
+                    'last_run': last_run,
+                    'status': row.get('status', '').strip()
+                }
+            
+            # Step 9a: Check if current time is between start_at and stop_at
+            if self.check_time_in_range(start_time, stop_time):
+                print(f"\n{self.BLUE}Step 9a: Time check PASSED for {bot_name}{self.ENDC}")
+                print(f"  Current time is between {start_time} and {stop_time}")
+                
+                # Step 9a: Check switch column
+                if switch == 'on':
+                    print(f"  Switch is ON for {bot_name}")
+                    
+                    # Step 9b: Check remark and last_run
+                    print(f"{self.BLUE}Step 9b: Checking remark and last_run for {bot_name}{self.ENDC}")
+                    should_continue = self.check_remark_and_last_run(remark, last_run)
+                    
+                    if should_continue:
+                        print(f"  Conditions met for {bot_name}, continuing to step 9c")
+                        
+                        # Step 9c: Pause sync and continue
+                        print(f"{self.BLUE}Step 9c: Pausing sync for {bot_name}{self.ENDC}")
+                        current_day_name = datetime.now().strftime("%A")
+                        current_date = datetime.now().strftime("%d-%m-%Y")
+                        print(f"  {current_day_name} {current_date} | Check #{check_count} | Next sync: 21s")
+                        
+                        # Step 9d: Mark status as "in progress"
+                        print(f"{self.BLUE}Step 9d: Updating status for {bot_name}{self.ENDC}")
+                        
+                        # First update local status
+                        self.update_local_status(bot_name, "in progress")
+                        
+                        # Then update Google Sheet with retry
+                        if self.update_google_sheet_status(gc, bot_name, "in progress"):
+                            print(f"  ✓ Successfully updated both local and Google Sheet status for {bot_name}")
+                            
+                            # Set other bots to "idle"
+                            for other_bot in valid_bots:
+                                if other_bot != bot_name:
+                                    self.update_local_status(other_bot, "idle")
+                                    self.update_google_sheet_status(gc, other_bot, "idle")
+                            
+                            print(f"  ✓ Set all other bots to 'idle'")
+                            
+                            # Step 9e: Continue with bot execution
+                            print(f"{self.BLUE}Step 9e: Starting bot execution for {bot_name}{self.ENDC}")
+                            if self.start_bot(bot_name):
+                                print(f"  ✓ Successfully started {bot_name}")
+                            else:
+                                print(f"  ✗ Failed to start {bot_name}")
+                        else:
+                            print(f"  ✗ Failed to update Google Sheet status for {bot_name}")
+                    
+                    else:
+                        print(f"  Conditions not met for {bot_name}, nothing to do")
+                else:
+                    print(f"  Switch is OFF for {bot_name}, nothing to do")
+            else:
+                # Bot not in scheduled time range, ensure it's stopped
+                if self.is_bot_running(bot_name):
+                    print(f"  {bot_name} is running but not in scheduled time, stopping...")
+                    self.stop_bot(bot_name)
+                    self.update_local_status(bot_name, "idle")
+                    self.update_google_sheet_status(gc, bot_name, "idle")
+
     def run_step9(self):
-        """Step 9: Monitor Scheduler Sheet and Control Bots"""
+        """Step 9: Monitor Scheduler Sheet and Control Bots with Steps 9a-9e"""
         print("\n" + "=" * 50)
         print("STEP 9: SCHEDULER MONITORING & BOT CONTROL")
         print("=" * 50)
@@ -2393,8 +2562,8 @@ class BotScheduler:
             
             # Authorize with Google Sheets
             SCOPES = [
-                "https://www.googleapis.com/auth/spreadsheets.readonly",
-                "https://www.googleapis.com/auth/drive.readonly"
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
             ]
             
             creds = Credentials.from_service_account_file(
@@ -2457,6 +2626,9 @@ class BotScheduler:
                         time.sleep(1)
                     print("\r" + " " * 80 + "\r", end="", flush=True)
                     continue
+                
+                # Execute steps 9a-9e for bot execution management
+                self.execute_steps_9a_to_9e(schedule_data, valid_bots, gc, check_count)
                 
                 # Format and display schedule - ONLY ONCE per sync
                 result = self.format_schedule_display(schedule_data, valid_bots)
