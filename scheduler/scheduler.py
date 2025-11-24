@@ -2428,6 +2428,7 @@ class BotScheduler:
             
             # Monitor scheduler sheet and control bots
             check_count = 0
+            
             while True:
                 check_count += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
@@ -2438,38 +2439,39 @@ class BotScheduler:
                 day = current_day.capitalize()
                 date = current_date
                 
+                # Clear screen at the start of each sync cycle
+                print("\033[2J\033[H")
+                
                 # Get scheduler data with error handling
                 try:
                     schedule_data = self.get_scheduler_data(gc)
                 except Exception as e:
-                    # Clear screen and show error
-                    print("\033[2J\033[H")
+                    # Show error message
                     print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
                     print(f"{self.YELLOW}Waiting 60 seconds...{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown
+                    # Wait 60 seconds with countdown - ONLY UPDATE THE COUNTDOWN
                     for countdown in range(60, 0, -1):
-                        print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
+                        # Update only the countdown in header without clearing
+                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
                         time.sleep(1)
-                    print("\r" + " " * 50 + "\r", end="", flush=True)
                     continue
                 
                 if schedule_data is None:
-                    # Clear screen and show no data available
-                    print("\033[2J\033[H")
+                    # Show no data available
                     print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
                     print(f"{self.YELLOW}Waiting 60 seconds...{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown
+                    # Wait 60 seconds with countdown - ONLY UPDATE THE COUNTDOWN
                     for countdown in range(60, 0, -1):
-                        print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
+                        # Update only the countdown in header without clearing
+                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
                         time.sleep(1)
-                    print("\r" + " " * 50 + "\r", end="", flush=True)
                     continue
                 
                 # Format and display schedule
@@ -2478,22 +2480,12 @@ class BotScheduler:
                 if result:
                     day, date, display_data = result
                     
-                    # Display initial table - only clear screen on first display
-                    if self.first_display:
-                        print("\033[2J\033[H")  # Clear screen only first time
-                        self.first_display = False
-                    
-                    # Calculate table position
-                    table_start_line = 1
-                    
-                    # Move cursor to top and redraw header
-                    print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: 60s{' ' * 20}")
+                    # Display header
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     
                     if not display_data:
-                        # Clear any previous table content
-                        for i in range(table_start_line + 2, table_start_line + 2 + self.table_lines):
-                            print(f"\033[{i};1H" + " " * 120)
-                        print(f"\033[{table_start_line + 2};1HNo scheduled bots for today")
+                        print("-" * 80)
+                        print("No scheduled bots for today")
                         self.table_lines = 1
                     else:
                         # Calculate column widths for all columns including new ones
@@ -2533,14 +2525,10 @@ class BotScheduler:
                         # Calculate table width for consistent dash lines
                         table_width = len(header)
                         
-                        # Move cursor to table position and redraw
-                        current_line = table_start_line + 2
-                        print(f"\033[{current_line};1H" + "-" * table_width)
-                        current_line += 1
-                        print(f"\033[{current_line};1H{header}")
-                        current_line += 1
-                        print(f"\033[{current_line};1H" + "-" * table_width)
-                        current_line += 1
+                        # Display table
+                        print("-" * table_width)
+                        print(header)
+                        print("-" * table_width)
                         
                         # Data rows
                         for item in display_data:
@@ -2551,49 +2539,34 @@ class BotScheduler:
                                    f"{item['status']:<{max_status_len}} "
                                    f"{item['last_run']:<{max_last_run_len}} "
                                    f"{item['remark']:<{max_remark_len}}")
-                            print(f"\033[{current_line};1H{row}")
-                            current_line += 1
-                        
-                        # Clear any remaining lines from previous display
-                        for i in range(current_line, table_start_line + 2 + self.table_lines):
-                            print(f"\033[{i};1H" + " " * 120)
+                            print(row)
                         
                         self.table_lines = len(display_data) + 2  # header + separator + rows
                     
-                    # Status line - ALWAYS keep cursor after this line
-                    status_line = table_start_line + 2 + self.table_lines + 1
-                    print(f"\033[{status_line};1H{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                    
-                    # Move cursor to the line AFTER the status line
-                    print(f"\033[{status_line + 1};1H")
+                    # Status line
+                    print(f"{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
-                    # Countdown timer - update only the countdown
+                    # Countdown timer - update only the countdown in header
                     for countdown in range(59, -1, -1):
                         time.sleep(1)
-                        # Update only the countdown in header
-                        print(f"\033[{table_start_line};1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
-                        # Ensure cursor stays after status line
-                        print(f"\033[{status_line + 1};1H")
-                    
+                        # Update only the countdown in header without clearing screen
+                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                
                 else:
-                    # Clear screen and show no data for today
-                    print("\033[2J\033[H")
+                    # Show no data for today
                     print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
-                    # Status line
                     print(f"{self.YELLOW}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                    # Move cursor to the line AFTER the status line
-                    print()
                     
-                    # Wait 60 seconds with countdown
+                    # Wait 60 seconds with countdown - ONLY UPDATE THE COUNTDOWN
                     for countdown in range(60, 0, -1):
-                        print(f"\rWaiting {countdown:02d} seconds for next sync...", end="", flush=True)
+                        # Update only the countdown in header without clearing
+                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
                         time.sleep(1)
-                    print("\r" + " " * 50 + "\r", end="", flush=True)
                 
                 # Store current schedule data
                 self.schedule_data = schedule_data
