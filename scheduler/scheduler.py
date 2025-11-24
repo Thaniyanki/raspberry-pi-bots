@@ -2451,13 +2451,12 @@ class BotScheduler:
                     print("-" * 80)
                     print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
-                    print(f"{self.YELLOW}Waiting 60 seconds...{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown - ONLY UPDATE THE COUNTDOWN
+                    # Wait 60 seconds with countdown
                     for countdown in range(60, 0, -1):
-                        # Update only the countdown in header without clearing
-                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                         time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
                     continue
                 
                 if schedule_data is None:
@@ -2465,13 +2464,12 @@ class BotScheduler:
                     print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
-                    print(f"{self.YELLOW}Waiting 60 seconds...{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown - ONLY UPDATE THE COUNTDOWN
+                    # Wait 60 seconds with countdown
                     for countdown in range(60, 0, -1):
-                        # Update only the countdown in header without clearing
-                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                         time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
                     continue
                 
                 # Format and display schedule
@@ -2549,11 +2547,11 @@ class BotScheduler:
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
-                    # Countdown timer - update only the countdown in header
-                    for countdown in range(59, -1, -1):
+                    # Countdown timer - use carriage return to update in place
+                    for countdown in range(60, 0, -1):
                         time.sleep(1)
-                        # Update only the countdown in header without clearing screen
-                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
                 
                 else:
                     # Show no data for today
@@ -2562,11 +2560,11 @@ class BotScheduler:
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     print(f"{self.YELLOW}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown - ONLY UPDATE THE COUNTDOWN
+                    # Wait 60 seconds with countdown
                     for countdown in range(60, 0, -1):
-                        # Update only the countdown in header without clearing
-                        print(f"\033[1;1H{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s{' ' * 20}")
+                        print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                         time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
                 
                 # Store current schedule data
                 self.schedule_data = schedule_data
