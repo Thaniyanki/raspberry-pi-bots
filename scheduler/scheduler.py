@@ -1537,7 +1537,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.click()
                     time.sleep(1)
@@ -1559,7 +1559,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.send_keys(Keys.ENTER)
                     print("✓ Message sent")
@@ -1902,7 +1902,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)
                     message_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.click()
                     time.sleep(1)
@@ -1925,7 +1925,7 @@ class BotScheduler:
                 try:
                     time.sleep(2)  # Wait for stability
                     message_input = WebDriverWait(self.driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+                        EC.presence_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
                     )
                     message_input.send_keys(Keys.ENTER)
                     print("✓ Message sent")
@@ -2155,16 +2155,6 @@ class BotScheduler:
         # Clear screen and move cursor to top
         print("\033[2J\033[H")
         
-        # Header with countdown and check count
-        header_line = f"{day} {date}"
-        if countdown is not None and check_count is not None:
-            header_line += f" | Check #{check_count} | Next sync: {countdown:02d}s"
-        print(header_line)
-        
-        if not schedule_data:
-            print("No scheduled bots for today")
-            return
-        
         # Calculate column widths based on content
         max_name_len = max(len(item['bot_name']) for item in schedule_data)
         max_name_len = max(max_name_len, len("bots name"))
@@ -2223,6 +2213,10 @@ class BotScheduler:
                    f"{item['last_run']:<{max_last_run_len}} "
                    f"{item['remark']:<{max_remark_len}}")
             print(row)
+        
+        # Show only the bottom status line with countdown
+        if countdown is not None and check_count is not None:
+            print(f"{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s")
 
     def get_bot_main_script(self, bot_folder):
         """Get the main Python script for a bot folder"""
@@ -2478,10 +2472,8 @@ class BotScheduler:
                 if result:
                     day, date, display_data = result
                     
-                    # Display header
-                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
-                    
                     if not display_data:
+                        print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                         print("-" * 80)
                         print("No scheduled bots for today")
                         self.table_lines = 1
@@ -2541,9 +2533,6 @@ class BotScheduler:
                         
                         self.table_lines = len(display_data) + 2  # header + separator + rows
                     
-                    # Status line
-                    print(f"{self.GREEN}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
-                    
                     # Sync bots with current schedule
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
@@ -2558,7 +2547,6 @@ class BotScheduler:
                     print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
-                    print(f"{self.YELLOW}✓ Scheduler data synchronized and bots controlled successfully{self.ENDC}")
                     
                     # Wait 60 seconds with countdown
                     for countdown in range(60, 0, -1):
