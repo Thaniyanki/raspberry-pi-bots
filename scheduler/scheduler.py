@@ -2148,6 +2148,9 @@ class BotScheduler:
 
     def display_schedule_table(self, day, date, schedule_data, countdown=None, check_count=None):
         """Display the schedule in a formatted table with countdown timer including status, last_run, and remark"""
+        # Clear screen and move cursor to top
+        print("\033[2J\033[H")
+        
         # Calculate column widths based on content
         max_name_len = max(len(item['bot_name']) for item in schedule_data)
         max_name_len = max(max_name_len, len("bots name"))
@@ -2425,12 +2428,15 @@ class BotScheduler:
                 day = current_day.capitalize()
                 date = current_date
                 
+                # Clear terminal completely
+                print("\033[2J\033[H")
+                
                 # Get scheduler data with error handling
                 try:
                     schedule_data = self.get_scheduler_data(gc)
                 except Exception as e:
                     # Show error message
-                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
@@ -2444,7 +2450,7 @@ class BotScheduler:
                 
                 if schedule_data is None:
                     # Show no data available
-                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
                     
@@ -2455,14 +2461,14 @@ class BotScheduler:
                     print("\r" + " " * 80 + "\r", end="", flush=True)
                     continue
                 
-                # Format and display schedule - ONLY ONCE per sync
+                # Format and display schedule
                 result = self.format_schedule_display(schedule_data, valid_bots)
                 
                 if result:
                     day, date, display_data = result
                     
                     if not display_data:
-                        print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                        print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                         print("-" * 80)
                         print("No scheduled bots for today")
                     else:
@@ -2503,8 +2509,8 @@ class BotScheduler:
                         # Calculate table width for consistent dash lines
                         table_width = len(header)
                         
-                        # Display table ONLY ONCE
-                        print("\n" + "-" * table_width)
+                        # Display fresh table
+                        print("-" * table_width)
                         print(header)
                         print("-" * table_width)
                         
@@ -2530,7 +2536,7 @@ class BotScheduler:
                 
                 else:
                     # Show no data for today
-                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"{day} {date} | Check #{check_count} | Next sync: 60s")
                     print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     
