@@ -2425,6 +2425,9 @@ class BotScheduler:
                 day = current_day.capitalize()
                 date = current_date
                 
+                # Display "00s" while syncing with Google Sheets
+                print(f"\r{day} {date} | Check #{check_count} | Next sync: 00s", end="", flush=True)
+                
                 # Get scheduler data with error handling
                 try:
                     schedule_data = self.get_scheduler_data(gc)
