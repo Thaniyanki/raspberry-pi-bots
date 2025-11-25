@@ -2414,6 +2414,7 @@ class BotScheduler:
         stop_time_norm = self.normalize_time_format(stop_time)
         
         if not start_time_norm or not stop_time_norm:
+            print(f"  ⚠ Invalid time format: start='{start_time}', stop='{stop_time}'")
             return False
         
         print(f"  Time Check: Current={current_time}, Start={start_time_norm}, Stop={stop_time_norm}")
