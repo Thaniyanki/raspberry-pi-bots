@@ -1202,7 +1202,7 @@ class BotScheduler:
                                     created_count += 1
                     
                     except Exception as e:
-                        print(f"  ❌ Error processing bot '{local_bot_name': {e}")
+                        print(f"  ❌ Error processing bot '{local_bot_name}': {e}")
                         error_count += 1
                         continue
             
