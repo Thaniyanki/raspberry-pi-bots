@@ -2473,6 +2473,167 @@ class BotScheduler:
                     print(f"  ✗ Failed to update Google Sheet for {bot_name} after {max_retries} attempts")
                     return False
 
+    def prepare_run_command(self, bot_name):
+        """Prepare the run command for a bot based on its name"""
+        # Convert bot name to GitHub format
+        github_bot_name = bot_name.replace(' ', '-')
+        
+        # Get the username programmatically
+        username = self.username
+        
+        # Construct the run command
+        run_command = f'cd "/home/{username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_bot_name}.py" | python3'
+        
+        print(f"  Run command prepared for {bot_name}:")
+        print(f"    {run_command}")
+        
+        return run_command
+
+    def run_bot_with_command(self, bot_name, run_command, start_time, stop_time, gc):
+        """Run the bot using the prepared command and monitor its execution"""
+        print(f"  Starting bot execution for {bot_name}...")
+        
+        try:
+            # Start the bot process
+            process = subprocess.Popen(
+                run_command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            
+            # Store the process
+            self.bot_processes[bot_name] = process
+            
+            # Monitor the process
+            start_timestamp = datetime.now()
+            print(f"  Bot {bot_name} started at: {start_timestamp.strftime('%d-%m-%Y %H:%M:%S')}")
+            
+            # Convert start_time and stop_time to datetime objects for comparison
+            current_date = datetime.now().strftime("%d-%m-%Y")
+            start_datetime = datetime.strptime(f"{current_date} {start_time}", "%d-%m-%Y %H:%M")
+            stop_datetime = datetime.strptime(f"{current_date} {stop_time}", "%d-%m-%Y %H:%M")
+            
+            # Handle overnight schedules
+            if stop_datetime < start_datetime:
+                stop_datetime = stop_datetime.replace(day=stop_datetime.day + 1)
+            
+            # Monitor process and check for timeout
+            while process.poll() is None:
+                current_datetime = datetime.now()
+                
+                # Check if current time exceeds stop_time
+                if current_datetime > stop_datetime:
+                    print(f"  ⚠ Bot {bot_name} exceeded allocated time, stopping forcefully...")
+                    
+                    # Forcefully stop the bot
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    
+                    # Update status and remark for forceful stop
+                    self.update_local_status(bot_name, "idle")
+                    self.update_google_sheet_status(gc, bot_name, "idle")
+                    
+                    # Update last_run and remark in Google Sheet
+                    self.update_google_sheet_last_run_and_remark(
+                        gc, bot_name, 
+                        current_datetime.strftime("%d-%m-%Y %H:%M:%S"), 
+                        "forcefully stopped"
+                    )
+                    
+                    print(f"  ✓ Bot {bot_name} forcefully stopped and status updated")
+                    return False
+                
+                # Wait a bit before checking again
+                time.sleep(5)
+            
+            # Process completed normally
+            exit_code = process.poll()
+            end_timestamp = datetime.now()
+            
+            if exit_code == 0:
+                print(f"  ✓ Bot {bot_name} completed successfully")
+                
+                # Update status, last_run and remark for successful completion
+                self.update_local_status(bot_name, "idle")
+                self.update_google_sheet_status(gc, bot_name, "idle")
+                
+                # Update last_run and remark in Google Sheet
+                self.update_google_sheet_last_run_and_remark(
+                    gc, bot_name, 
+                    end_timestamp.strftime("%d-%m-%Y %H:%M:%S"), 
+                    "sucessfully done"
+                )
+                
+                print(f"  ✓ Bot {bot_name} status updated to 'idle' with remark 'sucessfully done'")
+                return True
+            else:
+                print(f"  ✗ Bot {bot_name} failed with exit code: {exit_code}")
+                
+                # Update status and remark for failed execution
+                self.update_local_status(bot_name, "idle")
+                self.update_google_sheet_status(gc, bot_name, "idle")
+                
+                # Update last_run and remark in Google Sheet
+                self.update_google_sheet_last_run_and_remark(
+                    gc, bot_name, 
+                    end_timestamp.strftime("%d-%m-%Y %H:%M:%S"), 
+                    f"failed with exit code {exit_code}"
+                )
+                
+                return False
+                
+        except Exception as e:
+            print(f"  ❌ Error running bot {bot_name}: {e}")
+            
+            # Update status for error case
+            self.update_local_status(bot_name, "idle")
+            self.update_google_sheet_status(gc, bot_name, "idle")
+            
+            # Update last_run and remark in Google Sheet
+            self.update_google_sheet_last_run_and_remark(
+                gc, bot_name, 
+                datetime.now().strftime("%d-%m-%Y %H:%M:%S"), 
+                f"error: {str(e)}"
+            )
+            
+            return False
+
+    def update_google_sheet_last_run_and_remark(self, gc, bot_name, last_run, remark, max_retries=3):
+        """Update last_run and remark in Google Sheet"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                sheet = gc.open("scheduler")
+                worksheet = sheet.sheet1
+                
+                # Find the row for this bot
+                all_data = worksheet.get_all_records()
+                for i, row in enumerate(all_data, start=2):  # start=2 because row 1 is header
+                    if row.get('bots name', '').strip() == bot_name:
+                        # Update last_run column (column R, which is index 18)
+                        worksheet.update_cell(i, 18, last_run)
+                        # Update remark column (column S, which is index 19)
+                        worksheet.update_cell(i, 19, remark)
+                        print(f"  ✓ Updated Google Sheet for {bot_name}: last_run='{last_run}', remark='{remark}'")
+                        return True
+                
+                print(f"  ✗ Bot {bot_name} not found in scheduler sheet")
+                return False
+                
+            except Exception as e:
+                print(f"  ⚠ Attempt {attempt}/{max_retries} failed to update Google Sheet for {bot_name}: {e}")
+                if attempt < max_retries:
+                    time.sleep(2)  # Wait before retry
+                else:
+                    print(f"  ✗ Failed to update Google Sheet for {bot_name} after {max_retries} attempts")
+                    return False
+
     def execute_steps_9a_to_9e(self, schedule_data, valid_bots, gc, check_count):
         """Execute steps 9a to 9e for bot execution management"""
         current_day = datetime.now().strftime("%A").lower()
@@ -2561,12 +2722,19 @@ class BotScheduler:
                             
                             print(f"  ✓ Set all other bots to 'idle'")
                             
-                            # Step 9e: Continue with bot execution
+                            # Step 9e: Prepare run command and run the bot
                             print(f"{self.BLUE}  Step 9e: Starting bot execution for {bot_name}{self.ENDC}")
-                            if self.start_bot(bot_name):
-                                print(f"  ✓ Successfully started {bot_name}")
+                            
+                            # Prepare the run command
+                            run_command = self.prepare_run_command(bot_name)
+                            
+                            # Run the bot with the prepared command
+                            success = self.run_bot_with_command(bot_name, run_command, start_time, stop_time, gc)
+                            
+                            if success:
+                                print(f"  ✓ Bot {bot_name} executed successfully")
                             else:
-                                print(f"  ✗ Failed to start {bot_name}")
+                                print(f"  ✗ Bot {bot_name} execution failed")
                         else:
                             print(f"  ✗ Failed to update Google Sheet status for {bot_name}")
                     
