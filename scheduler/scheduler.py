@@ -2337,7 +2337,7 @@ class BotScheduler:
         return False
 
     def sync_bots_with_schedule(self, schedule_data, valid_bots):
-        """Sync bot processes with current schedule - UPDATED to respect time check"""
+        """Sync bot processes with current schedule"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2372,26 +2372,14 @@ class BotScheduler:
             if not bot_schedule:
                 continue
             
-            # Use the same time check logic as in execute_steps_9a_to_9e
-            start_time = bot_schedule.get('start_at', '')
-            stop_time = bot_schedule.get('stop_at', '')
-            switch = bot_schedule.get('switch', '')
-            
-            # Check if current time is between start_at and stop_at
-            time_in_range = self.check_time_in_range(start_time, stop_time)
-            
-            # Only run if: time is in range AND switch is on
-            should_run = time_in_range and switch == 'on'
+            should_run = self.should_bot_run_now(bot_schedule)
             is_running = self.is_bot_running(bot_name)
             
             # Start or stop bot based on schedule
             if should_run and not is_running:
-                print(f"  ⚠ {bot_name} should be running but isn't - starting...")
                 self.start_bot(bot_name)
             elif not should_run and is_running:
-                print(f"  ⚠ {bot_name} is running but shouldn't be - stopping...")
                 self.stop_bot(bot_name)
-                self.update_local_status(bot_name, "idle")
 
     # NEW METHODS FOR STEPS 9a-9e
 
@@ -2418,7 +2406,7 @@ class BotScheduler:
         return None
 
     def check_time_in_range(self, start_time, stop_time):
-        """Check if current time is between start_time and stop_time"""
+        """Check if current time is between start_time and stop_time - FIXED VERSION"""
         current_time = datetime.now().strftime("%H:%M")
         
         # Normalize time formats
@@ -2433,10 +2421,12 @@ class BotScheduler:
         
         # Handle overnight schedules (stop time < start time)
         if stop_time_norm < start_time_norm:
+            # Overnight: current time should be >= start_time OR <= stop_time
             result = current_time >= start_time_norm or current_time <= stop_time_norm
             print(f"  Overnight schedule: {result}")
             return result
         else:
+            # Normal: current time should be between start_time and stop_time
             result = start_time_norm <= current_time <= stop_time_norm
             print(f"  Normal schedule: {result}")
             return result
@@ -2729,7 +2719,7 @@ class BotScheduler:
                     return False
 
     def execute_steps_9a_to_9e(self, schedule_data, valid_bots, gc, check_count):
-        """Execute steps 9a to 9e for bot execution management"""
+        """Execute steps 9a to 9e for bot execution management - FIXED VERSION"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2778,85 +2768,72 @@ class BotScheduler:
             print(f"  Remark: {remark}, Last Run: {last_run}, Status: {current_status}")
             
             # Step 9a: Check if current time is between start_at and stop_at
-            time_in_range = self.check_time_in_range(start_time, stop_time)
-            
-            if not time_in_range:
-                print(f"{self.YELLOW}  ⚠ Step 9a: Time check FAILED for {bot_name}{self.ENDC}")
-                # IMMEDIATELY stop the bot if it's running and not in scheduled time
-                if self.is_bot_running(bot_name):
-                    print(f"  ⚠ {bot_name} is running but not in scheduled time, stopping immediately...")
-                    self.stop_bot(bot_name)
-                    self.update_local_status(bot_name, "idle")
-                    self.update_google_sheet_status(gc, bot_name, "idle")
+            if self.check_time_in_range(start_time, stop_time):
+                print(f"{self.GREEN}  ✓ Step 9a: Time check PASSED for {bot_name}{self.ENDC}")
+                
+                # Step 9a: Check switch column
+                if switch == 'on':
+                    print(f"  ✓ Switch is ON for {bot_name}")
+                    
+                    # Step 9b: Check remark and last_run
+                    print(f"{self.BLUE}  Step 9b: Checking remark and last_run for {bot_name}{self.ENDC}")
+                    should_continue = self.check_remark_and_last_run(remark, last_run)
+                    
+                    if should_continue:
+                        print(f"  ✓ Conditions met for {bot_name}, continuing to step 9c")
+                        
+                        # Step 9c: Pause sync and continue
+                        print(f"{self.BLUE}  Step 9c: Pausing sync for {bot_name}{self.ENDC}")
+                        current_day_name = datetime.now().strftime("%A")
+                        current_date = datetime.now().strftime("%d-%m-%Y")
+                        print(f"  {current_day_name} {current_date} | Check #{check_count} | Next sync: 21s")
+                        
+                        # Step 9d: Mark status as "in progress"
+                        print(f"{self.BLUE}  Step 9d: Updating status for {bot_name}{self.ENDC}")
+                        
+                        # First update local status
+                        self.update_local_status(bot_name, "in progress")
+                        
+                        # Then update Google Sheet with retry
+                        if self.update_google_sheet_status(gc, bot_name, "in progress"):
+                            print(f"  ✓ Successfully updated both local and Google Sheet status for {bot_name}")
+                            
+                            # Set other bots to "idle"
+                            for other_bot in valid_bots:
+                                if other_bot != bot_name:
+                                    self.update_local_status(other_bot, "idle")
+                                    self.update_google_sheet_status(gc, other_bot, "idle")
+                            
+                            print(f"  ✓ Set all other bots to 'idle'")
+                            
+                            # Step 9e: Prepare run command and run the bot
+                            print(f"{self.BLUE}  Step 9e: Starting bot execution for {bot_name}{self.ENDC}")
+                            
+                            # Prepare the run command
+                            run_command = self.prepare_run_command(bot_name)
+                            
+                            # Run the bot with the prepared command
+                            success = self.run_bot_with_command(bot_name, run_command, start_time, stop_time, gc)
+                            
+                            if success:
+                                print(f"  ✓ Bot {bot_name} executed successfully")
+                            else:
+                                print(f"  ✗ Bot {bot_name} execution failed")
+                        else:
+                            print(f"  ✗ Failed to update Google Sheet status for {bot_name}")
+                    
+                    else:
+                        print(f"  ⚠ Conditions not met for {bot_name}, nothing to do")
                 else:
-                    print(f"  ✓ {bot_name} is not running and not in scheduled time - nothing to do")
-                continue  # CRITICAL: Skip all further processing for this bot
-            
-            # Only reach here if time check PASSED
-            print(f"{self.GREEN}  ✓ Step 9a: Time check PASSED for {bot_name}{self.ENDC}")
-            
-            # Step 9a: Check switch column
-            if switch != 'on':
-                print(f"  ⚠ Switch is OFF for {bot_name}, nothing to do")
-                # Also stop bot if it's running but switch is off
-                if self.is_bot_running(bot_name):
-                    print(f"  ⚠ {bot_name} is running but switch is OFF, stopping...")
-                    self.stop_bot(bot_name)
-                    self.update_local_status(bot_name, "idle")
-                    self.update_google_sheet_status(gc, bot_name, "idle")
-                continue  # Skip further processing if switch is off
-            
-            print(f"  ✓ Switch is ON for {bot_name}")
-            
-            # Step 9b: Check remark and last_run
-            print(f"{self.BLUE}  Step 9b: Checking remark and last_run for {bot_name}{self.ENDC}")
-            should_continue = self.check_remark_and_last_run(remark, last_run)
-            
-            if not should_continue:
-                print(f"  ⚠ Conditions not met for {bot_name}, nothing to do")
-                continue  # Skip further processing
-            
-            print(f"  ✓ Conditions met for {bot_name}, continuing to step 9c")
-            
-            # Step 9c: Pause sync and continue
-            print(f"{self.BLUE}  Step 9c: Pausing sync for {bot_name}{self.ENDC}")
-            current_day_name = datetime.now().strftime("%A")
-            current_date = datetime.now().strftime("%d-%m-%Y")
-            print(f"  {current_day_name} {current_date} | Check #{check_count} | Next sync: 21s")
-            
-            # Step 9d: Mark status as "in progress"
-            print(f"{self.BLUE}  Step 9d: Updating status for {bot_name}{self.ENDC}")
-            
-            # First update local status
-            self.update_local_status(bot_name, "in progress")
-            
-            # Then update Google Sheet with retry
-            if self.update_google_sheet_status(gc, bot_name, "in progress"):
-                print(f"  ✓ Successfully updated both local and Google Sheet status for {bot_name}")
-                
-                # Set other bots to "idle"
-                for other_bot in valid_bots:
-                    if other_bot != bot_name:
-                        self.update_local_status(other_bot, "idle")
-                        self.update_google_sheet_status(gc, other_bot, "idle")
-                
-                print(f"  ✓ Set all other bots to 'idle'")
-                
-                # Step 9e: Prepare run command and run the bot
-                print(f"{self.BLUE}  Step 9e: Starting bot execution for {bot_name}{self.ENDC}")
-                
-                # Prepare the run command
-                run_command = self.prepare_run_command(bot_name)
-                
-                # Run the bot with the prepared command
-                success = self.run_bot_with_command(bot_name, run_command, start_time, stop_time, gc)
-                
-                if success:
-                    print(f"  ✓ Bot {bot_name} executed successfully")
-                else:
-                    print(f"  ✗ Bot {bot_name} execution failed")
+                    print(f"  ⚠ Switch is OFF for {bot_name}, nothing to do")
             else:
-                print(f"  ✗ Failed to update Google Sheet status for {bot_name}")
+                print(f"{self.YELLOW}  ⚠ Step 9a: Time check FAILED for {bot_name}{self.ENDC}")
+                # Bot not in scheduled time range, ensure it's stopped
+                if self.is_bot_running(bot_name):
+                    print(f"  ⚠ {bot_name} is running but not in scheduled time, stopping...")
+                    self.stop_bot(bot_name)
+                    self.update_local_status(bot_name, "idle")
+                    self.update_google_sheet_status(gc, bot_name, "idle")
 
     def run_step9(self):
         """Step 9: Monitor Scheduler Sheet and Control Bots with Steps 9a-9e"""
