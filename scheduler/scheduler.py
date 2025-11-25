@@ -1202,7 +1202,7 @@ class BotScheduler:
                                     created_count += 1
                     
                     except Exception as e:
-                        print(f"  ❌ Error processing bot '{local_bot_name}': {e}")
+                        print(f"  ❌ Error processing bot '{local_bot_name': {e}")
                         error_count += 1
                         continue
             
@@ -2488,8 +2488,8 @@ class BotScheduler:
         # Get the username programmatically
         username = self.username
         
-        # Construct the run command - using bash -c for proper shell execution
-        run_command = f'bash -c "cd /home/{username}/bots/{bot_name} && source venv/bin/activate && curl -sL https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_file_name} | python3"'
+        # Construct the run command with proper quoting for paths with spaces
+        run_command = f'bash -c "cd \\"/home/{username}/bots/{bot_name}\\" && source venv/bin/activate && curl -sL https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_file_name} | python3"'
         
         print(f"  Run command prepared for {bot_name}:")
         print(f"    {run_command}")
