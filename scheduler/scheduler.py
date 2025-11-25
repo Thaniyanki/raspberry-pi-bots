@@ -2475,14 +2475,17 @@ class BotScheduler:
 
     def prepare_run_command(self, bot_name):
         """Prepare the run command for a bot based on its name"""
-        # Convert bot name to GitHub format
+        # Convert bot name to GitHub format for the folder
         github_bot_name = bot_name.replace(' ', '-')
+        
+        # For the filename, we need to URL encode the spaces
+        github_file_name = bot_name.replace(' ', '%20') + '.py'
         
         # Get the username programmatically
         username = self.username
         
         # Construct the run command
-        run_command = f'cd "/home/{username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_bot_name}.py" | python3'
+        run_command = f'cd "/home/{username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_file_name}" | python3'
         
         print(f"  Run command prepared for {bot_name}:")
         print(f"    {run_command}")
@@ -2511,14 +2514,30 @@ class BotScheduler:
             start_timestamp = datetime.now()
             print(f"  Bot {bot_name} started at: {start_timestamp.strftime('%d-%m-%Y %H:%M:%S')}")
             
-            # Convert start_time and stop_time to datetime objects for comparison
-            current_date = datetime.now().strftime("%d-%m-%Y")
-            start_datetime = datetime.strptime(f"{current_date} {start_time}", "%d-%m-%Y %H:%M")
-            stop_datetime = datetime.strptime(f"{current_date} {stop_time}", "%d-%m-%Y %H:%M")
+            # Parse times with error handling
+            try:
+                # Normalize time formats first
+                start_time_norm = self.normalize_time_format(start_time)
+                stop_time_norm = self.normalize_time_format(stop_time)
+                
+                if not start_time_norm or not stop_time_norm:
+                    print(f"  ⚠ Invalid time format: start='{start_time}', stop='{stop_time}'")
+                    # Use default 1-hour window if times are invalid
+                    stop_datetime = start_timestamp.replace(hour=start_timestamp.hour + 1)
+                else:
+                    current_date = datetime.now().strftime("%d-%m-%Y")
+                    start_datetime = datetime.strptime(f"{current_date} {start_time_norm}", "%d-%m-%Y %H:%M")
+                    stop_datetime = datetime.strptime(f"{current_date} {stop_time_norm}", "%d-%m-%Y %H:%M")
+                    
+                    # Handle overnight schedules
+                    if stop_datetime < start_datetime:
+                        stop_datetime = stop_datetime.replace(day=stop_datetime.day + 1)
+                        
+            except ValueError as e:
+                print(f"  ⚠ Time parsing error: {e}, using default 1-hour window")
+                stop_datetime = start_timestamp.replace(hour=start_timestamp.hour + 1)
             
-            # Handle overnight schedules
-            if stop_datetime < start_datetime:
-                stop_datetime = stop_datetime.replace(day=stop_datetime.day + 1)
+            print(f"  Bot {bot_name} will run until: {stop_datetime.strftime('%d-%m-%Y %H:%M:%S')}")
             
             # Monitor process and check for timeout
             while process.poll() is None:
