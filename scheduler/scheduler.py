@@ -2396,7 +2396,11 @@ class BotScheduler:
             if len(parts) >= 2:
                 hours = parts[0].zfill(2)  # Ensure 2-digit hours
                 minutes = parts[1].zfill(2)  # Ensure 2-digit minutes
-                return f"{hours}:{minutes}"
+                # Handle seconds if present
+                if len(parts) > 2:
+                    return f"{hours}:{minutes}"
+                else:
+                    return f"{hours}:{minutes}"
         
         return None
 
@@ -2484,8 +2488,8 @@ class BotScheduler:
         # Get the username programmatically
         username = self.username
         
-        # Construct the run command
-        run_command = f'cd "/home/{username}/bots/{bot_name}" && source venv/bin/activate && curl -sL "https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_file_name}" | python3'
+        # Construct the run command - using bash -c for proper shell execution
+        run_command = f'bash -c "cd /home/{username}/bots/{bot_name} && source venv/bin/activate && curl -sL https://raw.githubusercontent.com/Thaniyanki/raspberry-pi-bots/main/{github_bot_name}/{github_file_name} | python3"'
         
         print(f"  Run command prepared for {bot_name}:")
         print(f"    {run_command}")
@@ -2497,10 +2501,11 @@ class BotScheduler:
         print(f"  Starting bot execution for {bot_name}...")
         
         try:
-            # Start the bot process
+            # Start the bot process with proper shell execution
             process = subprocess.Popen(
                 run_command,
                 shell=True,
+                executable='/bin/bash',
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
@@ -2526,14 +2531,18 @@ class BotScheduler:
                     stop_datetime = start_timestamp.replace(hour=start_timestamp.hour + 1)
                 else:
                     current_date = datetime.now().strftime("%d-%m-%Y")
-                    start_datetime = datetime.strptime(f"{current_date} {start_time_norm}", "%d-%m-%Y %H:%M")
-                    stop_datetime = datetime.strptime(f"{current_date} {stop_time_norm}", "%d-%m-%Y %H:%M")
-                    
-                    # Handle overnight schedules
-                    if stop_datetime < start_datetime:
-                        stop_datetime = stop_datetime.replace(day=stop_datetime.day + 1)
+                    try:
+                        start_datetime = datetime.strptime(f"{current_date} {start_time_norm}", "%d-%m-%Y %H:%M")
+                        stop_datetime = datetime.strptime(f"{current_date} {stop_time_norm}", "%d-%m-%Y %H:%M")
                         
-            except ValueError as e:
+                        # Handle overnight schedules
+                        if stop_datetime < start_datetime:
+                            stop_datetime = stop_datetime.replace(day=stop_datetime.day + 1)
+                    except ValueError as e:
+                        print(f"  ⚠ Time parsing error: {e}, using default 1-hour window")
+                        stop_datetime = start_timestamp.replace(hour=start_timestamp.hour + 1)
+                        
+            except Exception as e:
                 print(f"  ⚠ Time parsing error: {e}, using default 1-hour window")
                 stop_datetime = start_timestamp.replace(hour=start_timestamp.hour + 1)
             
@@ -2575,6 +2584,14 @@ class BotScheduler:
             # Process completed normally
             exit_code = process.poll()
             end_timestamp = datetime.now()
+            
+            # Read any remaining output
+            try:
+                output, _ = process.communicate(timeout=5)
+                if output:
+                    print(f"  Bot output: {output}")
+            except:
+                pass
             
             if exit_code == 0:
                 print(f"  ✓ Bot {bot_name} completed successfully")
