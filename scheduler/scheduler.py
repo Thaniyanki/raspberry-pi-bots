@@ -12,6 +12,7 @@ import csv
 import requests
 import json
 import platform
+import threading
 from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
@@ -2497,11 +2498,11 @@ class BotScheduler:
         return run_command
 
     def run_bot_with_command(self, bot_name, run_command, start_time, stop_time, gc):
-        """Run the bot using the prepared command and monitor its execution"""
+        """Run the bot using the prepared command and monitor its execution with LIVE output"""
         print(f"  Starting bot execution for {bot_name}...")
         
         try:
-            # Start the bot process with proper shell execution
+            # Start the bot process with proper shell execution and live output
             process = subprocess.Popen(
                 run_command,
                 shell=True,
@@ -2518,6 +2519,9 @@ class BotScheduler:
             # Monitor the process
             start_timestamp = datetime.now()
             print(f"  Bot {bot_name} started at: {start_timestamp.strftime('%d-%m-%Y %H:%M:%S')}")
+            print(f"  {'='*60}")
+            print(f"  LIVE OUTPUT FOR {bot_name}:")
+            print(f"  {'='*60}")
             
             # Parse times with error handling
             try:
@@ -2547,8 +2551,32 @@ class BotScheduler:
                 stop_datetime = start_timestamp.replace(hour=start_timestamp.hour + 1)
             
             print(f"  Bot {bot_name} will run until: {stop_datetime.strftime('%d-%m-%Y %H:%M:%S')}")
+            print(f"  {'='*60}")
             
-            # Monitor process and check for timeout
+            # Read output line by line in real-time
+            output_lines = []
+            process_output_complete = False
+            
+            def read_output():
+                """Read output from process in real-time"""
+                nonlocal process_output_complete
+                try:
+                    for line in process.stdout:
+                        line = line.strip()
+                        if line:
+                            output_lines.append(line)
+                            print(f"  [{bot_name}] {line}")
+                    process_output_complete = True
+                except Exception as e:
+                    print(f"  ⚠ Error reading output: {e}")
+                    process_output_complete = True
+            
+            # Start output reading thread
+            output_thread = threading.Thread(target=read_output)
+            output_thread.daemon = True
+            output_thread.start()
+            
+            # Monitor process and check for timeout with live output
             while process.poll() is None:
                 current_datetime = datetime.now()
                 
@@ -2576,22 +2604,39 @@ class BotScheduler:
                     )
                     
                     print(f"  ✓ Bot {bot_name} forcefully stopped and status updated")
+                    print(f"  {'='*60}")
                     return False
                 
                 # Wait a bit before checking again
-                time.sleep(5)
+                time.sleep(2)
+            
+            # Wait for output thread to complete
+            output_thread.join(timeout=5)
             
             # Process completed normally
             exit_code = process.poll()
             end_timestamp = datetime.now()
             
-            # Read any remaining output
-            try:
-                output, _ = process.communicate(timeout=5)
-                if output:
-                    print(f"  Bot output: {output}")
-            except:
-                pass
+            # Ensure all output is read
+            if not process_output_complete:
+                try:
+                    remaining_output, _ = process.communicate(timeout=5)
+                    if remaining_output:
+                        lines = remaining_output.strip().split('\n')
+                        for line in lines:
+                            if line.strip():
+                                output_lines.append(line.strip())
+                                print(f"  [{bot_name}] {line.strip()}")
+                except:
+                    pass
+            
+            print(f"  {'='*60}")
+            print(f"  Bot {bot_name} execution completed")
+            print(f"  Exit code: {exit_code}")
+            print(f"  Start time: {start_timestamp.strftime('%d-%m-%Y %H:%M:%S')}")
+            print(f"  End time: {end_timestamp.strftime('%d-%m-%Y %H:%M:%S')}")
+            print(f"  Duration: {end_timestamp - start_timestamp}")
+            print(f"  {'='*60}")
             
             if exit_code == 0:
                 print(f"  ✓ Bot {bot_name} completed successfully")
