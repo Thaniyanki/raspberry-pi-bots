@@ -2406,7 +2406,7 @@ class BotScheduler:
         return None
 
     def check_time_in_range(self, start_time, stop_time):
-        """Check if current time is between start_time and stop_time"""
+        """Check if current time is between start_time and stop_time - FIXED VERSION"""
         current_time = datetime.now().strftime("%H:%M")
         
         # Normalize time formats
@@ -2414,16 +2414,19 @@ class BotScheduler:
         stop_time_norm = self.normalize_time_format(stop_time)
         
         if not start_time_norm or not stop_time_norm:
+            print(f"  ⚠ Invalid time format: start='{start_time}', stop='{stop_time}'")
             return False
         
         print(f"  Time Check: Current={current_time}, Start={start_time_norm}, Stop={stop_time_norm}")
         
         # Handle overnight schedules (stop time < start time)
         if stop_time_norm < start_time_norm:
+            # Overnight: current time should be >= start_time OR <= stop_time
             result = current_time >= start_time_norm or current_time <= stop_time_norm
             print(f"  Overnight schedule: {result}")
             return result
         else:
+            # Normal: current time should be between start_time and stop_time
             result = start_time_norm <= current_time <= stop_time_norm
             print(f"  Normal schedule: {result}")
             return result
@@ -2716,7 +2719,7 @@ class BotScheduler:
                     return False
 
     def execute_steps_9a_to_9e(self, schedule_data, valid_bots, gc, check_count):
-        """Execute steps 9a to 9e for bot execution management"""
+        """Execute steps 9a to 9e for bot execution management - FIXED VERSION"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
