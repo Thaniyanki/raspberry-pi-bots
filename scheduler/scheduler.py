@@ -2236,7 +2236,7 @@ class BotScheduler:
         return None
 
     def is_bot_running(self, bot_name):
-        """Check if a bot is currently running - FIXED VERSION"""
+        """Check if a bot is currently running - FIXED to prevent false positives"""
         if bot_name not in self.bot_processes:
             return False
         
@@ -2244,12 +2244,18 @@ class BotScheduler:
         if process is None:
             return False
         
-        # Check if process is still alive
-        return process.poll() is None
+        # Check if process is actually running (not just defined)
+        try:
+            return process.poll() is None
+        except:
+            # If there's any error checking process status, assume it's not running
+            self.bot_processes[bot_name] = None
+            return False
 
     def start_bot(self, bot_name):
         """Start a bot process"""
         if self.is_bot_running(bot_name):
+            print(f"  ⚠ {bot_name} is already running")
             return True
         
         try:
@@ -2257,17 +2263,20 @@ class BotScheduler:
             main_script = self.get_bot_main_script(bot_name)
             
             if not main_script:
+                print(f"  ✗ No main script found for {bot_name}")
                 return False
             
             # Get venv path
             venv_path = self.get_venv_path(bot_folder)
             if not venv_path:
+                print(f"  ✗ No venv found for {bot_name}")
                 return False
             
             # Activate venv and run the bot
             python_executable = venv_path / "bin" / "python3"
             
             if not python_executable.exists():
+                print(f"  ✗ Python executable not found for {bot_name}")
                 return False
             
             # Start the bot process
@@ -2280,14 +2289,17 @@ class BotScheduler:
             )
             
             self.bot_processes[bot_name] = process
+            print(f"  ✓ Started {bot_name}")
             return True
             
         except Exception as e:
+            print(f"  ✗ Error starting {bot_name}: {e}")
             return False
 
     def stop_bot(self, bot_name):
         """Stop a bot process"""
         if not self.is_bot_running(bot_name):
+            print(f"  ⚠ {bot_name} is not running, nothing to stop")
             return True
         
         try:
@@ -2299,15 +2311,18 @@ class BotScheduler:
             # Wait for process to end
             try:
                 process.wait(timeout=10)
+                print(f"  ✓ Stopped {bot_name} gracefully")
             except subprocess.TimeoutExpired:
                 # Force kill if not responding
                 process.kill()
                 process.wait()
+                print(f"  ✓ Forcefully stopped {bot_name}")
             
             self.bot_processes[bot_name] = None
             return True
             
         except Exception as e:
+            print(f"  ✗ Error stopping {bot_name}: {e}")
             return False
 
     def should_bot_run_now(self, bot_schedule):
@@ -2345,7 +2360,7 @@ class BotScheduler:
         return False
 
     def sync_bots_with_schedule(self, schedule_data, valid_bots):
-        """Sync bot processes with current schedule"""
+        """Sync bot processes with current schedule - FIXED to prevent unnecessary actions"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2383,11 +2398,14 @@ class BotScheduler:
             should_run = self.should_bot_run_now(bot_schedule)
             is_running = self.is_bot_running(bot_name)
             
-            # Start or stop bot based on schedule
+            # Only take action if there's a mismatch between desired state and actual state
             if should_run and not is_running:
+                print(f"  Starting {bot_name} (scheduled to run)")
                 self.start_bot(bot_name)
             elif not should_run and is_running:
+                print(f"  Stopping {bot_name} (not in scheduled time)")
                 self.stop_bot(bot_name)
+            # If state matches desired state, no action needed
 
     # FIXED METHODS FOR STEPS 9a-9e
 
@@ -2404,9 +2422,9 @@ class BotScheduler:
             parts = time_str.split(':')
             if len(parts) >= 2:
                 hours = parts[0].zfill(2)  # Ensure 2-digit hours
-                minutes = parts[1][:2].zfill(2)  # Take first 2 chars for minutes and ensure 2-digit
+                minutes = parts[1][:2].zfill(2)  # Take first 2 chars for minutes
                 
-                # Handle seconds if present, but ignore them for comparison
+                # Return in HH:MM format for consistent comparison
                 return f"{hours}:{minutes}"
         
         return None
@@ -2415,7 +2433,7 @@ class BotScheduler:
         """Check if current time is between start_time and stop_time - FIXED VERSION"""
         current_time = datetime.now().strftime("%H:%M")
         
-        # Normalize time formats - FIXED
+        # Normalize time formats
         start_time_norm = self.normalize_time_format(start_time)
         stop_time_norm = self.normalize_time_format(stop_time)
         
@@ -2425,23 +2443,24 @@ class BotScheduler:
         
         print(f"  Time Check: Current={current_time}, Start={start_time_norm}, Stop={stop_time_norm}")
         
-        # Convert to datetime objects for proper comparison
         try:
-            current_dt = datetime.strptime(current_time, "%H:%M")
-            start_dt = datetime.strptime(start_time_norm, "%H:%M")
-            stop_dt = datetime.strptime(stop_time_norm, "%H:%M")
+            # Convert to time objects for proper comparison
+            current_t = datetime.strptime(current_time, "%H:%M").time()
+            start_t = datetime.strptime(start_time_norm, "%H:%M").time()
+            stop_t = datetime.strptime(stop_time_norm, "%H:%M").time()
             
             # Handle overnight schedules (stop time < start time)
-            if stop_dt < start_dt:
+            if stop_t < start_t:
                 # Overnight: current time should be >= start_time OR <= stop_time
-                result = current_dt >= start_dt or current_dt <= stop_dt
+                result = current_t >= start_t or current_t <= stop_t
                 print(f"  Overnight schedule: {result}")
                 return result
             else:
                 # Normal: current time should be between start_time and stop_time
-                result = start_dt <= current_dt <= stop_dt
+                result = start_t <= current_t <= stop_t
                 print(f"  Normal schedule: {result}")
                 return result
+                
         except ValueError as e:
             print(f"  ⚠ Time parsing error: {e}")
             return False
@@ -2734,7 +2753,7 @@ class BotScheduler:
                     return False
 
     def execute_steps_9a_to_9e(self, schedule_data, valid_bots, gc, check_count):
-        """Execute steps 9a to 9e for bot execution management - FIXED VERSION"""
+        """Execute steps 9a to 9e for bot execution management - FIXED to prevent unnecessary actions"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2813,13 +2832,13 @@ class BotScheduler:
                         if self.update_google_sheet_status(gc, bot_name, "in progress"):
                             print(f"  ✓ Successfully updated both local and Google Sheet status for {bot_name}")
                             
-                            # Set other bots to "idle"
+                            # Set other bots to "idle" ONLY if they were "in progress"
                             for other_bot in valid_bots:
-                                if other_bot != bot_name:
+                                if other_bot != bot_name and self.local_schedule_data.get(other_bot, {}).get('status') == 'in progress':
                                     self.update_local_status(other_bot, "idle")
                                     self.update_google_sheet_status(gc, other_bot, "idle")
                             
-                            print(f"  ✓ Set all other bots to 'idle'")
+                            print(f"  ✓ Set other 'in progress' bots to 'idle'")
                             
                             # Step 9e: Prepare run command and run the bot
                             print(f"{self.BLUE}  Step 9e: Starting bot execution for {bot_name}{self.ENDC}")
@@ -2843,12 +2862,18 @@ class BotScheduler:
                     print(f"  ⚠ Switch is OFF for {bot_name}, nothing to do")
             else:
                 print(f"{self.YELLOW}  ⚠ Step 9a: Time check FAILED for {bot_name}{self.ENDC}")
-                # Bot not in scheduled time range, ensure it's stopped
+                # Bot not in scheduled time range - ONLY stop if it's actually running
                 if self.is_bot_running(bot_name):
                     print(f"  ⚠ {bot_name} is running but not in scheduled time, stopping...")
-                    self.stop_bot(bot_name)
-                    self.update_local_status(bot_name, "idle")
-                    self.update_google_sheet_status(gc, bot_name, "idle")
+                    if self.stop_bot(bot_name):
+                        print(f"  ✓ Successfully stopped {bot_name}")
+                        self.update_local_status(bot_name, "idle")
+                        self.update_google_sheet_status(gc, bot_name, "idle")
+                    else:
+                        print(f"  ✗ Failed to stop {bot_name}")
+                else:
+                    # Bot is not running and not in scheduled time - this is normal, no action needed
+                    print(f"  ✓ {bot_name} is idle (not running) and not in scheduled time - no action needed")
 
     def run_step9(self):
         """Step 9: Monitor Scheduler Sheet and Control Bots with Steps 9a-9e"""
