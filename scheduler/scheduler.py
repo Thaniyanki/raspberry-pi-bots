@@ -2466,21 +2466,33 @@ class BotScheduler:
             return False
 
     def check_remark_and_last_run(self, remark, last_run):
-        """Check remark and last_run conditions for step 9b"""
+        """Check remark and last_run conditions for step 9b - FIXED VERSION"""
         current_date = datetime.now().strftime("%d-%m-%Y")
         
         print(f"  Remark Check: remark='{remark}', last_run='{last_run}', current_date='{current_date}'")
         
-        if remark and "sucessfully done" in remark.lower():
-            if last_run and last_run.startswith(current_date):
-                print(f"  ✓ Already executed today, nothing to do")
-                return False  # Nothing to do
+        # Scenario 1: Last run is from past date (not today) - continue
+        if last_run and not last_run.startswith(current_date):
+            print(f"  ✓ Last run is from past date, continue")
+            return True
+        
+        # Scenario 2: Last run is today but remark doesn't contain "successfully done" - continue  
+        if last_run and last_run.startswith(current_date):
+            if not remark or "sucessfully done" not in remark.lower():
+                print(f"  ✓ Last run is today but not successfully done, continue")
+                return True
             else:
-                print(f"  ✓ Not executed today or last_run date mismatch, continue")
-                return True  # Continue with step 9c
-        else:
-            print(f"  ✓ Remark not 'successfully done', continue")
-            return True  # Continue with step 9c
+                print(f"  ✗ Already executed successfully today, nothing to do")
+                return False
+        
+        # Scenario 3: No last run data - continue
+        if not last_run:
+            print(f"  ✓ No last run data, continue")
+            return True
+        
+        # Default: don't continue
+        print(f"  ✗ Conditions not met for execution")
+        return False
 
     def update_local_status(self, bot_name, status):
         """Update bot status in local schedule data"""
@@ -2753,7 +2765,7 @@ class BotScheduler:
                     return False
 
     def execute_steps_9a_to_9d(self, schedule_data, valid_bots, gc, check_count):
-        """Execute steps 9a to 9d for bot execution management - FIXED to prevent unnecessary actions"""
+        """Execute steps 9a to 9d for bot execution management - FIXED VERSION"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2809,7 +2821,7 @@ class BotScheduler:
                 if switch == 'on':
                     print(f"  ✓ Switch is ON for {bot_name}")
                     
-                    # Step 9b: Check remark and last_run
+                    # Step 9b: Check remark and last_run - FIXED LOGIC
                     print(f"{self.BLUE}  Step 9b: Checking remark and last_run for {bot_name}{self.ENDC}")
                     should_continue = self.check_remark_and_last_run(remark, last_run)
                     
