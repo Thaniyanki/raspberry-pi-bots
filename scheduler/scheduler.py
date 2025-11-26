@@ -78,7 +78,7 @@ class BotScheduler:
             "contact_not_found": "Xpath004"
         }
         
-        # New variables for step 9a-9e
+        # New variables for step 9a-9d
         self.local_schedule_data = {}  # Store local copy of schedule data
         self.bot_execution_status = {}  # Track bot execution status
         
@@ -2407,7 +2407,7 @@ class BotScheduler:
                 self.stop_bot(bot_name)
             # If state matches desired state, no action needed
 
-    # FIXED METHODS FOR STEPS 9a-9e
+    # FIXED METHODS FOR STEPS 9a-9d
 
     def normalize_time_format(self, time_str):
         """Normalize time format to ensure consistent comparison - FIXED VERSION"""
@@ -2752,8 +2752,8 @@ class BotScheduler:
                     print(f"  ✗ Failed to update Google Sheet for {bot_name} after {max_retries} attempts")
                     return False
 
-    def execute_steps_9a_to_9e(self, schedule_data, valid_bots, gc, check_count):
-        """Execute steps 9a to 9e for bot execution management - FIXED to prevent unnecessary actions"""
+    def execute_steps_9a_to_9d(self, schedule_data, valid_bots, gc, check_count):
+        """Execute steps 9a to 9d for bot execution management - FIXED to prevent unnecessary actions"""
         current_day = datetime.now().strftime("%A").lower()
         
         # Map day names to column names
@@ -2822,8 +2822,8 @@ class BotScheduler:
                         current_date = datetime.now().strftime("%d-%m-%Y")
                         print(f"  {current_day_name} {current_date} | Check #{check_count} | Next sync: 21s")
                         
-                        # Step 9d: Mark status as "in progress"
-                        print(f"{self.BLUE}  Step 9d: Updating status for {bot_name}{self.ENDC}")
+                        # Step 9d: Mark status as "in progress" and run the bot
+                        print(f"{self.BLUE}  Step 9d: Updating status and running {bot_name}{self.ENDC}")
                         
                         # First update local status
                         self.update_local_status(bot_name, "in progress")
@@ -2840,10 +2840,7 @@ class BotScheduler:
                             
                             print(f"  ✓ Set other 'in progress' bots to 'idle'")
                             
-                            # Step 9e: Prepare run command and run the bot
-                            print(f"{self.BLUE}  Step 9e: Starting bot execution for {bot_name}{self.ENDC}")
-                            
-                            # Prepare the run command
+                            # Prepare run command and run the bot
                             run_command = self.prepare_run_command(bot_name)
                             
                             # Run the bot with the prepared command
@@ -2876,7 +2873,7 @@ class BotScheduler:
                     print(f"  ✓ {bot_name} is idle (not running) and not in scheduled time - no action needed")
 
     def run_step9(self):
-        """Step 9: Monitor Scheduler Sheet and Control Bots with Steps 9a-9e"""
+        """Step 9: Monitor Scheduler Sheet and Control Bots with Steps 9a-9d"""
         print("\n" + "=" * 50)
         print("STEP 9: SCHEDULER MONITORING & BOT CONTROL")
         print("=" * 50)
@@ -2957,8 +2954,8 @@ class BotScheduler:
                     print("\r" + " " * 80 + "\r", end="", flush=True)
                     continue
                 
-                # Execute steps 9a-9e for bot execution management
-                self.execute_steps_9a_to_9e(schedule_data, valid_bots, gc, check_count)
+                # Execute steps 9a-9d for bot execution management
+                self.execute_steps_9a_to_9d(schedule_data, valid_bots, gc, check_count)
                 
                 # Format and display schedule - ONLY ONCE per sync
                 result = self.format_schedule_display(schedule_data, valid_bots)
