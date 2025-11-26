@@ -82,10 +82,6 @@ class BotScheduler:
         self.local_schedule_data = {}  # Store local copy of schedule data
         self.bot_execution_status = {}  # Track bot execution status
         
-        # NEW: Skip first sync after successful execution
-        self.skip_first_sync = False
-        self.just_completed_bot = None
-        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -2386,7 +2382,7 @@ class BotScheduler:
             return False
 
     def check_remark_and_last_run(self, remark, last_run):
-        """Check remark and last_run conditions for step 9b - FIXED to prevent re-execution"""
+        """Check remark and last_run conditions for step 9b - FIXED VERSION"""
         current_date = datetime.now().strftime("%d-%m-%Y")
         
         print(f"  Remark Check: remark='{remark}', last_run='{last_run}', current_date='{current_date}'")
@@ -2396,14 +2392,14 @@ class BotScheduler:
             print(f"  ✓ Last run is from past date, continue")
             return True
         
-        # Scenario 2: Last run is today AND remark contains "successfully done" - DO NOT continue
+        # Scenario 2: Last run is today but remark doesn't contain "successfully done" - continue  
         if last_run and last_run.startswith(current_date):
-            if remark and "sucessfully done" in remark.lower():
-                print(f"  ✗ Already executed successfully today, nothing to do")
-                return False
-            else:
+            if not remark or "sucessfully done" not in remark.lower():
                 print(f"  ✓ Last run is today but not successfully done, continue")
                 return True
+            else:
+                print(f"  ✗ Already executed successfully today, nothing to do")
+                return False
         
         # Scenario 3: No last run data - continue
         if not last_run:
@@ -2415,9 +2411,8 @@ class BotScheduler:
         return False
 
     def sync_bots_with_schedule(self, schedule_data, valid_bots):
-        """Sync bot processes with current schedule - FIXED to prevent re-execution"""
+        """Sync bot processes with current schedule - FIXED to use same logic as step 9a-9d"""
         current_day = datetime.now().strftime("%A").lower()
-        current_date = datetime.now().strftime("%d-%m-%Y")
         
         # Map day names to column names
         day_columns = {
@@ -2452,15 +2447,6 @@ class BotScheduler:
             
             if not bot_schedule:
                 continue
-            
-            # CRITICAL CHECK: If bot already executed successfully today, skip entirely
-            if (bot_schedule['last_run'] and bot_schedule['last_run'].startswith(current_date) and 
-                bot_schedule['remark'] and "sucessfully done" in bot_schedule['remark'].lower()):
-                # Ensure bot is stopped
-                if self.is_bot_running(bot_name):
-                    print(f"  Stopping {bot_name} (already executed successfully today)")
-                    self.stop_bot(bot_name)
-                continue  # Skip this bot entirely
             
             # Use the same logic as step 9a-9d to determine if bot should run
             should_run = False
@@ -2691,11 +2677,7 @@ class BotScheduler:
                     "sucessfully done"
                 )
                 
-                # NEW: Set flag to skip first sync after successful execution
-                self.skip_first_sync = True
-                self.just_completed_bot = bot_name
                 print(f"  ✓ Bot {bot_name} status updated to 'idle' with remark 'sucessfully done'")
-                print(f"  ⚠ Skipping first sync cycle after successful execution")
                 return True
             else:
                 print(f"  ✗ Bot {bot_name} failed with exit code: {exit_code}")
@@ -2759,9 +2741,8 @@ class BotScheduler:
                     return False
 
     def execute_steps_9a_to_9d(self, schedule_data, valid_bots, gc, check_count):
-        """Execute steps 9a to 9d for bot execution management - FIXED to prevent re-execution"""
+        """Execute steps 9a to 9d for bot execution management - FIXED VERSION"""
         current_day = datetime.now().strftime("%A").lower()
-        current_date = datetime.now().strftime("%d-%m-%Y")
         
         # Map day names to column names
         day_columns = {
@@ -2807,19 +2788,6 @@ class BotScheduler:
             print(f"\n{self.BLUE}Checking {bot_name}:{self.ENDC}")
             print(f"  Start: {start_time}, Stop: {stop_time}, Switch: {switch}")
             print(f"  Remark: {remark}, Last Run: {last_run}, Status: {current_status}")
-            
-            # ADDITIONAL CHECK: If bot already executed successfully today, skip entirely
-            if last_run and last_run.startswith(current_date) and remark and "sucessfully done" in remark.lower():
-                print(f"  ⚠ {bot_name} already executed successfully today - SKIPPING")
-                
-                # Ensure bot is stopped if it's running
-                if self.is_bot_running(bot_name):
-                    print(f"  ⚠ Stopping {bot_name} that was still running after successful execution")
-                    self.stop_bot(bot_name)
-                    self.update_local_status(bot_name, "idle")
-                    self.update_google_sheet_status(gc, bot_name, "idle")
-                
-                continue  # Skip to next bot
             
             # Step 9a: Check if current time is between start_at and stop_at
             if self.check_time_in_range(start_time, stop_time):
@@ -2934,28 +2902,6 @@ class BotScheduler:
             
             while True:
                 check_count += 1
-                
-                # NEW: Check if we should skip first sync after successful execution
-                if self.skip_first_sync:
-                    print(f"\n{self.YELLOW}⚠ SKIPPING FIRST SYNC CYCLE after successful execution of {self.just_completed_bot}{self.ENDC}")
-                    print(f"{self.YELLOW}  No monitoring or execution operations will be performed during this sync{self.ENDC}")
-                    
-                    # Reset the flag after skipping one sync
-                    self.skip_first_sync = False
-                    skipped_bot = self.just_completed_bot
-                    self.just_completed_bot = None
-                    
-                    # Display "Skipping sync" message with countdown
-                    current_day = datetime.now().strftime("%A").capitalize()
-                    current_date = datetime.now().strftime("%d-%m-%Y")
-                    
-                    for countdown in range(60, 0, -1):
-                        print(f"\r{current_day} {current_date} | Check #{check_count} | Skipping sync: {countdown:02d}s", end="", flush=True)
-                        time.sleep(1)
-                    print("\r" + " " * 80 + "\r", end="", flush=True)
-                    
-                    print(f"{self.GREEN}✓ Resuming normal operations after skipped sync{self.ENDC}")
-                    continue
                 
                 # Get current day and date for display
                 current_day = datetime.now().strftime("%A").lower()
