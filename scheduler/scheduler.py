@@ -2617,30 +2617,21 @@ class BotScheduler:
                         process.kill()
                         process.wait()
                     
-                    # Update status and remark for forceful stop - UPDATE BOTH LOCAL AND GOOGLE SHEETS
+                    # Update status and remark for forceful stop
                     self.update_local_status(bot_name, "idle")
                     self.update_google_sheet_status(gc, bot_name, "idle")
                     
-                    # Update last_run and remark in BOTH LOCAL AND GOOGLE SHEETS
-                    last_run_time = current_datetime.strftime("%d-%m-%Y %H:%M:%S")
-                    remark_text = "forcefully stopped"
-                    
-                    # Update local data
-                    if bot_name in self.local_schedule_data:
-                        self.local_schedule_data[bot_name]['last_run'] = last_run_time
-                        self.local_schedule_data[bot_name]['remark'] = remark_text
-                    
-                    # Update Google Sheet
+                    # Update last_run and remark in Google Sheet
                     self.update_google_sheet_last_run_and_remark(
                         gc, bot_name, 
-                        last_run_time, 
-                        remark_text
+                        current_datetime.strftime("%d-%m-%Y %H:%M:%S"), 
+                        "forcefully stopped"
                     )
                     
-                    print(f"  ✓ Bot {bot_name} forcefully stopped and status updated in BOTH local and Google Sheets")
+                    print(f"  ✓ Bot {bot_name} forcefully stopped and status updated")
                     print(f"  {'='*60}")
                     return False
-            
+                
                 # Wait a bit before checking again
                 time.sleep(2)
             
@@ -2675,49 +2666,31 @@ class BotScheduler:
             if exit_code == 0:
                 print(f"  ✓ Bot {bot_name} completed successfully")
                 
-                # Update status, last_run and remark for successful completion - UPDATE BOTH LOCAL AND GOOGLE SHEETS
+                # Update status, last_run and remark for successful completion
                 self.update_local_status(bot_name, "idle")
                 self.update_google_sheet_status(gc, bot_name, "idle")
                 
-                # Update last_run and remark in BOTH LOCAL AND GOOGLE SHEETS
-                last_run_time = end_timestamp.strftime("%d-%m-%Y %H:%M:%S")
-                remark_text = "sucessfully done"
-                
-                # Update local data
-                if bot_name in self.local_schedule_data:
-                    self.local_schedule_data[bot_name]['last_run'] = last_run_time
-                    self.local_schedule_data[bot_name]['remark'] = remark_text
-                
-                # Update Google Sheet
+                # Update last_run and remark in Google Sheet
                 self.update_google_sheet_last_run_and_remark(
                     gc, bot_name, 
-                    last_run_time, 
-                    remark_text
+                    end_timestamp.strftime("%d-%m-%Y %H:%M:%S"), 
+                    "sucessfully done"
                 )
                 
-                print(f"  ✓ Bot {bot_name} status updated to 'idle' with remark 'sucessfully done' in BOTH local and Google Sheets")
+                print(f"  ✓ Bot {bot_name} status updated to 'idle' with remark 'sucessfully done'")
                 return True
             else:
                 print(f"  ✗ Bot {bot_name} failed with exit code: {exit_code}")
                 
-                # Update status and remark for failed execution - UPDATE BOTH LOCAL AND GOOGLE SHEETS
+                # Update status and remark for failed execution
                 self.update_local_status(bot_name, "idle")
                 self.update_google_sheet_status(gc, bot_name, "idle")
                 
-                # Update last_run and remark in BOTH LOCAL AND GOOGLE SHEETS
-                last_run_time = end_timestamp.strftime("%d-%m-%Y %H:%M:%S")
-                remark_text = f"failed with exit code {exit_code}"
-                
-                # Update local data
-                if bot_name in self.local_schedule_data:
-                    self.local_schedule_data[bot_name]['last_run'] = last_run_time
-                    self.local_schedule_data[bot_name]['remark'] = remark_text
-                
-                # Update Google Sheet
+                # Update last_run and remark in Google Sheet
                 self.update_google_sheet_last_run_and_remark(
                     gc, bot_name, 
-                    last_run_time, 
-                    remark_text
+                    end_timestamp.strftime("%d-%m-%Y %H:%M:%S"), 
+                    f"failed with exit code {exit_code}"
                 )
                 
                 return False
@@ -2725,24 +2698,15 @@ class BotScheduler:
         except Exception as e:
             print(f"  ❌ Error running bot {bot_name}: {e}")
             
-            # Update status for error case - UPDATE BOTH LOCAL AND GOOGLE SHEETS
+            # Update status for error case
             self.update_local_status(bot_name, "idle")
             self.update_google_sheet_status(gc, bot_name, "idle")
             
-            # Update last_run and remark in BOTH LOCAL AND GOOGLE SHEETS
-            last_run_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-            remark_text = f"error: {str(e)}"
-            
-            # Update local data
-            if bot_name in self.local_schedule_data:
-                self.local_schedule_data[bot_name]['last_run'] = last_run_time
-                self.local_schedule_data[bot_name]['remark'] = remark_text
-            
-            # Update Google Sheet
+            # Update last_run and remark in Google Sheet
             self.update_google_sheet_last_run_and_remark(
                 gc, bot_name, 
-                last_run_time, 
-                remark_text
+                datetime.now().strftime("%d-%m-%Y %H:%M:%S"), 
+                f"error: {str(e)}"
             )
             
             return False
