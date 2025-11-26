@@ -2236,8 +2236,16 @@ class BotScheduler:
         return None
 
     def is_bot_running(self, bot_name):
-        """Check if a bot is currently running"""
-        return bot_name in self.bot_processes and self.bot_processes[bot_name] is not None
+        """Check if a bot is currently running - FIXED VERSION"""
+        if bot_name not in self.bot_processes:
+            return False
+        
+        process = self.bot_processes[bot_name]
+        if process is None:
+            return False
+        
+        # Check if process is still alive
+        return process.poll() is None
 
     def start_bot(self, bot_name):
         """Start a bot process"""
@@ -2381,27 +2389,25 @@ class BotScheduler:
             elif not should_run and is_running:
                 self.stop_bot(bot_name)
 
-    # NEW METHODS FOR STEPS 9a-9e
+    # FIXED METHODS FOR STEPS 9a-9e
 
     def normalize_time_format(self, time_str):
-        """Normalize time format to ensure consistent comparison"""
+        """Normalize time format to ensure consistent comparison - FIXED VERSION"""
         if not time_str or time_str == 'N/A':
             return None
         
         # Remove any spaces and convert to lowercase
         time_str = time_str.strip().lower()
         
-        # Handle different time formats
+        # Handle different time formats - FIXED
         if ':' in time_str:
             parts = time_str.split(':')
             if len(parts) >= 2:
                 hours = parts[0].zfill(2)  # Ensure 2-digit hours
-                minutes = parts[1].zfill(2)  # Ensure 2-digit minutes
-                # Handle seconds if present
-                if len(parts) > 2:
-                    return f"{hours}:{minutes}"
-                else:
-                    return f"{hours}:{minutes}"
+                minutes = parts[1][:2].zfill(2)  # Take first 2 chars for minutes and ensure 2-digit
+                
+                # Handle seconds if present, but ignore them for comparison
+                return f"{hours}:{minutes}"
         
         return None
 
@@ -2409,7 +2415,7 @@ class BotScheduler:
         """Check if current time is between start_time and stop_time - FIXED VERSION"""
         current_time = datetime.now().strftime("%H:%M")
         
-        # Normalize time formats
+        # Normalize time formats - FIXED
         start_time_norm = self.normalize_time_format(start_time)
         stop_time_norm = self.normalize_time_format(stop_time)
         
@@ -2419,17 +2425,26 @@ class BotScheduler:
         
         print(f"  Time Check: Current={current_time}, Start={start_time_norm}, Stop={stop_time_norm}")
         
-        # Handle overnight schedules (stop time < start time)
-        if stop_time_norm < start_time_norm:
-            # Overnight: current time should be >= start_time OR <= stop_time
-            result = current_time >= start_time_norm or current_time <= stop_time_norm
-            print(f"  Overnight schedule: {result}")
-            return result
-        else:
-            # Normal: current time should be between start_time and stop_time
-            result = start_time_norm <= current_time <= stop_time_norm
-            print(f"  Normal schedule: {result}")
-            return result
+        # Convert to datetime objects for proper comparison
+        try:
+            current_dt = datetime.strptime(current_time, "%H:%M")
+            start_dt = datetime.strptime(start_time_norm, "%H:%M")
+            stop_dt = datetime.strptime(stop_time_norm, "%H:%M")
+            
+            # Handle overnight schedules (stop time < start time)
+            if stop_dt < start_dt:
+                # Overnight: current time should be >= start_time OR <= stop_time
+                result = current_dt >= start_dt or current_dt <= stop_dt
+                print(f"  Overnight schedule: {result}")
+                return result
+            else:
+                # Normal: current time should be between start_time and stop_time
+                result = start_dt <= current_dt <= stop_dt
+                print(f"  Normal schedule: {result}")
+                return result
+        except ValueError as e:
+            print(f"  ⚠ Time parsing error: {e}")
+            return False
 
     def check_remark_and_last_run(self, remark, last_run):
         """Check remark and last_run conditions for step 9b"""
