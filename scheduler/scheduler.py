@@ -2325,90 +2325,6 @@ class BotScheduler:
             print(f"  ✗ Error stopping {bot_name}: {e}")
             return False
 
-    def should_bot_run_now(self, bot_schedule):
-        """Check if a bot should be running based on current time and schedule"""
-        current_time = datetime.now().strftime("%H:%M")
-        switch = bot_schedule.get('switch', '').lower()
-        
-        # If switch is off, don't run
-        if switch != 'on':
-            return False
-        
-        start_time = bot_schedule.get('start_at', '')
-        stop_time = bot_schedule.get('stop_at', '')
-        
-        # If no times specified, run based on switch only
-        if not start_time and not stop_time:
-            return switch == 'on'
-        
-        # If only start time specified, run from start time onwards
-        if start_time and not stop_time:
-            return current_time >= start_time
-        
-        # If only stop time specified, run until stop time
-        if not start_time and stop_time:
-            return current_time <= stop_time
-        
-        # If both times specified
-        if start_time and stop_time:
-            # Handle overnight schedules (stop time < start time)
-            if stop_time < start_time:
-                return current_time >= start_time or current_time <= stop_time
-            else:
-                return start_time <= current_time <= stop_time
-        
-        return False
-
-    def sync_bots_with_schedule(self, schedule_data, valid_bots):
-        """Sync bot processes with current schedule - FIXED to prevent unnecessary actions"""
-        current_day = datetime.now().strftime("%A").lower()
-        
-        # Map day names to column names
-        day_columns = {
-            'sunday': ['sun_start at', 'sun_stop at'],
-            'monday': ['mon_start at', 'mon_stop at'],
-            'tuesday': ['tue_start at', 'tue_stop at'],
-            'wednesday': ['wed_start at', 'wed_stop at'],
-            'thursday': ['thu_start at', 'thu_stop at'],
-            'friday': ['fri_start at ', 'fri_stop at'],
-            'saturday': ['sat_start at', 'sat_stop at']
-        }
-        
-        if current_day not in day_columns:
-            return
-        
-        start_col, stop_col = day_columns[current_day]
-        
-        # Process each valid bot
-        for bot_name in valid_bots:
-            # Find bot schedule
-            bot_schedule = None
-            for row in schedule_data:
-                if row.get('bots name', '').strip() == bot_name:
-                    bot_schedule = {
-                        'start_at': row.get(start_col, '').strip(),
-                        'stop_at': row.get(stop_col, '').strip(),
-                        'switch': row.get('switch', '').strip().lower()
-                    }
-                    break
-            
-            if not bot_schedule:
-                continue
-            
-            should_run = self.should_bot_run_now(bot_schedule)
-            is_running = self.is_bot_running(bot_name)
-            
-            # Only take action if there's a mismatch between desired state and actual state
-            if should_run and not is_running:
-                print(f"  Starting {bot_name} (scheduled to run)")
-                self.start_bot(bot_name)
-            elif not should_run and is_running:
-                print(f"  Stopping {bot_name} (not in scheduled time)")
-                self.stop_bot(bot_name)
-            # If state matches desired state, no action needed
-
-    # FIXED METHODS FOR STEPS 9a-9d
-
     def normalize_time_format(self, time_str):
         """Normalize time format to ensure consistent comparison - FIXED VERSION"""
         if not time_str or time_str == 'N/A':
@@ -2493,6 +2409,66 @@ class BotScheduler:
         # Default: don't continue
         print(f"  ✗ Conditions not met for execution")
         return False
+
+    def sync_bots_with_schedule(self, schedule_data, valid_bots):
+        """Sync bot processes with current schedule - FIXED to use same logic as step 9a-9d"""
+        current_day = datetime.now().strftime("%A").lower()
+        
+        # Map day names to column names
+        day_columns = {
+            'sunday': ['sun_start at', 'sun_stop at'],
+            'monday': ['mon_start at', 'mon_stop at'],
+            'tuesday': ['tue_start at', 'tue_stop at'],
+            'wednesday': ['wed_start at', 'wed_stop at'],
+            'thursday': ['thu_start at', 'thu_stop at'],
+            'friday': ['fri_start at ', 'fri_stop at'],
+            'saturday': ['sat_start at', 'sat_stop at']
+        }
+        
+        if current_day not in day_columns:
+            return
+        
+        start_col, stop_col = day_columns[current_day]
+        
+        # Process each valid bot
+        for bot_name in valid_bots:
+            # Find bot schedule
+            bot_schedule = None
+            for row in schedule_data:
+                if row.get('bots name', '').strip() == bot_name:
+                    bot_schedule = {
+                        'start_at': row.get(start_col, '').strip(),
+                        'stop_at': row.get(stop_col, '').strip(),
+                        'switch': row.get('switch', '').strip().lower(),
+                        'remark': row.get('remark', '').strip(),
+                        'last_run': row.get('last_run', '').strip()
+                    }
+                    break
+            
+            if not bot_schedule:
+                continue
+            
+            # Use the same logic as step 9a-9d to determine if bot should run
+            should_run = False
+            
+            # Step 9a: Check if current time is between start_at and stop_at
+            if self.check_time_in_range(bot_schedule['start_at'], bot_schedule['stop_at']):
+                # Step 9a: Check switch column
+                if bot_schedule['switch'] == 'on':
+                    # Step 9b: Check remark and last_run - FIXED LOGIC
+                    should_continue = self.check_remark_and_last_run(bot_schedule['remark'], bot_schedule['last_run'])
+                    should_run = should_continue
+            
+            is_running = self.is_bot_running(bot_name)
+            
+            # Only take action if there's a mismatch between desired state and actual state
+            if should_run and not is_running:
+                print(f"  Starting {bot_name} (scheduled to run)")
+                self.start_bot(bot_name)
+            elif not should_run and is_running:
+                print(f"  Stopping {bot_name} (not in scheduled time or already executed)")
+                self.stop_bot(bot_name)
+            # If state matches desired state, no action needed
 
     def update_local_status(self, bot_name, status):
         """Update bot status in local schedule data"""
@@ -3033,7 +3009,7 @@ class BotScheduler:
                                    f"{item['remark']:<{max_remark_len}}")
                             print(row)
                     
-                    # Sync bots with current schedule
+                    # Sync bots with current schedule - FIXED VERSION
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
                     # Countdown timer - use carriage return to update in place
