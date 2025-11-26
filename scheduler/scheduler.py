@@ -82,6 +82,10 @@ class BotScheduler:
         self.local_schedule_data = {}  # Store local copy of schedule data
         self.bot_execution_status = {}  # Track bot execution status
         
+        # NEW: Skip first sync after successful execution
+        self.skip_first_sync = False
+        self.just_completed_bot = None
+        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -1203,7 +1207,7 @@ class BotScheduler:
                                     created_count += 1
                     
                     except Exception as e:
-                        print(f"  ❌ Error processing bot '{local_bot_name}': {e}")
+                        print(f"  ❌ Error processing bot '{local_bot_name': {e}")
                         error_count += 1
                         continue
             
@@ -2687,7 +2691,11 @@ class BotScheduler:
                     "sucessfully done"
                 )
                 
+                # NEW: Set flag to skip first sync after successful execution
+                self.skip_first_sync = True
+                self.just_completed_bot = bot_name
                 print(f"  ✓ Bot {bot_name} status updated to 'idle' with remark 'sucessfully done'")
+                print(f"  ⚠ Skipping first sync cycle after successful execution")
                 return True
             else:
                 print(f"  ✗ Bot {bot_name} failed with exit code: {exit_code}")
@@ -2926,6 +2934,28 @@ class BotScheduler:
             
             while True:
                 check_count += 1
+                
+                # NEW: Check if we should skip first sync after successful execution
+                if self.skip_first_sync:
+                    print(f"\n{self.YELLOW}⚠ SKIPPING FIRST SYNC CYCLE after successful execution of {self.just_completed_bot}{self.ENDC}")
+                    print(f"{self.YELLOW}  No monitoring or execution operations will be performed during this sync{self.ENDC}")
+                    
+                    # Reset the flag after skipping one sync
+                    self.skip_first_sync = False
+                    skipped_bot = self.just_completed_bot
+                    self.just_completed_bot = None
+                    
+                    # Display "Skipping sync" message with countdown
+                    current_day = datetime.now().strftime("%A").capitalize()
+                    current_date = datetime.now().strftime("%d-%m-%Y")
+                    
+                    for countdown in range(60, 0, -1):
+                        print(f"\r{current_day} {current_date} | Check #{check_count} | Skipping sync: {countdown:02d}s", end="", flush=True)
+                        time.sleep(1)
+                    print("\r" + " " * 80 + "\r", end="", flush=True)
+                    
+                    print(f"{self.GREEN}✓ Resuming normal operations after skipped sync{self.ENDC}")
+                    continue
                 
                 # Get current day and date for display
                 current_day = datetime.now().strftime("%A").lower()
