@@ -82,9 +82,6 @@ class BotScheduler:
         self.local_schedule_data = {}  # Store local copy of schedule data
         self.bot_execution_status = {}  # Track bot execution status
         
-        # Dummy bot configuration
-        self.dummy_bot_name = "dummy bot"
-        
     def initialize_firebase(self):
         """Initialize Firebase connection using database access key from any bot (excluding scheduler)"""
         if self.firebase_initialized:
@@ -2104,19 +2101,6 @@ class BotScheduler:
             print(f"Error accessing scheduler sheet: {e}")
             return None
 
-    def create_dummy_bot_data(self):
-        """Create dummy bot data with current date for last_run"""
-        current_date = datetime.now().strftime("%d-%m-%Y")
-        return {
-            'bot_name': self.dummy_bot_name,
-            'start_at': "00:00:00",
-            'stop_at': "00:00:00", 
-            'switch': "off",
-            'status': "idle",
-            'last_run': f"{current_date} 00:00:00",
-            'remark': "sucessfully done"
-        }
-
     def format_schedule_display(self, schedule_data, valid_bots):
         """Format the schedule display for terminal output including status, last_run, and remark"""
         # Get current day
@@ -2141,11 +2125,6 @@ class BotScheduler:
         
         # Filter and format data including status, last_run, remark
         display_data = []
-        
-        # ADD DUMMY BOT AS FIRST ITEM
-        dummy_bot_data = self.create_dummy_bot_data()
-        display_data.append(dummy_bot_data)
-        
         for row in schedule_data:
             bot_name = row.get('bots name', '').strip()
             
@@ -2222,7 +2201,7 @@ class BotScheduler:
         print(header)
         print("-" * table_width)
         
-        # Data rows - DUMMY BOT WILL BE FIRST
+        # Data rows
         for item in schedule_data:
             row = (f"{item['bot_name']:<{max_name_len}} "
                    f"{item['start_at']:<{max_start_len}} "
@@ -2994,7 +2973,7 @@ class BotScheduler:
                         print(header)
                         print("-" * table_width)
                         
-                        # Data rows - DUMMY BOT WILL BE FIRST
+                        # Data rows
                         for item in display_data:
                             row = (f"{item['bot_name']:<{max_name_len}} "
                                    f"{item['start_at']:<{max_start_len}} "
