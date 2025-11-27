@@ -2934,13 +2934,13 @@ class BotScheduler:
                     schedule_data = self.get_scheduler_data(gc)
                 except Exception as e:
                     # Show error message
-                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 30s")
                     print("-" * 80)
                     print(f"{self.RED}Error accessing scheduler sheet: {e}{self.ENDC}")
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown
-                    for countdown in range(60, 0, -1):
+                    # Wait 30 seconds with countdown
+                    for countdown in range(30, 0, -1):
                         print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                         time.sleep(1)
                     print("\r" + " " * 80 + "\r", end="", flush=True)
@@ -2948,12 +2948,12 @@ class BotScheduler:
                 
                 if schedule_data is None:
                     # Show no data available
-                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 30s")
                     print("-" * 80)
                     print(f"{self.YELLOW}scheduler not available{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown
-                    for countdown in range(60, 0, -1):
+                    # Wait 30 seconds with countdown
+                    for countdown in range(30, 0, -1):
                         print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                         time.sleep(1)
                     print("\r" + " " * 80 + "\r", end="", flush=True)
@@ -2974,7 +2974,7 @@ class BotScheduler:
                     day, date, display_data = result
                     
                     if not display_data:
-                        print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                        print(f"\n{day} {date} | Check #{check_count} | Next sync: 30s")
                         print("-" * 80)
                         print("No scheduled bots for today")
                     else:
@@ -3035,19 +3035,19 @@ class BotScheduler:
                     self.sync_bots_with_schedule(schedule_data, valid_bots)
                     
                     # Countdown timer - use carriage return to update in place
-                    for countdown in range(60, 0, -1):
+                    for countdown in range(30, 0, -1):
                         time.sleep(1)
                         print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                     print("\r" + " " * 80 + "\r", end="", flush=True)
                 
                 else:
                     # Show no data for today
-                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 60s")
+                    print(f"\n{day} {date} | Check #{check_count} | Next sync: 30s")
                     print("-" * 80)
                     print(f"{self.YELLOW}⚠ No valid schedule data for today{self.ENDC}")
                     
-                    # Wait 60 seconds with countdown
-                    for countdown in range(60, 0, -1):
+                    # Wait 30 seconds with countdown
+                    for countdown in range(30, 0, -1):
                         print(f"\r{day} {date} | Check #{check_count} | Next sync: {countdown:02d}s", end="", flush=True)
                         time.sleep(1)
                     print("\r" + " " * 80 + "\r", end="", flush=True)
