@@ -2768,6 +2768,9 @@ class BotScheduler:
         
         start_col, stop_col = day_columns[current_day]
         
+        # Track if any bot was executed successfully
+        bot_executed_successfully = False
+        
         # Step 9a: Check every second for time range and switch
         for row in schedule_data:
             bot_name = row.get('bots name', '').strip()
@@ -2844,6 +2847,9 @@ class BotScheduler:
                             
                             if success:
                                 print(f"  ✓ Bot {bot_name} executed successfully")
+                                bot_executed_successfully = True
+                                # BREAK OUT OF THE LOOP - don't check other bots in this cycle
+                                break
                             else:
                                 print(f"  ✗ Bot {bot_name} execution failed")
                         else:
@@ -2867,6 +2873,9 @@ class BotScheduler:
                 else:
                     # Bot is not running and not in scheduled time - this is normal, no action needed
                     print(f"  ✓ {bot_name} is idle (not running) and not in scheduled time - no action needed")
+        
+        # Return whether a bot was executed successfully
+        return bot_executed_successfully
 
     def run_step9(self):
         """Step 9: Monitor Scheduler Sheet and Control Bots with Steps 9a-9d"""
@@ -2951,7 +2960,12 @@ class BotScheduler:
                     continue
                 
                 # Execute steps 9a-9d for bot execution management
-                self.execute_steps_9a_to_9d(schedule_data, valid_bots, gc, check_count)
+                bot_executed_successfully = self.execute_steps_9a_to_9d(schedule_data, valid_bots, gc, check_count)
+                
+                # If a bot was executed successfully, immediately start next check cycle
+                if bot_executed_successfully:
+                    print(f"\n{self.GREEN}✓ Bot executed successfully, starting next check cycle immediately{self.ENDC}")
+                    continue  # Skip the rest of this cycle and go to next check
                 
                 # Format and display schedule - ONLY ONCE per sync
                 result = self.format_schedule_display(schedule_data, valid_bots)
