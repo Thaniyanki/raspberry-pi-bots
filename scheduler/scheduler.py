@@ -2082,7 +2082,7 @@ class BotScheduler:
         return valid_bots
 
     def get_scheduler_data(self, gc):
-        """Get scheduler data from Google Sheets"""
+        """Get scheduler data from Google Sheets - MODIFIED: Only read first 30 rows and up to column S"""
         try:
             # Check if scheduler sheet exists
             sheet_names = [sheet['name'] for sheet in self.available_sheets]
@@ -2093,8 +2093,33 @@ class BotScheduler:
             sheet = gc.open("scheduler")
             worksheet = sheet.sheet1
             
-            # Get all data including columns Q, R, S (status, last_run, remark)
-            data = worksheet.get_all_records()
+            # MODIFIED: Only read first 30 rows and columns up to S (19 columns)
+            # Get data from row 1 (header) to row 30, columns A to S
+            data_range = "A1:S30"
+            data_values = worksheet.get(data_range)
+            
+            if not data_values:
+                return None
+            
+            # Convert to list of dictionaries
+            headers = data_values[0]  # First row is headers
+            rows = data_values[1:]   # Remaining rows are data
+            
+            # Ensure we have exactly 19 columns (A to S)
+            if len(headers) < 19:
+                # Pad headers if needed
+                headers.extend([''] * (19 - len(headers)))
+            
+            data = []
+            for row in rows:
+                # Ensure each row has exactly 19 columns
+                if len(row) < 19:
+                    row.extend([''] * (19 - len(row)))
+                
+                row_dict = dict(zip(headers, row))
+                data.append(row_dict)
+            
+            print(f"  ✓ Read {len(data)} rows from scheduler sheet (first 30 rows, columns A-S)")
             return data
             
         except Exception as e:
@@ -2485,22 +2510,44 @@ class BotScheduler:
             print(f"  ✓ Updated local remark for {bot_name}: {remark}")
 
     def update_google_sheet_status(self, gc, bot_name, status, max_retries=3):
-        """Update bot status in Google Sheet with retry logic"""
+        """Update bot status in Google Sheet with retry logic - MODIFIED: Only update first 30 rows"""
         for attempt in range(1, max_retries + 1):
             try:
                 sheet = gc.open("scheduler")
                 worksheet = sheet.sheet1
                 
-                # Find the row for this bot
-                all_data = worksheet.get_all_records()
-                for i, row in enumerate(all_data, start=2):  # start=2 because row 1 is header
-                    if row.get('bots name', '').strip() == bot_name:
-                        # Update status column (column Q, which is index 17)
-                        worksheet.update_cell(i, 17, status)
+                # MODIFIED: Only search in first 30 rows
+                # Get data from first 30 rows
+                data_range = "A1:S30"
+                data_values = worksheet.get(data_range)
+                
+                if not data_values:
+                    print(f"  ✗ No data found in scheduler sheet")
+                    return False
+                
+                headers = data_values[0]
+                rows = data_values[1:]
+                
+                # Find the row for this bot in first 30 rows
+                for i, row in enumerate(rows, start=2):  # start=2 because row 1 is header
+                    if i > 31:  # Only check up to row 31 (30 data rows + 1 header)
+                        break
+                        
+                    if len(row) > 0 and row[0].strip() == bot_name:
+                        # Update status column (column Q, which is index 16 in 0-based)
+                        status_col_index = 16  # Q is 17th column, 0-based index is 16
+                        
+                        # Ensure we have enough columns
+                        if len(row) <= status_col_index:
+                            # Need to extend the row
+                            row.extend([''] * (status_col_index - len(row) + 1))
+                        
+                        # Update the cell
+                        worksheet.update_cell(i, status_col_index + 1, status)  # +1 because worksheet is 1-based
                         print(f"  ✓ Updated Google Sheet status for {bot_name}: {status}")
                         return True
                 
-                print(f"  ✗ Bot {bot_name} not found in scheduler sheet")
+                print(f"  ✗ Bot {bot_name} not found in first 30 rows of scheduler sheet")
                 return False
                 
             except Exception as e:
@@ -2720,24 +2767,47 @@ class BotScheduler:
             return False
 
     def update_google_sheet_last_run_and_remark(self, gc, bot_name, last_run, remark, max_retries=3):
-        """Update last_run and remark in Google Sheet"""
+        """Update last_run and remark in Google Sheet - MODIFIED: Only update first 30 rows"""
         for attempt in range(1, max_retries + 1):
             try:
                 sheet = gc.open("scheduler")
                 worksheet = sheet.sheet1
                 
-                # Find the row for this bot
-                all_data = worksheet.get_all_records()
-                for i, row in enumerate(all_data, start=2):  # start=2 because row 1 is header
-                    if row.get('bots name', '').strip() == bot_name:
-                        # Update last_run column (column R, which is index 18)
-                        worksheet.update_cell(i, 18, last_run)
-                        # Update remark column (column S, which is index 19)
-                        worksheet.update_cell(i, 19, remark)
+                # MODIFIED: Only search in first 30 rows
+                # Get data from first 30 rows
+                data_range = "A1:S30"
+                data_values = worksheet.get(data_range)
+                
+                if not data_values:
+                    print(f"  ✗ No data found in scheduler sheet")
+                    return False
+                
+                headers = data_values[0]
+                rows = data_values[1:]
+                
+                # Find the row for this bot in first 30 rows
+                for i, row in enumerate(rows, start=2):  # start=2 because row 1 is header
+                    if i > 31:  # Only check up to row 31 (30 data rows + 1 header)
+                        break
+                        
+                    if len(row) > 0 and row[0].strip() == bot_name:
+                        # Update last_run column (column R, which is index 17 in 0-based)
+                        last_run_col_index = 17  # R is 18th column, 0-based index is 17
+                        # Update remark column (column S, which is index 18 in 0-based)
+                        remark_col_index = 18    # S is 19th column, 0-based index is 18
+                        
+                        # Ensure we have enough columns
+                        if len(row) <= remark_col_index:
+                            # Need to extend the row
+                            row.extend([''] * (remark_col_index - len(row) + 1))
+                        
+                        # Update the cells
+                        worksheet.update_cell(i, last_run_col_index + 1, last_run)  # +1 because worksheet is 1-based
+                        worksheet.update_cell(i, remark_col_index + 1, remark)      # +1 because worksheet is 1-based
                         print(f"  ✓ Updated Google Sheet for {bot_name}: last_run='{last_run}', remark='{remark}'")
                         return True
                 
-                print(f"  ✗ Bot {bot_name} not found in scheduler sheet")
+                print(f"  ✗ Bot {bot_name} not found in first 30 rows of scheduler sheet")
                 return False
                 
             except Exception as e:
@@ -2929,7 +2999,7 @@ class BotScheduler:
                 # Display "00s" while syncing with Google Sheets
                 print(f"\r{day} {date} | Check #{check_count} | Next sync: 00s", end="", flush=True)
                 
-                # Get scheduler data with error handling
+                # Get scheduler data with error handling - MODIFIED: Only reads first 30 rows
                 try:
                     schedule_data = self.get_scheduler_data(gc)
                 except Exception as e:
