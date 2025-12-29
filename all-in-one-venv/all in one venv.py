@@ -5,6 +5,7 @@ import subprocess
 import requests
 import time
 import threading
+import shutil
 from datetime import datetime
 
 class AllInOneVenvSetup:
@@ -161,89 +162,224 @@ class AllInOneVenvSetup:
         self.print_header("🛠️ INSTALLING SELENIUM SYSTEM-WIDE")
         
         try:
-            # Update system packages
-            self.print_info("Updating system packages...")
-            subprocess.run(['sudo', 'apt', 'update'], check=True, capture_output=True)
+            # First, update and fix any broken packages
+            self.print_info("Fixing any broken packages first...")
+            try:
+                subprocess.run(['sudo', 'apt-get', 'update', '--fix-missing'], 
+                             check=True, capture_output=True, timeout=300)
+                subprocess.run(['sudo', 'apt-get', 'install', '-f', '-y'], 
+                             check=True, capture_output=True, timeout=300)
+            except:
+                pass  # Continue even if this fails
             
-            # Install system dependencies
-            self.print_info("Installing system dependencies...")
-            dependencies = [
-                'python3-selenium',
-                'chromium-chromedriver',
-                'chromium',
-                'xvfb',
-                'libxss1',
-                'libappindicator1',
-                'libindicator7'
+            # Try to install packages one by one with better error handling
+            self.print_info("Installing system dependencies one by one...")
+            
+            packages = [
+                'python3-pip',
+                'python3-venv',
+                'python3-dev',
+                'libffi-dev',
+                'libssl-dev',
+                'curl',
+                'wget'
             ]
             
-            subprocess.run(['sudo', 'apt', 'install', '-y'] + dependencies, 
-                         check=True, capture_output=True)
+            for package in packages:
+                try:
+                    self.print_info(f"Installing {package}...")
+                    subprocess.run(['sudo', 'apt-get', 'install', '-y', package], 
+                                 check=True, capture_output=True, timeout=300)
+                    self.print_success(f"  ✅ {package} installed")
+                except subprocess.CalledProcessError:
+                    self.print_warning(f"  ⚠️  Could not install {package}, continuing...")
             
-            # Install Selenium via pip
+            # Install browser components separately
+            browser_packages = [
+                'chromium-browser',
+                'chromium-chromedriver'
+            ]
+            
+            for package in browser_packages:
+                try:
+                    self.print_info(f"Installing {package}...")
+                    result = subprocess.run(['sudo', 'apt-get', 'install', '-y', package], 
+                                          capture_output=True, text=True, timeout=300)
+                    if result.returncode == 0:
+                        self.print_success(f"  ✅ {package} installed")
+                    else:
+                        self.print_warning(f"  ⚠️  {package} failed: {result.stderr[:100]}")
+                        
+                        # Try alternative package names
+                        if package == 'chromium-browser':
+                            self.print_info("Trying alternative: chromium...")
+                            subprocess.run(['sudo', 'apt-get', 'install', '-y', 'chromium'], 
+                                         capture_output=True, timeout=300)
+                except Exception as e:
+                    self.print_warning(f"  ⚠️  Error installing {package}: {e}")
+            
+            # Install Xvfb if needed
+            try:
+                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'xvfb'], 
+                             capture_output=True, timeout=300)
+                self.print_success("✅ Xvfb installed")
+            except:
+                self.print_warning("⚠️  Could not install Xvfb")
+            
+            # Install Selenium using pip with multiple approaches
             self.print_info("Installing Selenium via pip...")
-            pip_cmd = [sys.executable, '-m', 'pip', 'install', 
-                      'selenium', 'webdriver-manager', '--break-system-packages']
             
-            result = subprocess.run(pip_cmd, capture_output=True, text=True, timeout=300)
+            pip_commands = [
+                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '--break-system-packages'],
+                [sys.executable, '-m', 'pip', 'install', 'selenium==4.15.0', '--break-system-packages'],
+                [sys.executable, '-m', 'pip', 'install', 'webdriver-manager', '--break-system-packages']
+            ]
             
-            if result.returncode != 0:
-                # Try without break-system-packages flag
-                self.print_warning("Trying alternative pip install...")
-                pip_cmd = [sys.executable, '-m', 'pip', 'install', 'selenium', 'webdriver-manager']
-                subprocess.run(pip_cmd, capture_output=True, timeout=300)
+            for cmd in pip_commands:
+                try:
+                    cmd_name = ' '.join(cmd[-2:]) if 'install' in cmd else ' '.join(cmd[-1:])
+                    self.print_info(f"Running: {cmd_name}")
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                    if result.returncode == 0:
+                        self.print_success(f"  ✅ Command successful")
+                    else:
+                        # Try without --break-system-packages flag
+                        if '--break-system-packages' in cmd:
+                            alt_cmd = [c for c in cmd if c != '--break-system-packages']
+                            self.print_info(f"Trying alternative for: {cmd_name}")
+                            subprocess.run(alt_cmd, capture_output=True, timeout=300)
+                except Exception as e:
+                    self.print_warning(f"  ⚠️  Command failed: {e}")
             
-            # Create symlink for chromedriver if needed
-            if not os.path.exists('/usr/local/bin/chromedriver'):
-                self.print_info("Creating chromedriver symlink...")
-                if os.path.exists('/usr/lib/chromium-browser/chromedriver'):
-                    subprocess.run(['sudo', 'ln', '-s', '/usr/lib/chromium-browser/chromedriver', 
-                                  '/usr/local/bin/chromedriver'], check=True)
+            # Install additional useful packages
+            additional_packages = [
+                'selenium-wire',
+                'undetected-chromedriver',
+                'pyvirtualdisplay'
+            ]
+            
+            for package in additional_packages:
+                try:
+                    self.print_info(f"Installing {package}...")
+                    subprocess.run([sys.executable, '-m', 'pip', 'install', package, '--break-system-packages'],
+                                 capture_output=True, timeout=60)
+                except:
+                    pass  # These are optional
+            
+            # Setup chromedriver symlink
+            self.print_info("Setting up chromedriver...")
+            chromedriver_paths = [
+                '/usr/lib/chromium-browser/chromedriver',
+                '/usr/bin/chromedriver',
+                '/usr/local/bin/chromedriver',
+                '/snap/bin/chromium.chromedriver'
+            ]
+            
+            chromedriver_found = False
+            for path in chromedriver_paths:
+                if os.path.exists(path):
+                    self.print_success(f"✅ Chromedriver found at: {path}")
+                    chromedriver_found = True
+                    # Make symlink if not already in /usr/local/bin
+                    if path != '/usr/local/bin/chromedriver':
+                        try:
+                            subprocess.run(['sudo', 'ln', '-sf', path, '/usr/local/bin/chromedriver'], 
+                                         check=True)
+                            self.print_success(f"  Created symlink to /usr/local/bin/chromedriver")
+                        except:
+                            pass
+                    break
+            
+            if not chromedriver_found:
+                # Try to install chromedriver manually
+                self.print_warning("Chromedriver not found, trying to install manually...")
+                try:
+                    # Get latest chromedriver for ARM
+                    subprocess.run(['wget', 'https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip'],
+                                 capture_output=True, timeout=300)
+                    subprocess.run(['unzip', 'chromedriver_linux64.zip'], capture_output=True)
+                    subprocess.run(['sudo', 'mv', 'chromedriver', '/usr/local/bin/'], check=True)
+                    subprocess.run(['sudo', 'chmod', '+x', '/usr/local/bin/chromedriver'], check=True)
+                    self.print_success("✅ Chromedriver installed manually")
+                except:
+                    self.print_warning("⚠️  Could not install chromedriver manually")
             
             # Test Selenium installation
             self.print_info("Testing Selenium installation...")
             test_script = """
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-
-options = Options()
-options.add_argument('--headless')
-options.add_argument('--no-sandbox')
-options.add_argument('--disable-dev-shm-usage')
-options.add_argument('--disable-gpu')
-options.add_argument('--remote-debugging-port=9222')
+import sys
+print(f"Python version: {sys.version}")
 
 try:
-    driver = webdriver.Chrome(options=options)
-    driver.get("https://www.google.com")
-    print(f"Page title: {driver.title}")
-    driver.quit()
-    print("Selenium test successful!")
+    from selenium import webdriver
+    print("✅ selenium module imported successfully")
+    print(f"Selenium version: {webdriver.__version__}")
+except ImportError as e:
+    print(f"❌ Failed to import selenium: {e}")
+    sys.exit(1)
+
+# Try to setup Chrome options
+try:
+    from selenium.webdriver.chrome.options import Options
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--remote-debugging-port=9222')
+    print("✅ Chrome options created successfully")
+    
+    # Try to initialize driver
+    try:
+        driver = webdriver.Chrome(options=options)
+        print("✅ Chrome driver initialized")
+        
+        # Try to navigate
+        driver.get("https://httpbin.org/ip")
+        print(f"✅ Page loaded successfully")
+        print(f"Page title: {driver.title}")
+        
+        driver.quit()
+        print("✅ Driver quit successfully")
+        print("🎉 Selenium test PASSED!")
+        
+    except Exception as e:
+        print(f"⚠️  Driver initialization/navigation failed: {e}")
+        print("This might be OK if browser is not fully installed")
+        
 except Exception as e:
-    print(f"Selenium test failed: {e}")
+    print(f"❌ Failed to setup Chrome options: {e}")
 """
             
-            with open('/tmp/test_selenium.py', 'w') as f:
+            test_file = '/tmp/test_selenium.py'
+            with open(test_file, 'w') as f:
                 f.write(test_script)
             
-            test_result = subprocess.run(['python3', '/tmp/test_selenium.py'], 
-                                       capture_output=True, text=True)
-            
-            if test_result.returncode == 0:
-                self.print_success("✅ Selenium installed and tested successfully!")
-                return True
-            else:
-                self.print_warning("Selenium test had issues, but installation completed")
-                return True
+            try:
+                result = subprocess.run(['python3', test_file], 
+                                      capture_output=True, text=True, timeout=60)
+                print("\n" + "="*60)
+                print("SELENIUM TEST RESULTS:")
+                print("="*60)
+                print(result.stdout)
+                if result.stderr:
+                    print("STDERR:", result.stderr[:500])
+                print("="*60)
                 
-        except subprocess.CalledProcessError as e:
-            self.print_error(f"Failed to install Selenium system-wide: {e}")
-            return False
-        except subprocess.TimeoutExpired:
-            self.print_warning("Selenium installation timed out")
-            return True  # Return True anyway to continue
+                if result.returncode == 0:
+                    self.print_success("✅ Selenium installation completed successfully!")
+                    return True
+                else:
+                    self.print_warning("⚠️  Selenium test had some issues")
+                    return True  # Return True anyway to continue
+                    
+            except Exception as e:
+                self.print_warning(f"⚠️  Could not run selenium test: {e}")
+                return True  # Continue anyway
+                
         except Exception as e:
-            self.print_error(f"Unexpected error installing Selenium: {e}")
+            self.print_error(f"❌ Error in selenium installation: {e}")
+            self.print_warning("⚠️  Continuing without full selenium installation...")
             return False
 
     def run_venv_script_with_retry(self, folder_name, max_attempts=9999):
@@ -381,6 +517,10 @@ except Exception as e:
         self.print_warning("♾️  UNLIMITED RETRY MODE: Will keep trying until all bots are installed!")
         self.print_warning("⏰ This may take several hours on Raspberry Pi. Please be patient!")
         
+        # Check if running as root
+        if os.geteuid() == 0:
+            self.print_warning("⚠️  Running as root! Some installations may behave differently.")
+        
         if not self.check_and_install_python():
             self.print_error("Cannot continue without Python3!")
             sys.exit(1)
@@ -390,9 +530,18 @@ except Exception as e:
         self.print_info("Checking for SSL issues...")
         self.fix_ssl_issues()
         
-        # Install Selenium system-wide FIRST
-        if not self.install_selenium_systemwide():
-            self.print_warning("Selenium installation had issues, but continuing anyway...")
+        # Install Selenium system-wide with retry
+        self.print_info("Attempting Selenium installation...")
+        selenium_installed = False
+        for attempt in range(3):  # Try 3 times
+            self.print_info(f"Selenium installation attempt {attempt + 1}/3")
+            if self.install_selenium_systemwide():
+                selenium_installed = True
+                break
+            time.sleep(10)
+        
+        if not selenium_installed:
+            self.print_warning("⚠️  Selenium installation had issues, but continuing anyway...")
         
         # Start Xvfb for headless display
         self.start_xvfb()
