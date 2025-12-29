@@ -2,7 +2,6 @@
 import os
 import sys
 import subprocess
-import requests
 import time
 import threading
 from datetime import datetime
@@ -37,24 +36,51 @@ class AllInOneVenvSetup:
     def print_info(self, message):
         print(f"{self.BLUE}ℹ️  {message}{self.ENDC}")
 
-    def show_progress(self, folder_name, stop_event, attempt=None):
-        """Show progress dots while installation is running"""
-        dots = 0
-        start_time = time.time()
+    def install_python_dependencies(self):
+        """Install required Python packages"""
+        self.print_info("Installing required Python dependencies...")
         
-        while not stop_event.is_set():
-            dots = (dots + 1) % 4
-            progress = "." * dots + " " * (3 - dots)
-            elapsed = int(time.time() - start_time)
-            
-            if attempt:
-                status = f"🔄 Attempt {attempt}: Installing {folder_name} {progress} ({elapsed}s)"
-            else:
-                status = f"🔄 Installing {folder_name} {progress} ({elapsed}s)"
+        packages = [
+            'requests',
+            'urllib3',
+            'chardet',
+            'idna'
+        ]
+        
+        for package in packages:
+            try:
+                self.print_info(f"Installing {package}...")
+                # Try with --break-system-packages first, then without
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', package, '--break-system-packages'],
+                    capture_output=True,
+                    text=True
+                )
                 
-            print(f"\r{self.BLUE}{status}{self.ENDC}", end="", flush=True)
-            time.sleep(1)
-        print("\r" + " " * 80 + "\r", end="", flush=True)  # Clear line
+                if result.returncode != 0:
+                    # Try without break-system-packages
+                    result = subprocess.run(
+                        [sys.executable, '-m', 'pip', 'install', package],
+                        capture_output=True,
+                        text=True
+                    )
+                
+                if result.returncode == 0:
+                    self.print_success(f"Installed {package}")
+                else:
+                    self.print_warning(f"Failed to install {package}: {result.stderr[:100]}")
+                    
+            except Exception as e:
+                self.print_warning(f"Error installing {package}: {e}")
+        
+        # Try to import requests to verify
+        try:
+            import requests
+            self.print_success("All dependencies installed successfully!")
+            return True
+        except ImportError:
+            self.print_warning("Some dependencies may not be installed properly")
+            return False
 
     def check_and_install_python(self):
         """Check if Python3 is installed and install if missing"""
@@ -124,6 +150,18 @@ class AllInOneVenvSetup:
         """Get all folders from GitHub repository using GitHub API"""
         self.print_info("Scanning GitHub repository for ALL folders...")
         
+        # First ensure requests is available
+        try:
+            import requests
+        except ImportError:
+            self.print_warning("Requests module not available, trying to install...")
+            self.install_python_dependencies()
+            try:
+                import requests
+            except ImportError:
+                self.print_error("Cannot access GitHub API without requests module")
+                return []
+        
         api_url = "https://api.github.com/repos/Thaniyanki/raspberry-pi-bots/contents"
         
         try:
@@ -151,10 +189,30 @@ class AllInOneVenvSetup:
         venv_url = f"{self.github_raw}/{folder_name}/venv.sh"
         
         try:
+            import requests
             response = requests.head(venv_url, timeout=5)
             return response.status_code == 200
         except:
             return False
+
+    def show_progress(self, folder_name, stop_event, attempt=None):
+        """Show progress dots while installation is running"""
+        dots = 0
+        start_time = time.time()
+        
+        while not stop_event.is_set():
+            dots = (dots + 1) % 4
+            progress = "." * dots + " " * (3 - dots)
+            elapsed = int(time.time() - start_time)
+            
+            if attempt:
+                status = f"🔄 Attempt {attempt}: Installing {folder_name} {progress} ({elapsed}s)"
+            else:
+                status = f"🔄 Installing {folder_name} {progress} ({elapsed}s)"
+                
+            print(f"\r{self.BLUE}{status}{self.ENDC}", end="", flush=True)
+            time.sleep(1)
+        print("\r" + " " * 80 + "\r", end="", flush=True)
 
     def run_venv_script_with_retry(self, folder_name, max_attempts=9999):
         """Run the venv.sh script with UNLIMITED retries"""
@@ -174,7 +232,14 @@ class AllInOneVenvSetup:
             try:
                 # Download the script first
                 self.print_info("Downloading script...")
-                response = requests.get(script_url, timeout=30)
+                try:
+                    import requests
+                    response = requests.get(script_url, timeout=30)
+                except ImportError:
+                    self.print_error("Requests module not available, cannot download script")
+                    self.install_python_dependencies()
+                    continue
+                
                 if response.status_code != 200:
                     self.print_error(f"Failed to download script from: {script_url}")
                     attempt += 1
@@ -188,7 +253,7 @@ class AllInOneVenvSetup:
                 # Make it executable
                 subprocess.run(['chmod', '+x', temp_script], check=True)
                 
-                # Set environment variables to help with installation
+                # Set environment variables
                 env = os.environ.copy()
                 env['PIP_DEFAULT_TIMEOUT'] = '300'
                 env['PIP_RETRIES'] = '10'
@@ -232,8 +297,11 @@ class AllInOneVenvSetup:
                     self.print_warning(f"🔄 Retrying in 30 seconds... (Attempt {attempt + 1})")
                     
             except subprocess.TimeoutExpired:
-                stop_progress.set()
-                progress_thread.join()
+                try:
+                    stop_progress.set()
+                    progress_thread.join()
+                except:
+                    pass
                 self.print_error(f"⏰ Timeout on attempt {attempt}: {display_name}")
                 self.print_warning(f"🔄 Retrying in 30 seconds... (Attempt {attempt + 1})")
                 
@@ -273,23 +341,30 @@ class AllInOneVenvSetup:
         self.print_warning("♾️  UNLIMITED RETRY MODE: Will keep trying until all bots are installed!")
         self.print_warning("⏰ This may take several hours on Raspberry Pi. Please be patient!")
         
+        # Step 1: Check and install Python
         if not self.check_and_install_python():
             self.print_error("Cannot continue without Python3!")
             sys.exit(1)
         
+        # Step 2: Fix pip issues
         self.fix_pip_issues()
         
+        # Step 3: Install Python dependencies (including requests)
+        self.install_python_dependencies()
+        
+        # Step 4: Fix SSL issues
         self.print_info("Checking for SSL issues...")
         self.fix_ssl_issues()
         
+        # Step 5: Get all folders
         all_folders = self.get_all_folders_from_github()
         
         if not all_folders:
             self.print_error("No folders found in repository!")
             return
         
+        # Step 6: Check for venv.sh files
         folders_with_venv = []
-        
         self.print_info("Checking for venv.sh files in all folders...")
         for folder in all_folders:
             if self.check_venv_sh_exists(folder):
@@ -306,6 +381,7 @@ class AllInOneVenvSetup:
         
         self.print_info(f"Found {len(folders_with_venv)} bots with venv.sh")
         
+        # Step 7: Install all bots
         success_count = 0
         
         for i, folder in enumerate(folders_with_venv, 1):
@@ -319,6 +395,7 @@ class AllInOneVenvSetup:
                 self.print_info("Waiting 15 seconds before next bot...")
                 time.sleep(15)
         
+        # Final summary
         self.print_header("🎉 ALL VENV.SH SCRIPTS EXECUTION COMPLETED!")
         self.print_info(f"Total bots with venv.sh: {len(folders_with_venv)}")
         self.print_info(f"Successful setups: {success_count}")
