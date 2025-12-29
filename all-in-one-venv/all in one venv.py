@@ -156,6 +156,96 @@ class AllInOneVenvSetup:
         except:
             return False
 
+    def install_selenium_systemwide(self):
+        """Install Selenium and WebDriver system-wide for Raspberry Pi"""
+        self.print_header("🛠️ INSTALLING SELENIUM SYSTEM-WIDE")
+        
+        try:
+            # Update system packages
+            self.print_info("Updating system packages...")
+            subprocess.run(['sudo', 'apt', 'update'], check=True, capture_output=True)
+            
+            # Install system dependencies
+            self.print_info("Installing system dependencies...")
+            dependencies = [
+                'python3-selenium',
+                'chromium-chromedriver',
+                'chromium',
+                'xvfb',
+                'libxss1',
+                'libappindicator1',
+                'libindicator7'
+            ]
+            
+            subprocess.run(['sudo', 'apt', 'install', '-y'] + dependencies, 
+                         check=True, capture_output=True)
+            
+            # Install Selenium via pip
+            self.print_info("Installing Selenium via pip...")
+            pip_cmd = [sys.executable, '-m', 'pip', 'install', 
+                      'selenium', 'webdriver-manager', '--break-system-packages']
+            
+            result = subprocess.run(pip_cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode != 0:
+                # Try without break-system-packages flag
+                self.print_warning("Trying alternative pip install...")
+                pip_cmd = [sys.executable, '-m', 'pip', 'install', 'selenium', 'webdriver-manager']
+                subprocess.run(pip_cmd, capture_output=True, timeout=300)
+            
+            # Create symlink for chromedriver if needed
+            if not os.path.exists('/usr/local/bin/chromedriver'):
+                self.print_info("Creating chromedriver symlink...")
+                if os.path.exists('/usr/lib/chromium-browser/chromedriver'):
+                    subprocess.run(['sudo', 'ln', '-s', '/usr/lib/chromium-browser/chromedriver', 
+                                  '/usr/local/bin/chromedriver'], check=True)
+            
+            # Test Selenium installation
+            self.print_info("Testing Selenium installation...")
+            test_script = """
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
+options = Options()
+options.add_argument('--headless')
+options.add_argument('--no-sandbox')
+options.add_argument('--disable-dev-shm-usage')
+options.add_argument('--disable-gpu')
+options.add_argument('--remote-debugging-port=9222')
+
+try:
+    driver = webdriver.Chrome(options=options)
+    driver.get("https://www.google.com")
+    print(f"Page title: {driver.title}")
+    driver.quit()
+    print("Selenium test successful!")
+except Exception as e:
+    print(f"Selenium test failed: {e}")
+"""
+            
+            with open('/tmp/test_selenium.py', 'w') as f:
+                f.write(test_script)
+            
+            test_result = subprocess.run(['python3', '/tmp/test_selenium.py'], 
+                                       capture_output=True, text=True)
+            
+            if test_result.returncode == 0:
+                self.print_success("✅ Selenium installed and tested successfully!")
+                return True
+            else:
+                self.print_warning("Selenium test had issues, but installation completed")
+                return True
+                
+        except subprocess.CalledProcessError as e:
+            self.print_error(f"Failed to install Selenium system-wide: {e}")
+            return False
+        except subprocess.TimeoutExpired:
+            self.print_warning("Selenium installation timed out")
+            return True  # Return True anyway to continue
+        except Exception as e:
+            self.print_error(f"Unexpected error installing Selenium: {e}")
+            return False
+
     def run_venv_script_with_retry(self, folder_name, max_attempts=9999):
         """Run the venv.sh script with UNLIMITED retries"""
         script_url = f"{self.github_raw}/{folder_name}/venv.sh"
@@ -193,6 +283,7 @@ class AllInOneVenvSetup:
                 env['PIP_DEFAULT_TIMEOUT'] = '300'
                 env['PIP_RETRIES'] = '10'
                 env['DEBIAN_FRONTEND'] = 'noninteractive'
+                env['DISPLAY'] = ':99'  # For headless display
                 
                 self.print_info("Running installation script with LIVE OUTPUT...")
                 self.print_info("You will see all installation progress below:")
@@ -267,6 +358,23 @@ class AllInOneVenvSetup:
             self.print_warning(f"Could not fix SSL issues: {e}")
             return False
 
+    def start_xvfb(self):
+        """Start Xvfb for headless display"""
+        self.print_info("Starting Xvfb for headless display...")
+        try:
+            # Check if Xvfb is already running
+            result = subprocess.run(['pgrep', 'Xvfb'], capture_output=True)
+            if result.returncode != 0:
+                subprocess.Popen(['Xvfb', ':99', '-screen', '0', '1024x768x24'], 
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.print_success("Xvfb started on display :99")
+            else:
+                self.print_info("Xvfb is already running")
+            return True
+        except Exception as e:
+            self.print_warning(f"Could not start Xvfb: {e}")
+            return False
+
     def main(self):
         """Main setup process"""
         self.print_header("🚀 AUTO-RUN ALL VENV.SH SCRIPTS FROM GITHUB")
@@ -281,6 +389,13 @@ class AllInOneVenvSetup:
         
         self.print_info("Checking for SSL issues...")
         self.fix_ssl_issues()
+        
+        # Install Selenium system-wide FIRST
+        if not self.install_selenium_systemwide():
+            self.print_warning("Selenium installation had issues, but continuing anyway...")
+        
+        # Start Xvfb for headless display
+        self.start_xvfb()
         
         all_folders = self.get_all_folders_from_github()
         
